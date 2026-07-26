@@ -13,12 +13,12 @@ export function ProductForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
-      <Field label="Polish name" hint="What is printed on the box.">
-        <TextInput name="namePl" required autoFocus placeholder="Ibuprom Max" />
+      <Field label="Name" hint="Exactly as printed on the box, whatever language that is.">
+        <TextInput name="name" required autoFocus placeholder="Ibuprom Max" />
       </Field>
 
-      <Field label="English / Irish name" hint="Optional. Search matches either name.">
-        <TextInput name="nameEn" placeholder="Nurofen" />
+      <Field label="Other name" hint="Optional — the Polish or Irish equivalent. Search matches both.">
+        <TextInput name="nameAlt" placeholder="Nurofen" />
       </Field>
 
       <Field label="Strength" hint="Free text — combination products are fine: 500 mg + 65 mg.">

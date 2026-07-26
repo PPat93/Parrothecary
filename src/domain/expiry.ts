@@ -5,6 +5,12 @@ export type ExpiryPrecision = 'day' | 'month';
 export type ExpiryStatus =
   /** Product does not expire — plasters, thermometers, saline. */
   | 'none'
+  /**
+   * The product does expire, but we have not recorded the date. Deliberately
+   * distinct from 'none': telling someone a bandage "has no expiry" when we
+   * simply never typed the date in is worse than admitting we do not know.
+   */
+  | 'unknown'
   /** Comfortably in date. */
   | 'ok'
   /** Amber: use it soon. */
@@ -94,6 +100,9 @@ export function expiryStatus(
   today: IsoDate,
   thresholds: ExpiryThresholds = DEFAULT_THRESHOLDS,
 ): ExpiryStatus {
+  if (!input.hasExpiry) return 'none';
+  if (input.expiryDate === null) return 'unknown';
+
   const days = daysUntilExpiry(input, today);
   if (days === null) return 'none';
   if (days < 0) return 'expired';
@@ -104,7 +113,8 @@ export function expiryStatus(
 
 /** How it should read on screen: "11/2027" for month precision, "15.11.2027" for day. */
 export function formatExpiry(input: ExpiryInput): string {
-  if (!input.hasExpiry || input.expiryDate === null) return 'no expiry';
+  if (!input.hasExpiry) return 'no expiry';
+  if (input.expiryDate === null) return 'date unknown';
 
   const [year, month, day] = input.expiryDate.split('-');
   if (input.precision === 'month') return `${month}/${year}`;

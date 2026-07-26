@@ -115,6 +115,13 @@ describe('expiryStatus', () => {
     expect(expiryStatus(plasters, TODAY)).toBe('none');
   });
 
+  it('distinguishes "we never typed the date in" from "it does not expire"', () => {
+    // A bandage that does expire but whose date we have not recorded must not
+    // be reported as never expiring — that is a claim we cannot make.
+    const bandage: ExpiryInput = { expiryDate: null, precision: null, hasExpiry: true };
+    expect(expiryStatus(bandage, TODAY)).toBe('unknown');
+  });
+
   it('honours custom thresholds', () => {
     const tight = { criticalDays: 7, warningDays: 14 };
     expect(expiryStatus(box('2026-08-20'), TODAY, tight)).toBe('ok'); // 25 days
@@ -139,6 +146,12 @@ describe('formatExpiry', () => {
 
   it('says so when nothing expires', () => {
     expect(formatExpiry({ expiryDate: null, precision: null, hasExpiry: false })).toBe('no expiry');
+  });
+
+  it('admits when the date is simply missing', () => {
+    expect(formatExpiry({ expiryDate: null, precision: null, hasExpiry: true })).toBe(
+      'date unknown',
+    );
   });
 });
 

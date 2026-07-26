@@ -30,7 +30,7 @@ export default async function StockPage() {
             >
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="font-medium">
-                  {group.namePl}
+                  {group.name}
                   {group.strength ? (
                     <span className="font-normal" style={{ color: 'var(--muted)' }}>
                       {' '}
@@ -43,9 +43,9 @@ export default async function StockPage() {
                 </span>
               </div>
 
-              {group.nameEn ? (
+              {group.nameAlt ? (
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                  {group.nameEn}
+                  {group.nameAlt}
                 </p>
               ) : null}
 

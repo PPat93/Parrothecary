@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d083fac3-0b6e-43f3-a846-5624ecc45dee",
+  "id": "cfc7f4aa-8c25-4d22-9f95-ee453bd91cf0",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "batches": {
@@ -412,15 +412,15 @@
           "notNull": true,
           "autoincrement": true
         },
-        "name_pl": {
-          "name": "name_pl",
+        "name": {
+          "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name_en": {
-          "name": "name_en",
+        "name_alt": {
+          "name": "name_alt",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -511,17 +511,17 @@
         }
       },
       "indexes": {
-        "products_name_pl_idx": {
-          "name": "products_name_pl_idx",
+        "products_name_idx": {
+          "name": "products_name_idx",
           "columns": [
-            "name_pl"
+            "name"
           ],
           "isUnique": false
         },
-        "products_name_en_idx": {
-          "name": "products_name_en_idx",
+        "products_name_alt_idx": {
+          "name": "products_name_alt_idx",
           "columns": [
-            "name_en"
+            "name_alt"
           ],
           "isUnique": false
         },

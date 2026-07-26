@@ -28,9 +28,13 @@ backups/
 .env.local
 .env.*.local
 
-# seed photos — pictures of our medicine cabinet stay off git
+# Our actual medicine cabinet stays off git — photos, the transcription, and the
+# real seed script all describe what the household takes. scripts/seed.mjs holds
+# invented demo data and IS committed.
 seed/photos/*
 !seed/photos/.gitkeep
+seed/my-stock.mjs
+seed/catalog.md
 
 # testing (e2e artefacts — Playwright is owned by the user)
 coverage/

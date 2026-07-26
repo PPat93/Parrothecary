@@ -41,8 +41,8 @@ const optionalText = z
   });
 
 const productSchema = z.object({
-  namePl: z.string().trim().min(1, 'Polish name is required'),
-  nameEn: optionalText,
+  name: z.string().trim().min(1, 'Name is required'),
+  nameAlt: optionalText,
   form: z.enum(DOSE_FORMS),
   unitName: z.enum(UNIT_NAMES),
   strength: optionalText,
@@ -57,8 +57,8 @@ const productSchema = z.object({
 
 export async function createProduct(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const parsed = productSchema.safeParse({
-    namePl: formData.get('namePl'),
-    nameEn: formData.get('nameEn'),
+    name: formData.get('name'),
+    nameAlt: formData.get('nameAlt'),
     form: formData.get('form'),
     unitName: formData.get('unitName'),
     strength: formData.get('strength'),
@@ -79,8 +79,8 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
   const inserted = await db
     .insert(products)
     .values({
-      namePl: data.namePl,
-      nameEn: data.nameEn,
+      name: data.name,
+      nameAlt: data.nameAlt,
       form: data.form,
       unitName: data.unitName,
       strength: data.strength,

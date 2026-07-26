@@ -57,8 +57,8 @@ CREATE TABLE `product_symptoms` (
 --> statement-breakpoint
 CREATE TABLE `products` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`name_pl` text NOT NULL,
-	`name_en` text,
+	`name` text NOT NULL,
+	`name_alt` text,
 	`form` text DEFAULT 'tablet' NOT NULL,
 	`strength` text,
 	`unit_name` text DEFAULT 'tablet' NOT NULL,
@@ -72,8 +72,8 @@ CREATE TABLE `products` (
 	`updated_at` integer DEFAULT (unixepoch()) NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `products_name_pl_idx` ON `products` (`name_pl`);--> statement-breakpoint
-CREATE INDEX `products_name_en_idx` ON `products` (`name_en`);--> statement-breakpoint
+CREATE INDEX `products_name_idx` ON `products` (`name`);--> statement-breakpoint
+CREATE INDEX `products_name_alt_idx` ON `products` (`name_alt`);--> statement-breakpoint
 CREATE INDEX `products_archived_idx` ON `products` (`archived_at`);--> statement-breakpoint
 CREATE TABLE `sessions` (
 	`id` text PRIMARY KEY NOT NULL,

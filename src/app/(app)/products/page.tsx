@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ConfirmButton } from '@/components/confirm-button';
 import { formatQuantity } from '@/domain/quantity';
 import { getProducts } from '@/lib/queries';
 import { archiveProduct, logout } from '../actions';
@@ -32,7 +33,7 @@ export default async function ProductsPage() {
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">
-                  {row.namePl}
+                  {row.name}
                   {row.strength ? (
                     <span className="font-normal" style={{ color: 'var(--muted)' }}>
                       {' '}
@@ -42,7 +43,7 @@ export default async function ProductsPage() {
                 </p>
                 <p className="truncate text-xs" style={{ color: 'var(--muted)' }}>
                   {[
-                    row.nameEn,
+                    row.nameAlt,
                     row.form,
                     row.manufacturer,
                     row.isPrescription ? 'Rx' : null,
@@ -60,14 +61,14 @@ export default async function ProductsPage() {
 
               <form action={archiveProduct}>
                 <input type="hidden" name="id" value={row.id} />
-                <button
-                  type="submit"
+                <ConfirmButton
+                  label="Archive"
+                  title="Archive this product?"
+                  message={`${row.name} will disappear from the product list and from the "add box" picker. Its history and past spend are kept.`}
+                  confirmLabel="Yes, archive"
                   className="rounded-lg border px-3 py-1.5 text-xs"
                   style={{ borderColor: 'var(--border)' }}
-                  title="Archives the product — nothing is deleted"
-                >
-                  Archive
-                </button>
+                />
               </form>
             </li>
           ))}

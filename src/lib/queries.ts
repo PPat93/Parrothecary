@@ -4,6 +4,14 @@ import { asc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { batches, products, shoppingItems, trips, variants } from '@/db/schema';
 
+/**
+ * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
+ * after every uppercase one — "elastoBAND" and "katarek" landed below
+ * "Vigalex". NOCASE folds ASCII only, so Polish diacritics still sort after
+ * plain letters; good enough for a cabinet of this size.
+ */
+const byName = sql`${products.name} collate nocase`;
+
 /** One physical box, with everything needed to render it. */
 export interface StockRow {
   batchId: number;
@@ -17,8 +25,8 @@ export interface StockRow {
   packSize: number;
   packLabel: string | null;
   productId: number;
-  namePl: string;
-  nameEn: string | null;
+  name: string;
+  nameAlt: string | null;
   strength: string | null;
   form: string;
   unitName: string;
@@ -37,8 +45,8 @@ const stockSelection = {
   packSize: variants.packSize,
   packLabel: variants.packLabel,
   productId: products.id,
-  namePl: products.namePl,
-  nameEn: products.nameEn,
+  name: products.name,
+  nameAlt: products.nameAlt,
   strength: products.strength,
   form: products.form,
   unitName: products.unitName,
@@ -53,7 +61,7 @@ export async function getStock(): Promise<StockRow[]> {
     .innerJoin(products, eq(variants.productId, products.id))
     .where(eq(batches.status, 'in_stock'))
     // Nulls last so non-expiring stock does not lead the list.
-    .orderBy(asc(products.namePl), sql`${batches.expiryDate} is null`, asc(batches.expiryDate));
+    .orderBy(byName, sql`${batches.expiryDate} is null`, asc(batches.expiryDate));
 }
 
 /** Everything in stock that actually has an expiry date, soonest first. */
@@ -67,8 +75,8 @@ export async function getExpiringStock(): Promise<StockRow[]> {
 /** Group boxes under their product, the way the stock list reads on screen. */
 export interface ProductStock {
   productId: number;
-  namePl: string;
-  nameEn: string | null;
+  name: string;
+  nameAlt: string | null;
   strength: string | null;
   form: string;
   unitName: string;
@@ -85,8 +93,8 @@ export function groupByProduct(rows: StockRow[]): ProductStock[] {
     if (!entry) {
       entry = {
         productId: row.productId,
-        namePl: row.namePl,
-        nameEn: row.nameEn,
+        name: row.name,
+        nameAlt: row.nameAlt,
         strength: row.strength,
         form: row.form,
         unitName: row.unitName,
@@ -107,8 +115,8 @@ export function groupByProduct(rows: StockRow[]): ProductStock[] {
 
 export interface ProductRow {
   id: number;
-  namePl: string;
-  nameEn: string | null;
+  name: string;
+  nameAlt: string | null;
   strength: string | null;
   form: string;
   unitName: string;
@@ -124,8 +132,8 @@ export async function getProducts(): Promise<ProductRow[]> {
   const rows = await db
     .select({
       id: products.id,
-      namePl: products.namePl,
-      nameEn: products.nameEn,
+      name: products.name,
+      nameAlt: products.nameAlt,
       strength: products.strength,
       form: products.form,
       unitName: products.unitName,
@@ -141,7 +149,7 @@ export async function getProducts(): Promise<ProductRow[]> {
     .leftJoin(batches, eq(batches.variantId, variants.id))
     .where(isNull(products.archivedAt))
     .groupBy(products.id)
-    .orderBy(asc(products.namePl));
+    .orderBy(byName);
 
   return rows;
 }
@@ -163,14 +171,14 @@ export async function getVariantOptions(): Promise<VariantRow[]> {
       productId: variants.productId,
       packSize: variants.packSize,
       packLabel: variants.packLabel,
-      namePl: products.namePl,
+      name: products.name,
       strength: products.strength,
       unitName: products.unitName,
     })
     .from(variants)
     .innerJoin(products, eq(variants.productId, products.id))
     .where(isNull(variants.archivedAt))
-    .orderBy(asc(products.namePl), asc(variants.packSize));
+    .orderBy(byName, asc(variants.packSize));
 
   return rows.map((r) => ({
     id: r.id,
@@ -178,7 +186,7 @@ export async function getVariantOptions(): Promise<VariantRow[]> {
     packSize: r.packSize,
     packLabel: r.packLabel,
     unitName: r.unitName,
-    productLabel: [r.namePl, r.strength, r.packLabel ?? `${r.packSize} ${r.unitName}`]
+    productLabel: [r.name, r.strength, r.packLabel ?? `${r.packSize} ${r.unitName}`]
       .filter(Boolean)
       .join(' · '),
   }));
@@ -197,8 +205,8 @@ export interface ShoppingRow {
   packSize: number;
   packLabel: string | null;
   productId: number;
-  namePl: string;
-  nameEn: string | null;
+  name: string;
+  nameAlt: string | null;
   strength: string | null;
   unitName: string;
 }
@@ -216,8 +224,8 @@ export async function getShoppingList(): Promise<ShoppingRow[]> {
       packSize: variants.packSize,
       packLabel: variants.packLabel,
       productId: products.id,
-      namePl: products.namePl,
-      nameEn: products.nameEn,
+      name: products.name,
+      nameAlt: products.nameAlt,
       strength: products.strength,
       unitName: products.unitName,
     })
@@ -225,5 +233,5 @@ export async function getShoppingList(): Promise<ShoppingRow[]> {
     .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
     .innerJoin(products, eq(variants.productId, products.id))
     .leftJoin(trips, eq(shoppingItems.tripId, trips.id))
-    .orderBy(asc(products.namePl));
+    .orderBy(byName);
 }

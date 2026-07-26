@@ -16,7 +16,7 @@ const db = new Database(dbPath);
 db.pragma('foreign_keys = ON');
 
 const insertProduct = db.prepare(
-  `insert into products (name_pl, name_en, form, strength, unit_name, manufacturer, is_prescription, has_expiry)
+  `insert into products (name, name_alt, form, strength, unit_name, manufacturer, is_prescription, has_expiry)
    values (?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 const insertVariant = db.prepare(

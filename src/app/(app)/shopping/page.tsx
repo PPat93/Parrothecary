@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ConfirmButton } from '@/components/confirm-button';
 import { SHOPPING_STATUSES } from '@/db/schema';
 import { getShoppingList, getVariantOptions, type ShoppingRow } from '@/lib/queries';
 import { removeShoppingItem, setShoppingStatus } from '../actions';
@@ -79,7 +80,7 @@ export default async function ShoppingPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
-                        {item.quantityPacks} × {item.namePl}
+                        {item.quantityPacks} × {item.name}
                         {item.strength ? (
                           <span className="font-normal" style={{ color: 'var(--muted)' }}>
                             {' '}
@@ -103,13 +104,14 @@ export default async function ShoppingPage() {
                     ) : (
                       <form action={removeShoppingItem}>
                         <input type="hidden" name="id" value={item.id} />
-                        <button
-                          type="submit"
+                        <ConfirmButton
+                          label="Done"
+                          title="Remove from the list?"
+                          message={`${item.quantityPacks} × ${item.name} will be deleted from the shopping list. This one really is a delete — add the boxes to stock first if you have not.`}
+                          confirmLabel="Yes, remove"
                           className="rounded-lg border px-3 py-1.5 text-xs"
                           style={{ borderColor: 'var(--border)' }}
-                        >
-                          Done
-                        </button>
+                        />
                       </form>
                     )}
                   </li>

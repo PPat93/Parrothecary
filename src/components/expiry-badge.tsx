@@ -2,6 +2,10 @@ import { expiryStatus, formatExpiry, type ExpiryInput, type ExpiryStatus } from 
 
 const STYLES: Record<ExpiryStatus, { bg: string; fg: string; label?: string }> = {
   none: { bg: 'transparent', fg: 'var(--muted)' },
+  unknown: {
+    bg: 'color-mix(in oklch, var(--color-warning) 12%, transparent)',
+    fg: 'var(--muted)',
+  },
   ok: { bg: 'color-mix(in oklch, var(--color-ok) 18%, transparent)', fg: 'var(--color-ok)' },
   warning: {
     bg: 'color-mix(in oklch, var(--color-warning) 22%, transparent)',

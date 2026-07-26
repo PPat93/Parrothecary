@@ -1,3 +1,4 @@
+import { ConfirmButton } from '@/components/confirm-button';
 import { ExpiryBadge } from '@/components/expiry-badge';
 import { todayIso } from '@/domain/date';
 import { daysUntilExpiry, expiryStatus, type ExpiryStatus } from '@/domain/expiry';
@@ -82,7 +83,7 @@ export default async function ExpiringPage() {
 
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">
-                            {row.namePl}
+                            {row.name}
                             {row.strength ? (
                               <span className="font-normal" style={{ color: 'var(--muted)' }}>
                                 {' '}
@@ -107,13 +108,14 @@ export default async function ExpiringPage() {
                             name="status"
                             value={section.status === 'expired' ? 'expired' : 'discarded'}
                           />
-                          <button
-                            type="submit"
+                          <ConfirmButton
+                            label="Binned"
+                            title="Bin this box?"
+                            message={`${row.name} — ${formatQuantity(row.quantityRemaining, row.unitName, row.packSize)} will leave your stock and be recorded as waste. Nothing is deleted.`}
+                            confirmLabel="Yes, bin it"
                             className="rounded-lg border px-3 py-1.5 text-xs"
                             style={{ borderColor: 'var(--border)' }}
-                          >
-                            Binned
-                          </button>
+                          />
                         </form>
                       </li>
                     );

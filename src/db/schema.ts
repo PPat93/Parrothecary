@@ -72,17 +72,33 @@ export const DOSE_FORMS = [
 ] as const;
 
 /** What one base unit is called. Drives every quantity display in the app. */
-export const UNIT_NAMES = ['tablet', 'capsule', 'ml', 'g', 'sachet', 'drop', 'piece', 'dose'] as const;
+export const UNIT_NAMES = [
+  'tablet',
+  'capsule',
+  'ml',
+  'g',
+  'sachet',
+  'drop',
+  /** Single-use ampoule, e.g. katarek saline 10 x 5 ml. */
+  'ampoule',
+  'piece',
+  'dose',
+] as const;
 
 export const products = sqliteTable(
   'products',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
 
-    /** Polish name — the one printed on most of our boxes. Required. */
-    namePl: text('name_pl').notNull(),
-    /** Irish/English name where one exists. Search matches either. */
-    nameEn: text('name_en'),
+    /**
+     * The name as printed on the box, whatever language that happens to be.
+     * Most stock is Polish, but Solgar, NeilMed and Mollelast have no Polish
+     * name at all — a brand is a brand, and language belongs to the packaging
+     * rather than to the product.
+     */
+    name: text('name').notNull(),
+    /** The other-language or local-equivalent name, where one exists. Search matches both. */
+    nameAlt: text('name_alt'),
 
     form: text('form', { enum: DOSE_FORMS }).notNull().default('tablet'),
     /** Free text because combination products exist: "200 mg", "500 mg + 65 mg". */
@@ -107,8 +123,8 @@ export const products = sqliteTable(
     ...timestamps,
   },
   (t) => [
-    index('products_name_pl_idx').on(t.namePl),
-    index('products_name_en_idx').on(t.nameEn),
+    index('products_name_idx').on(t.name),
+    index('products_name_alt_idx').on(t.nameAlt),
     index('products_archived_idx').on(t.archivedAt),
   ],
 );
@@ -213,6 +229,8 @@ export const variants = sqliteTable(
 export const BARCODE_TYPES = [
   /** Plain retail barcode. Identification only — carries no expiry. */
   'ean13',
+  /** 12-digit US/retail code, as on Solgar and NeilMed. A UPC-A is an EAN-13 with a leading zero. */
+  'upc_a',
   /** GS1 DataMatrix on EU prescription packs: GTIN + expiry + batch + serial. */
   'gs1_datamatrix',
   'other',
