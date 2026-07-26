@@ -1,0 +1,12 @@
+# Development happens on Windows, deployment is Linux. Normalise to LF in the
+# repository so shell scripts and Dockerfiles do not arrive on the server with
+# CRLF endings, which breaks them in ways that are annoying to diagnose.
+* text=auto eol=lf
+
+# Binary — never touch these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.pdf binary
+*.db binary
