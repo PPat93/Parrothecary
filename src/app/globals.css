@@ -1,27 +1,64 @@
 @import 'tailwindcss';
 
+/*
+ * Palette lifted from parrot-aid.png: neon outlines on near-black, with a
+ * green eye, a red cross and a blue capsule. Those three map straight onto
+ * meanings the app already needed — fine, expired, interactive — so the brand
+ * and the semantics are the same thing rather than fighting each other.
+ *
+ * Dark is the signature look and the default. Light is a derived variant using
+ * the same hues darkened to hold contrast on white, because a medicine cabinet
+ * sometimes gets read in a bright bathroom.
+ */
+
 @theme {
-  --color-ok: oklch(0.72 0.15 150);
-  --color-warning: oklch(0.78 0.15 75);
-  --color-critical: oklch(0.63 0.21 27);
+  /* Neon green — the parrot's eye. In date, all good. */
+  --color-ok: oklch(0.82 0.17 152);
+  /* Neon amber. Not in the logo, but the expiry view needs a middle band. */
+  --color-warning: oklch(0.84 0.16 85);
+  /* Neon red — the medical cross. Expired, destructive, stop. */
+  --color-critical: oklch(0.66 0.22 25);
+  /* Neon blue — the capsule. Interactive: buttons, links, focus. */
+  --color-accent: oklch(0.72 0.16 245);
 }
 
 :root {
-  color-scheme: light dark;
-  --bg: oklch(0.98 0.005 250);
-  --surface: oklch(1 0 0);
-  --border: oklch(0.9 0.01 250);
-  --text: oklch(0.25 0.02 250);
-  --muted: oklch(0.55 0.02 250);
+  color-scheme: dark;
+
+  --bg: oklch(0.09 0.006 260);
+  --surface: oklch(0.145 0.009 260);
+  --surface-raised: oklch(0.19 0.011 260);
+  --border: oklch(0.28 0.013 260);
+  --text: oklch(0.97 0.004 250);
+  --muted: oklch(0.7 0.014 260);
+
+  --accent: var(--color-accent);
+  --accent-ink: oklch(0.14 0.02 260);
+
+  /* Echo of the logo's glow. Used on accents only — glow on everything is noise. */
+  --glow: 0 0 0.75rem;
 }
 
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   :root {
-    --bg: oklch(0.18 0.015 250);
-    --surface: oklch(0.23 0.018 250);
-    --border: oklch(0.32 0.02 250);
-    --text: oklch(0.94 0.005 250);
-    --muted: oklch(0.68 0.015 250);
+    color-scheme: light;
+
+    --bg: oklch(0.985 0.003 250);
+    --surface: oklch(1 0 0);
+    --surface-raised: oklch(0.97 0.005 250);
+    --border: oklch(0.9 0.008 250);
+    --text: oklch(0.22 0.018 260);
+    --muted: oklch(0.52 0.018 260);
+
+    /* Same hues, pulled down so they hold contrast against white. */
+    --color-ok: oklch(0.56 0.15 152);
+    --color-warning: oklch(0.62 0.14 75);
+    --color-critical: oklch(0.55 0.21 25);
+    --color-accent: oklch(0.55 0.17 245);
+    --accent-ink: oklch(0.99 0 0);
+
+    /* No glow in daylight — it just reads as a blurry edge. */
+    --glow: 0 0 0;
   }
 }
 
@@ -31,9 +68,24 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Focus follows the capsule blue, so the interactive colour is consistent. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The browser centres a modal <dialog> with `margin: auto`, but Tailwind's
+ * preflight zeroes every margin, which pins it to the top-left. Put it back.
+ */
+dialog:modal {
+  margin: auto;
+  max-height: calc(100dvh - 2rem);
+}
+
 dialog::backdrop {
-  background: oklch(0 0 0 / 0.5);
-  backdrop-filter: blur(2px);
+  background: oklch(0 0 0 / 0.65);
+  backdrop-filter: blur(3px);
 }
 
 dialog:not([open]) {

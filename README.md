@@ -1,4 +1,4 @@
-# WyDawka
+# Parrothecary
 
 Domowa apteczka — a LAN-only home medicine and supplement inventory for one household.
 

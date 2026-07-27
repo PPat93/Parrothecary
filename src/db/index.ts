@@ -9,7 +9,7 @@ import * as schema from './schema';
 type Db = ReturnType<typeof open>;
 
 function open() {
-  const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/wydawka.db');
+  const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
   const sqlite = new Database(dbPath);
@@ -26,13 +26,13 @@ function open() {
 // Next's dev server re-evaluates modules on every edit, and `next build` spawns
 // ten workers that each evaluate them once. Cache per process so we open at
 // most one connection.
-const globalForDb = globalThis as unknown as { __wydawkaDb?: Db };
+const globalForDb = globalThis as unknown as { __parrothecaryDb?: Db };
 
 function getDb(): Db {
-  if (!globalForDb.__wydawkaDb) {
-    globalForDb.__wydawkaDb = open();
+  if (!globalForDb.__parrothecaryDb) {
+    globalForDb.__parrothecaryDb = open();
   }
-  return globalForDb.__wydawkaDb;
+  return globalForDb.__parrothecaryDb;
 }
 
 /**

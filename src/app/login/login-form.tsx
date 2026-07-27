@@ -34,7 +34,12 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+        className="w-full rounded-xl px-4 py-3 font-medium disabled:opacity-50"
+        style={{
+          background: 'var(--color-accent)',
+          color: 'var(--accent-ink)',
+          boxShadow: `var(--glow) color-mix(in oklch, var(--color-accent) 45%, transparent)`,
+        }}
       >
         {pending ? 'Checking…' : 'Unlock'}
       </button>

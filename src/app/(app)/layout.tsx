@@ -1,3 +1,4 @@
+import { AppHeader } from '@/components/app-header';
 import { Nav } from '@/components/nav';
 import { requireSession } from '@/lib/session';
 
@@ -10,7 +11,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <main className="flex-1 px-4 pb-6 pt-[max(1rem,env(safe-area-inset-top))]">{children}</main>
+      <AppHeader />
+      <main className="flex-1 px-4 pb-6 pt-4">{children}</main>
       <Nav />
     </div>
   );

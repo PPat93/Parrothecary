@@ -1,11 +1,15 @@
 import Link from 'next/link';
-import { ConfirmButton } from '@/components/confirm-button';
 import { formatQuantity } from '@/domain/quantity';
 import { getProducts } from '@/lib/queries';
-import { archiveProduct, logout } from '../actions';
 
-export default async function ProductsPage() {
-  const rows = await getProducts();
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ archived?: string }>;
+}) {
+  const { archived } = await searchParams;
+  const showArchived = archived === '1';
+  const rows = await getProducts(showArchived);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -16,70 +20,85 @@ export default async function ProductsPage() {
         </Link>
       </header>
 
+      <div
+        className="mb-4 grid grid-cols-2 gap-1 rounded-xl border p-1 text-center text-sm"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        <Tab href="/products" label="Active" active={!showArchived} />
+        <Tab href="/products?archived=1" label="Archived" active={showArchived} />
+      </div>
+
       {rows.length === 0 ? (
         <div
           className="rounded-2xl border border-dashed p-8 text-center text-sm"
           style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
         >
-          The product database is empty.
+          {showArchived ? 'Nothing archived.' : 'The product database is empty.'}
         </div>
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((row) => (
-            <li
-              key={row.id}
-              className="flex items-center gap-3 rounded-xl border p-3"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">
-                  {row.name}
-                  {row.strength ? (
-                    <span className="font-normal" style={{ color: 'var(--muted)' }}>
-                      {' '}
-                      {row.strength}
-                    </span>
-                  ) : null}
-                </p>
-                <p className="truncate text-xs" style={{ color: 'var(--muted)' }}>
-                  {[
-                    row.nameAlt,
-                    row.form,
-                    row.manufacturer,
-                    row.isPrescription ? 'Rx' : null,
-                    !row.hasExpiry ? 'never expires' : null,
-                    `${row.variantCount} ${row.variantCount === 1 ? 'pack' : 'packs'}`,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
-              </div>
+            <li key={row.id}>
+              <Link
+                href={`/products/${row.id}`}
+                className="flex items-center gap-3 rounded-xl border p-3"
+                style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium break-words">
+                    {row.name}
+                    {row.strength ? (
+                      <span className="font-normal" style={{ color: 'var(--muted)' }}>
+                        {' '}
+                        {row.strength}
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="text-xs break-words" style={{ color: 'var(--muted)' }}>
+                    {[
+                      row.nameAlt,
+                      row.form,
+                      row.manufacturer,
+                      row.isPrescription ? 'Rx' : null,
+                      !row.hasExpiry ? 'never expires' : null,
+                      `${row.variantCount} ${row.variantCount === 1 ? 'pack' : 'packs'}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                </div>
 
-              <span className="shrink-0 text-sm tabular-nums" style={{ color: 'var(--muted)' }}>
-                {formatQuantity(row.inStockUnits, row.unitName)}
-              </span>
+                <span
+                  className="shrink-0 text-sm tabular-nums"
+                  style={{ color: 'var(--muted)' }}
+                >
+                  {formatQuantity(row.inStockUnits, row.unitName)}
+                </span>
 
-              <form action={archiveProduct}>
-                <input type="hidden" name="id" value={row.id} />
-                <ConfirmButton
-                  label="Archive"
-                  title="Archive this product?"
-                  message={`${row.name} will disappear from the product list and from the "add box" picker. Its history and past spend are kept.`}
-                  confirmLabel="Yes, archive"
-                  className="rounded-lg border px-3 py-1.5 text-xs"
-                  style={{ borderColor: 'var(--border)' }}
-                />
-              </form>
+                <span aria-hidden style={{ color: 'var(--muted)' }}>
+                  ›
+                </span>
+              </Link>
             </li>
           ))}
         </ul>
       )}
-
-      <form action={logout} className="mt-8 flex justify-center">
-        <button type="submit" className="text-sm underline underline-offset-4" style={{ color: 'var(--muted)' }}>
-          Lock WyDawka
-        </button>
-      </form>
     </div>
+  );
+}
+
+function Tab({ href, label, active }: { href: string; label: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-lg px-3 py-1.5"
+      style={{
+        background: active ? 'var(--bg)' : 'transparent',
+        color: active ? 'var(--text)' : 'var(--muted)',
+        fontWeight: active ? 600 : 400,
+      }}
+    >
+      {label}
+    </Link>
   );
 }

@@ -1,8 +1,17 @@
 import 'server-only';
 
-import { asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { batches, products, shoppingItems, trips, variants } from '@/db/schema';
+import {
+  batches,
+  productSubstances,
+  products,
+  shoppingItems,
+  substances,
+  trips,
+  variantBarcodes,
+  variants,
+} from '@/db/schema';
 
 /**
  * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
@@ -53,13 +62,38 @@ const stockSelection = {
   hasExpiry: products.hasExpiry,
 };
 
-export async function getStock(): Promise<StockRow[]> {
+/**
+ * `search` matches either name, the manufacturer, or an active substance — at
+ * a cupboard you might remember "the magnesium one" rather than "Magne B6".
+ * SQLite's LIKE folds ASCII case already; Polish diacritics are not folded.
+ */
+export async function getStock(search?: string): Promise<StockRow[]> {
+  const query = search?.trim();
+  const pattern = query ? `%${query}%` : null;
+
+  const filter = pattern
+    ? and(
+        eq(batches.status, 'in_stock'),
+        or(
+          like(products.name, pattern),
+          like(products.nameAlt, pattern),
+          like(products.manufacturer, pattern),
+          sql`exists (
+            select 1 from product_substances ps
+            join substances s on s.id = ps.substance_id
+            where ps.product_id = ${products.id}
+              and (s.name like ${pattern} or s.name_pl like ${pattern})
+          )`,
+        ),
+      )
+    : eq(batches.status, 'in_stock');
+
   return db
     .select(stockSelection)
     .from(batches)
     .innerJoin(variants, eq(batches.variantId, variants.id))
     .innerJoin(products, eq(variants.productId, products.id))
-    .where(eq(batches.status, 'in_stock'))
+    .where(filter)
     // Nulls last so non-expiring stock does not lead the list.
     .orderBy(byName, sql`${batches.expiryDate} is null`, asc(batches.expiryDate));
 }
@@ -128,7 +162,7 @@ export interface ProductRow {
   inStockUnits: number;
 }
 
-export async function getProducts(): Promise<ProductRow[]> {
+export async function getProducts(includeArchived = false): Promise<ProductRow[]> {
   const rows = await db
     .select({
       id: products.id,
@@ -147,11 +181,131 @@ export async function getProducts(): Promise<ProductRow[]> {
     .from(products)
     .leftJoin(variants, eq(variants.productId, products.id))
     .leftJoin(batches, eq(batches.variantId, variants.id))
-    .where(isNull(products.archivedAt))
+    .where(includeArchived ? isNotNull(products.archivedAt) : isNull(products.archivedAt))
     .groupBy(products.id)
     .orderBy(byName);
 
   return rows;
+}
+
+export interface ProductDetail extends ProductRow {
+  archivedAt: Date | null;
+  substances: { name: string; namePl: string | null; amountMg: number | null; amountText: string | null }[];
+  packs: {
+    id: number;
+    packSize: number;
+    packLabel: string | null;
+    barcodes: { code: string; type: string }[];
+    boxes: {
+      id: number;
+      quantityRemaining: number;
+      expiryDate: string | null;
+      expiryPrecision: 'day' | 'month' | null;
+      status: string;
+      lotNumber: string | null;
+      location: string | null;
+      openedAt: string | null;
+      purchasePriceMinor: number | null;
+      purchaseCurrency: 'PLN' | 'EUR' | null;
+      purchaseDate: string | null;
+    }[];
+  }[];
+}
+
+export async function getProduct(id: number): Promise<ProductDetail | null> {
+  const rows = await db.select().from(products).where(eq(products.id, id)).limit(1);
+  const product = rows[0];
+  if (!product) return null;
+
+  const substanceRows = await db
+    .select({
+      name: substances.name,
+      namePl: substances.namePl,
+      amountMg: productSubstances.amountMg,
+      amountText: productSubstances.amountText,
+    })
+    .from(productSubstances)
+    .innerJoin(substances, eq(productSubstances.substanceId, substances.id))
+    .where(eq(productSubstances.productId, id))
+    .orderBy(asc(substances.name));
+
+  const variantRows = await db
+    .select()
+    .from(variants)
+    .where(eq(variants.productId, id))
+    .orderBy(asc(variants.packSize));
+
+  const variantIds = variantRows.map((v) => v.id);
+
+  const barcodeRows = variantIds.length
+    ? await db
+        .select()
+        .from(variantBarcodes)
+        .where(inArray(variantBarcodes.variantId, variantIds))
+    : [];
+
+  const batchRows = variantIds.length
+    ? await db
+        .select()
+        .from(batches)
+        .where(inArray(batches.variantId, variantIds))
+        .orderBy(sql`${batches.expiryDate} is null`, asc(batches.expiryDate))
+    : [];
+
+  const inStockUnits = batchRows
+    .filter((b) => b.status === 'in_stock')
+    .reduce((sum, b) => sum + b.quantityRemaining, 0);
+
+  return {
+    id: product.id,
+    name: product.name,
+    nameAlt: product.nameAlt,
+    strength: product.strength,
+    form: product.form,
+    unitName: product.unitName,
+    manufacturer: product.manufacturer,
+    isPrescription: product.isPrescription,
+    hasExpiry: product.hasExpiry,
+    notes: product.notes,
+    archivedAt: product.archivedAt,
+    variantCount: variantRows.length,
+    inStockUnits: Math.round(inStockUnits * 100) / 100,
+    substances: substanceRows,
+    packs: variantRows.map((variant) => ({
+      id: variant.id,
+      packSize: variant.packSize,
+      packLabel: variant.packLabel,
+      barcodes: barcodeRows
+        .filter((b) => b.variantId === variant.id)
+        .map((b) => ({ code: b.code, type: b.type })),
+      boxes: batchRows
+        .filter((b) => b.variantId === variant.id)
+        .map((b) => ({
+          id: b.id,
+          quantityRemaining: b.quantityRemaining,
+          expiryDate: b.expiryDate,
+          expiryPrecision: b.expiryPrecision,
+          status: b.status,
+          lotNumber: b.lotNumber,
+          location: b.location,
+          openedAt: b.openedAt,
+          purchasePriceMinor: b.purchasePriceMinor,
+          purchaseCurrency: b.purchaseCurrency,
+          purchaseDate: b.purchaseDate,
+        })),
+    })),
+  };
+}
+
+/** Distinct manufacturers already in use, for the product form's suggestions. */
+export async function getManufacturers(): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ manufacturer: products.manufacturer })
+    .from(products)
+    .where(isNull(products.archivedAt))
+    .orderBy(sql`${products.manufacturer} collate nocase`);
+
+  return rows.map((r) => r.manufacturer).filter((m): m is string => m !== null && m !== '');
 }
 
 export interface VariantRow {
@@ -209,29 +363,48 @@ export interface ShoppingRow {
   nameAlt: string | null;
   strength: string | null;
   unitName: string;
+  hasExpiry: boolean;
+  receivedBatchId: number | null;
 }
+
+const shoppingSelection = {
+  id: shoppingItems.id,
+  status: shoppingItems.status,
+  quantityPacks: shoppingItems.quantityPacks,
+  notes: shoppingItems.notes,
+  tripId: shoppingItems.tripId,
+  tripLabel: trips.label,
+  variantId: variants.id,
+  packSize: variants.packSize,
+  packLabel: variants.packLabel,
+  productId: products.id,
+  name: products.name,
+  nameAlt: products.nameAlt,
+  strength: products.strength,
+  unitName: products.unitName,
+  hasExpiry: products.hasExpiry,
+  receivedBatchId: shoppingItems.receivedBatchId,
+};
 
 export async function getShoppingList(): Promise<ShoppingRow[]> {
   return db
-    .select({
-      id: shoppingItems.id,
-      status: shoppingItems.status,
-      quantityPacks: shoppingItems.quantityPacks,
-      notes: shoppingItems.notes,
-      tripId: shoppingItems.tripId,
-      tripLabel: trips.label,
-      variantId: variants.id,
-      packSize: variants.packSize,
-      packLabel: variants.packLabel,
-      productId: products.id,
-      name: products.name,
-      nameAlt: products.nameAlt,
-      strength: products.strength,
-      unitName: products.unitName,
-    })
+    .select(shoppingSelection)
     .from(shoppingItems)
     .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
     .innerJoin(products, eq(variants.productId, products.id))
     .leftJoin(trips, eq(shoppingItems.tripId, trips.id))
     .orderBy(byName);
+}
+
+export async function getShoppingItem(id: number): Promise<ShoppingRow | null> {
+  const rows = await db
+    .select(shoppingSelection)
+    .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .leftJoin(trips, eq(shoppingItems.tripId, trips.id))
+    .where(eq(shoppingItems.id, id))
+    .limit(1);
+
+  return rows[0] ?? null;
 }

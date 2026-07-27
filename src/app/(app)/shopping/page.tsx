@@ -1,20 +1,33 @@
 import Link from 'next/link';
 import { ConfirmButton } from '@/components/confirm-button';
-import { SHOPPING_STATUSES } from '@/db/schema';
+import { SHOPPING_STATUSES, TERMINAL_SHOPPING_STATUSES } from '@/db/schema';
 import { getShoppingList, getVariantOptions, type ShoppingRow } from '@/lib/queries';
 import { removeShoppingItem, setShoppingStatus } from '../actions';
 import { AddShoppingForm } from './add-form';
 
 /**
  * Most stock is ordered online to family in Poland and collected on the trip,
- * so an item passes through four states rather than being simply ticked off.
+ * so an item moves through several states rather than being simply ticked off.
+ * The last two are settled: they only get cleared, never moved back.
  */
 const STAGES: { status: (typeof SHOPPING_STATUSES)[number]; title: string; blurb: string }[] = [
   { status: 'to_buy', title: 'To buy', blurb: 'Not ordered yet.' },
   { status: 'ordered', title: 'Ordered', blurb: 'Placed online, on its way to Poland.' },
   { status: 'arrived', title: 'Arrived', blurb: 'Waiting at family — collect on the trip.' },
-  { status: 'in_stock', title: 'Collected', blurb: 'Home. Add the boxes to stock.' },
+  {
+    status: 'in_stock',
+    title: 'In the cupboard',
+    blurb: 'Added to stock. Clear the line when you no longer need it.',
+  },
+  {
+    status: 'not_received',
+    title: "Didn't arrive",
+    blurb: 'Damaged, lost or cancelled. Nothing was added to stock.',
+  },
 ];
+
+/** Stages that can still be moved forward or back. */
+const ACTIVE_STAGES = STAGES.filter((s) => !TERMINAL_SHOPPING_STATUSES.some((t) => t === s.status));
 
 export default async function ShoppingPage() {
   const [items, variants] = await Promise.all([getShoppingList(), getVariantOptions()]);
@@ -52,12 +65,17 @@ export default async function ShoppingPage() {
       )}
 
       <div className="flex flex-col gap-6">
-        {STAGES.map((stage, index) => {
+        {STAGES.map((stage) => {
           const stageItems = byStatus.get(stage.status) ?? [];
           if (stageItems.length === 0) return null;
 
-          const next = STAGES[index + 1];
-          const previous = STAGES[index - 1];
+          // Settled items have nowhere to go: no forward hop, no way back.
+          const settled = TERMINAL_SHOPPING_STATUSES.some((t) => t === stage.status);
+          const activeIndex = ACTIVE_STAGES.findIndex((s) => s.status === stage.status);
+          const next = settled ? undefined : ACTIVE_STAGES[activeIndex + 1];
+          const previous = settled ? undefined : ACTIVE_STAGES[activeIndex - 1];
+          // Nothing has been ordered yet at "to buy", so it cannot fail to arrive.
+          const canFailToArrive = stage.status === 'ordered' || stage.status === 'arrived';
 
           return (
             <section key={stage.status}>
@@ -75,11 +93,12 @@ export default async function ShoppingPage() {
                 {stageItems.map((item) => (
                   <li
                     key={item.id}
-                    className="flex items-center gap-2 rounded-xl border p-3"
+                    // Wraps because a row can carry three actions on a phone.
+                    className="flex flex-wrap items-center gap-2 rounded-xl border p-3"
                     style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
+                      <p className="text-sm font-medium break-words">
                         {item.quantityPacks} × {item.name}
                         {item.strength ? (
                           <span className="font-normal" style={{ color: 'var(--muted)' }}>
@@ -88,32 +107,83 @@ export default async function ShoppingPage() {
                           </span>
                         ) : null}
                       </p>
-                      <p className="truncate text-xs" style={{ color: 'var(--muted)' }}>
-                        {[item.packLabel ?? `${item.packSize} ${item.unitName}`, item.notes]
-                          .filter(Boolean)
-                          .join(' · ')}
+                      <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                        {item.packLabel ?? `${item.packSize} ${item.unitName}`}
                       </p>
+                      {/* Own line, wrapping: notes are free text and get long. */}
+                      {item.notes ? (
+                        <p
+                          className="mt-1 text-xs break-words whitespace-pre-line"
+                          style={{ color: 'var(--muted)' }}
+                        >
+                          {item.notes}
+                        </p>
+                      ) : null}
                     </div>
 
-                    {previous ? (
-                      <StatusButton id={item.id} status={previous.status} label="←" title={`Back to ${previous.title}`} />
-                    ) : null}
-
-                    {next ? (
-                      <StatusButton id={item.id} status={next.status} label={next.title} title={`Move to ${next.title}`} />
-                    ) : (
-                      <form action={removeShoppingItem}>
-                        <input type="hidden" name="id" value={item.id} />
-                        <ConfirmButton
-                          label="Done"
-                          title="Remove from the list?"
-                          message={`${item.quantityPacks} × ${item.name} will be deleted from the shopping list. This one really is a delete — add the boxes to stock first if you have not.`}
-                          confirmLabel="Yes, remove"
-                          className="rounded-lg border px-3 py-1.5 text-xs"
-                          style={{ borderColor: 'var(--border)' }}
+                    <div className="flex shrink-0 items-center gap-2">
+                      {previous ? (
+                        <StatusButton
+                          id={item.id}
+                          status={previous.status}
+                          label="←"
+                          title={`Back to ${previous.title}`}
                         />
-                      </form>
-                    )}
+                      ) : null}
+
+                      {canFailToArrive ? (
+                        <form action={setShoppingStatus}>
+                          <input type="hidden" name="id" value={item.id} />
+                          <input type="hidden" name="status" value="not_received" />
+                          <ConfirmButton
+                            label="Didn't arrive"
+                            title="Mark as not received?"
+                            message={`${item.quantityPacks} × ${item.name} will be filed under "Didn't arrive" — damaged, lost or cancelled. Nothing is added to stock.`}
+                            confirmLabel="Yes, it didn't arrive"
+                            className="rounded-lg border px-3 py-1.5 text-xs"
+                            style={{ borderColor: 'var(--border)' }}
+                          />
+                        </form>
+                      ) : null}
+
+                      {/*
+                        The last hop is not a status flip: collecting a pack means
+                        a real box enters the cupboard, so it needs the expiry and
+                        lot off the label. That is a form, not a button.
+                      */}
+                      {stage.status === 'arrived' ? (
+                        <Link
+                          href={`/shopping/${item.id}/receive`}
+                          className="rounded-lg border px-3 py-1.5 text-xs font-medium"
+                          style={{ borderColor: 'var(--border)' }}
+                        >
+                          Add to stock
+                        </Link>
+                      ) : next ? (
+                        <StatusButton
+                          id={item.id}
+                          status={next.status}
+                          label={next.title}
+                          title={`Move to ${next.title}`}
+                        />
+                      ) : (
+                        <form action={removeShoppingItem}>
+                          <input type="hidden" name="id" value={item.id} />
+                          <ConfirmButton
+                            label="Clear"
+                            title="Clear this line?"
+                            message={
+                              stage.status === 'in_stock'
+                                ? `${item.quantityPacks} × ${item.name} will be removed from the shopping list. The box itself stays in your stock — only the line goes.`
+                                : `${item.quantityPacks} × ${item.name} will be removed from the shopping list.`
+                            }
+                            confirmLabel="Yes, clear it"
+                            className="rounded-lg border px-3 py-1.5 text-xs"
+                            style={{ borderColor: 'var(--border)' }}
+                          />
+                        </form>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

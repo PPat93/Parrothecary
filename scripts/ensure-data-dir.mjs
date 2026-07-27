@@ -4,5 +4,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/wydawka.db');
+const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });

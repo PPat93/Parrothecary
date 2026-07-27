@@ -47,12 +47,36 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   );
 }
 
-export function Checkbox({ name, label }: { name: string; label: string }) {
+export function Checkbox({
+  name,
+  label,
+  defaultChecked,
+}: {
+  name: string;
+  label: string;
+  defaultChecked?: boolean;
+}) {
   return (
     <label className="flex items-center gap-3">
-      <input type="checkbox" name={name} className="h-5 w-5" />
+      <input
+        type="checkbox"
+        name={name}
+        defaultChecked={defaultChecked}
+        className="h-5 w-5 shrink-0"
+      />
       <span className="text-sm">{label}</span>
     </label>
+  );
+}
+
+/** Free text with suggestions — the value is not restricted to the list. */
+export function Datalist({ id, options }: { id: string; options: string[] }) {
+  return (
+    <datalist id={id}>
+      {options.map((option) => (
+        <option key={option} value={option} />
+      ))}
+    </datalist>
   );
 }
 
@@ -70,7 +94,12 @@ export function SubmitButton({ pending, children }: { pending: boolean; children
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+      className="w-full rounded-xl px-4 py-3 font-medium disabled:opacity-50"
+      style={{
+        background: 'var(--color-accent)',
+        color: 'var(--accent-ink)',
+        boxShadow: `var(--glow) color-mix(in oklch, var(--color-accent) 45%, transparent)`,
+      }}
     >
       {pending ? 'Saving…' : children}
     </button>

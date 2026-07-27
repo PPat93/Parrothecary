@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'WyDawka',
+  title: 'Parrothecary',
   description: 'Domowa apteczka — home medicine cabinet',
 };
 

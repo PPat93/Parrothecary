@@ -11,7 +11,7 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 
-const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/wydawka.db');
+const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
 const db = new Database(dbPath);
 db.pragma('foreign_keys = ON');
 

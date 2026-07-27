@@ -11,7 +11,7 @@ import Database from 'better-sqlite3';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 
-const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/wydawka.db');
+const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
 const force = process.argv.includes('--force');
 
 const db = new Database(dbPath);

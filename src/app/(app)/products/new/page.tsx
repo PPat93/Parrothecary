@@ -1,7 +1,10 @@
 import Link from 'next/link';
+import { getManufacturers } from '@/lib/queries';
 import { ProductForm } from './product-form';
 
-export default function NewProductPage() {
+export default async function NewProductPage() {
+  const manufacturers = await getManufacturers();
+
   return (
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-4 flex items-baseline justify-between">
@@ -10,7 +13,7 @@ export default function NewProductPage() {
           Cancel
         </Link>
       </header>
-      <ProductForm />
+      <ProductForm manufacturers={manufacturers} />
     </div>
   );
 }

@@ -337,7 +337,18 @@ export const trips = sqliteTable('trips', {
   ...timestamps,
 });
 
-export const SHOPPING_STATUSES = ['to_buy', 'ordered', 'arrived', 'in_stock'] as const;
+export const SHOPPING_STATUSES = [
+  'to_buy',
+  'ordered',
+  'arrived',
+  /** Received and added to stock. Terminal. */
+  'in_stock',
+  /** Damaged in transit, lost, or the order was cancelled. Terminal, no stock created. */
+  'not_received',
+] as const;
+
+/** Settled states: they cannot be moved back into the flow, only cleared. */
+export const TERMINAL_SHOPPING_STATUSES = ['in_stock', 'not_received'] as const;
 
 export const shoppingItems = sqliteTable(
   'shopping_items',

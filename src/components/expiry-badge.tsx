@@ -22,10 +22,18 @@ export function ExpiryBadge({ input, today }: { input: ExpiryInput; today: strin
   const status = expiryStatus(input, today);
   const style = STYLES[status];
 
+  // Faint glow echoing the logo's neon. Only on states that mean something —
+  // --glow collapses to 0 in light mode, where it would just look blurry.
+  const glowing = status === 'ok' || status === 'warning' || status === 'critical';
+
   return (
     <span
       className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums"
-      style={{ background: style.bg, color: style.fg }}
+      style={{
+        background: style.bg,
+        color: style.fg,
+        boxShadow: glowing ? `var(--glow) color-mix(in oklch, ${style.fg} 30%, transparent)` : undefined,
+      }}
       title={status}
     >
       {style.label ?? formatExpiry(input)}

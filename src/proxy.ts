@@ -17,9 +17,15 @@ export default function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Everything except the login route, Next's own assets, and the icons the
-     * PWA manifest will need before login.
+     * Everything except the login route, Next's own assets, and any static file
+     * in public/.
+     *
+     * That last exclusion matters more than it looks: Next's image optimizer
+     * fetches the source image back over HTTP with no session cookie. While
+     * public files were gated, that fetch was redirected to /login and the
+     * optimizer received an HTML page — "the requested resource isn't a valid
+     * image". Static assets are not secret; the real gate is requireSession().
      */
-    '/((?!login|_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/).*)',
+    '/((?!login|_next/|.*\\.(?:png|jpg|jpeg|webp|svg|ico|webmanifest|txt|xml)$).*)',
   ],
 };

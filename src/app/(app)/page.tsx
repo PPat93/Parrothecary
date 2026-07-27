@@ -1,13 +1,20 @@
 import Link from 'next/link';
 import { ExpiryBadge } from '@/components/expiry-badge';
+import { SearchBox } from '@/components/search-box';
 import { todayIso } from '@/domain/date';
 import { formatQuantity } from '@/domain/quantity';
 import { getStock, groupByProduct } from '@/lib/queries';
 import { adjustBatch } from './actions';
 
-export default async function StockPage() {
+export default async function StockPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
+  const search = q ?? '';
   const today = todayIso();
-  const groups = groupByProduct(await getStock());
+  const groups = groupByProduct(await getStock(search));
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -18,8 +25,14 @@ export default async function StockPage() {
         </Link>
       </header>
 
+      <SearchBox action="/" value={search} placeholder="Name, brand or substance…" />
+
       {groups.length === 0 ? (
-        <EmptyState />
+        search ? (
+          <NoMatches search={search} />
+        ) : (
+          <EmptyState />
+        )
       ) : (
         <ul className="flex flex-col gap-3">
           {groups.map((group) => (
@@ -98,6 +111,17 @@ function Stepper({ batchId, delta, label }: { batchId: number; delta: number; la
         {label}
       </button>
     </form>
+  );
+}
+
+function NoMatches({ search }: { search: string }) {
+  return (
+    <div
+      className="rounded-2xl border border-dashed p-8 text-center text-sm"
+      style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+    >
+      Nothing in stock matches “{search}”.
+    </div>
   );
 }
 

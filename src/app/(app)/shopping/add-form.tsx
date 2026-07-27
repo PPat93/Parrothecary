@@ -9,11 +9,12 @@ const initialState: FormResult = { error: null };
 
 export function AddShoppingForm({ variants }: { variants: VariantRow[] }) {
   const [state, formAction, pending] = useActionState(addShoppingItem, initialState);
+  const prev = state.values ?? {};
 
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <Field label="What to buy">
-        <Select name="variantId" required>
+        <Select name="variantId" required defaultValue={prev.variantId ?? ''}>
           {variants.map((variant) => (
             <option key={variant.id} value={variant.id}>
               {variant.productLabel}
@@ -24,10 +25,15 @@ export function AddShoppingForm({ variants }: { variants: VariantRow[] }) {
 
       <div className="grid grid-cols-[6rem_1fr] gap-3">
         <Field label="Packs">
-          <TextInput name="quantityPacks" inputMode="numeric" defaultValue="1" required />
+          <TextInput
+            name="quantityPacks"
+            inputMode="numeric"
+            defaultValue={prev.quantityPacks ?? '1'}
+            required
+          />
         </Field>
         <Field label="Note">
-          <TextInput name="notes" placeholder="ask Mama to order" />
+          <TextInput name="notes" placeholder="optional note" defaultValue={prev.notes ?? ''} />
         </Field>
       </div>
 
