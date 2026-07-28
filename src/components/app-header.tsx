@@ -1,0 +1,53 @@
+import { logout } from '@/app/(app)/actions';
+
+/**
+ * Slim bar on every authenticated view, so locking the app is always in the
+ * same place. It used to be a link buried at the bottom of the products page.
+ */
+export function AppHeader() {
+  return (
+    <header
+      className="sticky top-0 z-20 flex items-center justify-between border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]"
+      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+    >
+      <span className="flex items-center gap-2">
+        {/* Sits on its own dark disc so the neon lines survive light mode. */}
+        <span
+          className="flex h-7 w-7 items-center justify-center rounded-full"
+          style={{ background: 'oklch(0.06 0.004 260)' }}
+        >
+          {/* Pre-sized asset with a plain img: the logo never changes, so
+              runtime optimisation buys nothing. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/parrot-64.png" alt="" width={24} height={24} className="h-6 w-6 object-contain" />
+        </span>
+        <span className="text-sm font-semibold tracking-tight">Parrothecary</span>
+      </span>
+
+      <form action={logout}>
+        <button
+          type="submit"
+          aria-label="Lock Parrothecary"
+          title="Lock Parrothecary"
+          className="flex h-9 w-9 items-center justify-center rounded-lg"
+          style={{ color: 'var(--muted)' }}
+        >
+          <svg
+            aria-hidden
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+            <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+          </svg>
+        </button>
+      </form>
+    </header>
+  );
+}

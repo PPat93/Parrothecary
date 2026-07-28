@@ -1,0 +1,51 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+build/
+next-env.d.ts
+
+# typescript
+*.tsbuildinfo
+
+# database — never commit real inventory data
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# backups
+backups/
+
+# secrets
+.env
+.env.local
+.env.*.local
+
+# Our actual medicine cabinet stays off git — photos, the transcription, and the
+# real seed script all describe what the household takes. scripts/seed.mjs holds
+# invented demo data and IS committed.
+seed/photos/*
+!seed/photos/.gitkeep
+seed/my-stock.mjs
+seed/catalog.md
+
+# testing (e2e artefacts — Playwright is owned by the user)
+coverage/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# os / editor
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.vscode/
+.idea/
