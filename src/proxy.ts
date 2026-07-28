@@ -35,6 +35,6 @@ export const config = {
      * The extension list covers Phase 2 too — a service worker at /sw.js and a
      * PWA manifest both have to be fetchable without a session.
      */
-    '/((?!login$|login/|_next/|.*\\.(?:png|jpg|jpeg|webp|svg|gif|ico|webmanifest|json|txt|xml|js|css|woff|woff2|map)$).*)',
+    '/((?!login$|login/|_next/|.*\\.(?:png|jpg|jpeg|webp|svg|gif|ico|webmanifest|json|txt|xml|js|css|html|woff|woff2|map)$).*)',
   ],
 };

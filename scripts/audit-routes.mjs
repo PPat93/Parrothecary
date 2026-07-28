@@ -25,6 +25,12 @@ const cases = [
   ['/nonexistent', 'page', 'protect'],
   ['/sw.js', 'asset', 'allow'],
   ['/products.png', 'asset', 'allow'],
+  // PWA assets. Android fetches these without the page's cookies, so any of
+  // them being redirected to /login makes the app silently uninstallable.
+  ['/offline.html', 'asset', 'allow'],
+  ['/icons/icon-192.png', 'asset', 'allow'],
+  ['/icons/icon-512.png', 'asset', 'allow'],
+  ['/icons/maskable-512.png', 'asset', 'allow'],
 ];
 
 let failures = 0;
