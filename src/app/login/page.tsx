@@ -29,8 +29,8 @@ export default async function LoginPage() {
           />
         </div>
 
-        <h1 className="text-3xl font-semibold tracking-tight">Parrothecary</h1>
-        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+        <h1 className="text-3xl font-semibold tracking-tight" test-data="title">Parrothecary</h1>
+        <p className="mt-1 text-sm" test-data="sub-title" style={{ color: 'var(--muted)' }}>
           Domowa apteczka
         </p>
       </div>
