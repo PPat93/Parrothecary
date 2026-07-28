@@ -17,7 +17,8 @@
     "db:seed": "node scripts/seed.mjs",
     "db:seed:mine": "node seed/my-stock.mjs",
     "db:reset": "node scripts/reset.mjs",
-    "auth:hash": "node scripts/hash-password.mjs"
+    "auth:hash": "node scripts/hash-password.mjs",
+    "audit:routes": "node scripts/audit-routes.mjs"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",

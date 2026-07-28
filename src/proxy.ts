@@ -26,6 +26,15 @@ export const config = {
      * optimizer received an HTML page — "the requested resource isn't a valid
      * image". Static assets are not secret; the real gate is requireSession().
      */
-    '/((?!login|_next/|.*\\.(?:png|jpg|jpeg|webp|svg|ico|webmanifest|txt|xml)$).*)',
+    /*
+     * `login$|login/` rather than plain `login`: a bare prefix also excluded
+     * /loginsomething, /login-history and anything else starting with those
+     * five letters. Harmless while no such route exists, but it is exactly the
+     * kind of hole a future route falls into silently.
+     *
+     * The extension list covers Phase 2 too — a service worker at /sw.js and a
+     * PWA manifest both have to be fetchable without a session.
+     */
+    '/((?!login$|login/|_next/|.*\\.(?:png|jpg|jpeg|webp|svg|gif|ico|webmanifest|json|txt|xml|js|css|woff|woff2|map)$).*)',
   ],
 };
