@@ -471,6 +471,47 @@ export async function receiveShoppingItem(
   redirect('/shopping');
 }
 
+/**
+ * Correct a box that was entered wrongly.
+ *
+ * Without this the only way to fix "100" typed instead of "10" was to tap the
+ * minus button ninety times, which would also record ninety doses as consumed —
+ * turning a typo into fabricated consumption history.
+ */
+export async function updateBatch(_prev: FormResult, formData: FormData): Promise<FormResult> {
+  const id = Number(formData.get('id'));
+  const fail = (error: string): FormResult => ({ error, values: snapshot(formData) });
+
+  if (!Number.isInteger(id)) return fail('That box no longer exists.');
+
+  const parsed = parseBatchFields(formData);
+  if ('error' in parsed) return fail(parsed.error);
+
+  await db
+    .update(batches)
+    .set({ ...parsed.fields, updatedAt: new Date() })
+    .where(eq(batches.id, id));
+
+  refreshAll();
+  redirect('/');
+}
+
+/**
+ * Erase a box that never existed — a mis-scan or a duplicate entry.
+ *
+ * Deliberately separate from binning. "Binned" and "used up" are real events
+ * worth keeping; a typo is not, and leaving it as a zeroed batch would pollute
+ * the consumption and waste figures the later phases depend on.
+ */
+export async function deleteBatch(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  await db.delete(batches).where(eq(batches.id, id));
+  refreshAll();
+  redirect('/');
+}
+
 /** One-tap +/- from the stock list. Clamps at zero rather than going negative. */
 export async function adjustBatch(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));

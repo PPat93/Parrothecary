@@ -307,6 +307,39 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
   };
 }
 
+export interface BatchDetail extends StockRow {
+  lotNumber: string | null;
+  purchaseDate: string | null;
+  purchasePriceMinor: number | null;
+  purchaseCurrency: 'PLN' | 'EUR' | null;
+  packLabelOrSize: string;
+}
+
+/** One box, with everything its edit form needs. */
+export async function getBatch(id: number): Promise<BatchDetail | null> {
+  const rows = await db
+    .select({
+      ...stockSelection,
+      lotNumber: batches.lotNumber,
+      purchaseDate: batches.purchaseDate,
+      purchasePriceMinor: batches.purchasePriceMinor,
+      purchaseCurrency: batches.purchaseCurrency,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(eq(batches.id, id))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    ...row,
+    packLabelOrSize: row.packLabel ?? `${row.packSize} ${row.unitName}`,
+  };
+}
+
 /** Distinct manufacturers already in use, for the product form's suggestions. */
 export async function getManufacturers(): Promise<string[]> {
   const rows = await db

@@ -102,6 +102,30 @@ export default async function StockPage({
 
                     <Stepper batchId={box.batchId} delta={-1} label="−" />
                     <Stepper batchId={box.batchId} delta={1} label="+" />
+
+                    {/* Correcting a mistyped quantity must not go through the
+                        steppers — ninety taps would log ninety doses. */}
+                    <Link
+                      href={`/stock/${box.batchId}/edit`}
+                      aria-label={`Correct this box of ${group.name}`}
+                      title="Correct this box"
+                      className="is-action flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border"
+                      style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+                    >
+                      <svg
+                        aria-hidden
+                        viewBox="0 0 24 24"
+                        width="16"
+                        height="16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.9"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z" />
+                      </svg>
+                    </Link>
                   </li>
                 ))}
               </ul>
