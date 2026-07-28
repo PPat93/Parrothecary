@@ -113,8 +113,7 @@ export default async function ExpiringPage() {
                             title="Bin this box?"
                             message={`${row.name} — ${formatQuantity(row.quantityRemaining, row.unitName, row.packSize)} will leave your stock and be recorded as waste. Nothing is deleted.`}
                             confirmLabel="Yes, bin it"
-                            className="rounded-lg border px-3 py-1.5 text-xs"
-                            style={{ borderColor: 'var(--border)' }}
+                            tone="critical"
                           />
                         </form>
                       </li>

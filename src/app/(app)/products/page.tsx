@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { formatQuantity } from '@/domain/quantity';
 import { getProducts } from '@/lib/queries';
 
@@ -15,7 +16,7 @@ export default async function ProductsPage({
     <div className="mx-auto w-full max-w-2xl">
       <header className="mb-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Products</h1>
-        <Link href="/products/new" className="text-sm font-medium underline underline-offset-4">
+        <Link href="/products/new" className={LINK_BUTTON} style={toneStyle('accent')}>
           New product
         </Link>
       </header>

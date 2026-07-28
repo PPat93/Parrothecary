@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { getShoppingItem } from '@/lib/queries';
 import { ReceiveForm } from './receive-form';
 
@@ -13,7 +14,7 @@ export default async function ReceivePage({ params }: { params: Promise<{ id: st
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-1 flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Add to stock</h1>
-        <Link href="/shopping" className="shrink-0 text-sm underline underline-offset-4">
+        <Link href="/shopping" className={LINK_BUTTON} style={toneStyle('warning')}>
           Cancel
         </Link>
       </header>

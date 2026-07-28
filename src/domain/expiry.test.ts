@@ -137,7 +137,12 @@ describe('expiryStatus', () => {
 
 describe('formatExpiry', () => {
   it('hides the invented day on month-precision boxes', () => {
-    expect(formatExpiry(box('2027-11-30', 'month'))).toBe('11/2027');
+    expect(formatExpiry(box('2027-11-30', 'month'))).toBe('11.2027');
+  });
+
+  it('uses the same separator for both precisions so a list reads uniformly', () => {
+    expect(formatExpiry(box('2030-04-14', 'day'))).toBe('14.04.2030');
+    expect(formatExpiry(box('2027-11-30', 'month'))).toBe('11.2027');
   });
 
   it('shows the full date when the box printed one', () => {

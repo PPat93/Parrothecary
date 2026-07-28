@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
+import { toneStyle, type Tone } from './tone';
 
 /**
  * A submit button that asks first.
@@ -17,13 +18,17 @@ export function ConfirmButton({
   title,
   message,
   confirmLabel = 'Yes, do it',
-  className,
+  // Destructive is the common case, but archiving is not a deletion and should
+  // not be dressed in the same red.
+  tone = 'critical',
+  className = 'rounded-lg border px-3 py-1.5 text-xs font-medium',
   style,
 }: {
   label: string;
   title: string;
   message: string;
   confirmLabel?: string;
+  tone?: Tone;
   className?: string;
   style?: React.CSSProperties;
 }) {
@@ -43,8 +48,8 @@ export function ConfirmButton({
         type="button"
         ref={trigger}
         onClick={() => dialog.current?.showModal()}
-        className={className}
-        style={style}
+        className={`${className} is-action`}
+        style={{ ...toneStyle(tone, 'outline'), ...style }}
       >
         {label}
       </button>
@@ -71,8 +76,8 @@ export function ConfirmButton({
           <button
             type="button"
             onClick={confirm}
-            className="flex-1 rounded-xl px-4 py-2.5 text-sm font-medium text-white"
-            style={{ background: 'var(--color-critical)' }}
+            className="is-action flex-1 rounded-xl px-4 py-2.5 text-sm font-medium"
+            style={toneStyle(tone, 'solid')}
           >
             {confirmLabel}
           </button>
