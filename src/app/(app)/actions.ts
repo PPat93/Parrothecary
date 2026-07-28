@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
 import {
@@ -92,10 +92,18 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
 
   const data = parsed.data;
 
+  // Distinguish missing from invalid: telling someone a filled-in field is
+  // "required" sends them looking for a blank box that is not there.
   const packSize = Number(data.packSize ?? '');
-  if (data.packSize === null || !Number.isFinite(packSize) || packSize <= 0) {
+  if (data.packSize === null) {
     return {
       error: 'Pack size is required — how many units are in one sealed pack?',
+      values: snapshot(formData),
+    };
+  }
+  if (!Number.isFinite(packSize) || packSize <= 0) {
+    return {
+      error: `"${data.packSize}" is not a valid pack size. Enter a positive number, like 60.`,
       values: snapshot(formData),
     };
   }
@@ -164,7 +172,15 @@ async function linkSubstance(
   await db
     .insert(productSubstances)
     .values({ productId, substanceId, amountMg, amountText })
-    .onConflictDoNothing();
+    /*
+     * Update, not ignore. Re-submitting a substance is how you correct its
+     * amount, and doing nothing looked identical to success — the form cleared,
+     * no error appeared, and the old value stayed.
+     */
+    .onConflictDoUpdate({
+      target: [productSubstances.productId, productSubstances.substanceId],
+      set: { amountMg, amountText },
+    });
 }
 
 export async function addSubstanceToProduct(
@@ -307,6 +323,27 @@ export async function createVariant(_prev: FormResult, formData: FormData): Prom
   if (!Number.isInteger(productId)) return { error: 'Pick a product.' };
   if (!Number.isFinite(packSize) || packSize <= 0) {
     return { error: 'Pack size must be a positive number.', values: snapshot(formData) };
+  }
+
+  // Two identical pack sizes would appear as indistinguishable options in every
+  // picker, with boxes split arbitrarily between them.
+  const duplicate = await db
+    .select({ id: variants.id })
+    .from(variants)
+    .where(
+      and(
+        eq(variants.productId, productId),
+        eq(variants.packSize, packSize),
+        isNull(variants.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  if (duplicate.length > 0) {
+    return {
+      error: `This product already has a pack of ${packSize}.`,
+      values: snapshot(formData),
+    };
   }
 
   await db.insert(variants).values({ productId, packSize, packLabel });

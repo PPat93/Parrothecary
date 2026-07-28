@@ -350,7 +350,13 @@ export async function getVariantOptions(): Promise<VariantRow[]> {
     })
     .from(variants)
     .innerJoin(products, eq(variants.productId, products.id))
-    .where(isNull(variants.archivedAt))
+    /*
+     * Archived products must not be offered for new boxes or shopping lines —
+     * that is the whole point of archiving. Their existing boxes still show in
+     * Stock, because you physically still own them; archiving takes a product
+     * out of circulation, it does not pretend the cupboard is empty.
+     */
+    .where(and(isNull(variants.archivedAt), isNull(products.archivedAt)))
     .orderBy(byName, asc(variants.packSize));
 
   return rows.map((r) => ({
