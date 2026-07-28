@@ -1,9 +1,12 @@
 import Link from 'next/link';
-import { getManufacturers } from '@/lib/queries';
+import { getManufacturers, getSubstanceNames } from '@/lib/queries';
 import { ProductForm } from './product-form';
 
 export default async function NewProductPage() {
-  const manufacturers = await getManufacturers();
+  const [manufacturers, substanceNames] = await Promise.all([
+    getManufacturers(),
+    getSubstanceNames(),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-lg">
@@ -13,7 +16,7 @@ export default async function NewProductPage() {
           Cancel
         </Link>
       </header>
-      <ProductForm manufacturers={manufacturers} />
+      <ProductForm manufacturers={manufacturers} substanceNames={substanceNames} />
     </div>
   );
 }

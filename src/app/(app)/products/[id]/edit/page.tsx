@@ -21,6 +21,19 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         </Link>
       </header>
 
+      <p
+        className="mb-4 rounded-xl border p-3 text-xs"
+        style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+      >
+        Pack sizes and active substances are not edited here. A pack size has boxes and past
+        purchases recorded against it, so changing it would rewrite what those numbers meant —
+        manage them on the{' '}
+        <Link href={`/products/${product.id}`} className="underline underline-offset-4">
+          product page
+        </Link>{' '}
+        instead, where you can add a new pack size alongside the old one.
+      </p>
+
       <EditProductForm product={product} manufacturers={manufacturers} />
     </div>
   );

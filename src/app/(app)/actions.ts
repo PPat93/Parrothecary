@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
 import {
@@ -12,8 +12,10 @@ import {
   SHOPPING_STATUSES,
   UNIT_NAMES,
   batches,
+  productSubstances,
   products,
   shoppingItems,
+  substances,
   variants,
 } from '@/db/schema';
 import { normaliseExpiry } from '@/domain/expiry';
@@ -34,7 +36,10 @@ function refreshAll() {
  * needs to tolerate null explicitly or the whole form rejects.
  */
 const optionalText = z
-  .union([z.string(), z.null(), z.undefined()])
+  // .nullish() covers all three cases a form can produce: a string, an explicit
+  // null from FormData.get on a missing field, and a key not passed in at all.
+  .string()
+  .nullish()
   .transform((value) => {
     const trimmed = (value ?? '').trim();
     return trimmed === '' ? null : trimmed;
@@ -50,9 +55,15 @@ const productSchema = z.object({
   notes: optionalText,
   isPrescription: z.coerce.boolean(),
   hasExpiry: z.coerce.boolean(),
-  // Optional first pack, so adding a product is one screen not two.
+  /*
+   * Required, not optional. A product with no pack cannot receive a box and
+   * cannot be put on a shopping list, so it can only ever be archived — a dead
+   * end that was easy to create and easy to miss.
+   */
   packSize: optionalText,
   packLabel: optionalText,
+  substance: optionalText,
+  substanceAmount: optionalText,
 });
 
 export async function createProduct(_prev: FormResult, formData: FormData): Promise<FormResult> {
@@ -68,6 +79,8 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
     hasExpiry: formData.get('hasExpiry') === 'on',
     packSize: formData.get('packSize'),
     packLabel: formData.get('packLabel'),
+    substance: formData.get('substance'),
+    substanceAmount: formData.get('substanceAmount'),
   });
 
   if (!parsed.success) {
@@ -78,6 +91,14 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
   }
 
   const data = parsed.data;
+
+  const packSize = Number(data.packSize ?? '');
+  if (data.packSize === null || !Number.isFinite(packSize) || packSize <= 0) {
+    return {
+      error: 'Pack size is required — how many units are in one sealed pack?',
+      values: snapshot(formData),
+    };
+  }
 
   const inserted = await db
     .insert(products)
@@ -99,21 +120,96 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
     return { error: 'Could not save the product.', values: snapshot(formData) };
   }
 
-  const packSize = Number(data.packSize ?? '');
-  if (data.packSize !== null && Number.isFinite(packSize) && packSize > 0) {
-    await db.insert(variants).values({
-      productId,
-      packSize,
-      packLabel: data.packLabel,
-    });
+  await db.insert(variants).values({ productId, packSize, packLabel: data.packLabel });
+
+  if (data.substance) {
+    await linkSubstance(productId, data.substance, data.substanceAmount);
   }
 
   refreshAll();
-  redirect('/products');
+  redirect(`/products/${productId}`);
 }
 
-/** Editing never touches pack sizes — those belong to variants, not the product. */
-const productEditSchema = productSchema.omit({ packSize: true, packLabel: true });
+/**
+ * Attach an active substance, creating it if this is the first product to use
+ * it. Matching is case-insensitive so "Paracetamol" and "paracetamol" do not
+ * become two different substances — which would silently defeat the
+ * duplicate-ingredient warnings later.
+ */
+async function linkSubstance(
+  productId: number,
+  name: string,
+  amountText: string | null,
+): Promise<void> {
+  const existing = await db
+    .select({ id: substances.id })
+    .from(substances)
+    .where(sql`lower(${substances.name}) = lower(${name})`)
+    .limit(1);
+
+  let substanceId = existing[0]?.id;
+  if (substanceId === undefined) {
+    const created = await db
+      .insert(substances)
+      .values({ name })
+      .returning({ id: substances.id });
+    substanceId = created[0]?.id;
+  }
+  if (substanceId === undefined) return;
+
+  const amountMg = amountText !== null && /^[\d.]+\s*mg$/i.test(amountText.trim())
+    ? Number(amountText.replace(/\s*mg$/i, ''))
+    : null;
+
+  await db
+    .insert(productSubstances)
+    .values({ productId, substanceId, amountMg, amountText })
+    .onConflictDoNothing();
+}
+
+export async function addSubstanceToProduct(
+  _prev: FormResult,
+  formData: FormData,
+): Promise<FormResult> {
+  const productId = Number(formData.get('productId'));
+  const name = String(formData.get('substance') ?? '').trim();
+  const amount = emptyToNull(String(formData.get('substanceAmount') ?? '').trim());
+
+  if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
+  if (!name) return { error: 'Enter a substance name.', values: snapshot(formData) };
+
+  await linkSubstance(productId, name, amount);
+  refreshAll();
+  return { error: null, ok: true };
+}
+
+export async function removeSubstanceFromProduct(formData: FormData): Promise<void> {
+  const productId = Number(formData.get('productId'));
+  const substanceId = Number(formData.get('substanceId'));
+  if (!Number.isInteger(productId) || !Number.isInteger(substanceId)) return;
+
+  await db
+    .delete(productSubstances)
+    .where(
+      and(
+        eq(productSubstances.productId, productId),
+        eq(productSubstances.substanceId, substanceId),
+      ),
+    );
+  refreshAll();
+}
+
+/**
+ * Editing never touches pack sizes or substances — those are their own records,
+ * managed on the product page. Omitting them here keeps the edit form from
+ * being asked for fields it does not render.
+ */
+const productEditSchema = productSchema.omit({
+  packSize: true,
+  packLabel: true,
+  substance: true,
+  substanceAmount: true,
+});
 
 export async function updateProduct(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const id = Number(formData.get('id'));
@@ -147,6 +243,41 @@ export async function updateProduct(_prev: FormResult, formData: FormData): Prom
   redirect(`/products/${id}`);
 }
 
+/**
+ * Permanent delete, so the archive does not silently become a junk drawer.
+ *
+ * Guarded twice: the product must already be archived, and it must have no
+ * batches at all — not even used-up or binned ones. Those rows are the record
+ * of what was taken and what it cost, and deleting a product must never be a
+ * way to lose them.
+ */
+export async function deleteProduct(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  const rows = await db
+    .select({ archivedAt: products.archivedAt })
+    .from(products)
+    .where(eq(products.id, id))
+    .limit(1);
+
+  if (!rows[0]?.archivedAt) return;
+
+  const batchRows = await db
+    .select({ id: batches.id })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .where(eq(variants.productId, id))
+    .limit(1);
+
+  if (batchRows.length > 0) return;
+
+  // Variants, substance links and shopping lines cascade from the schema.
+  await db.delete(products).where(eq(products.id, id));
+  refreshAll();
+  redirect('/products?archived=1');
+}
+
 export async function unarchiveProduct(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
@@ -174,7 +305,9 @@ export async function createVariant(_prev: FormResult, formData: FormData): Prom
   const packLabel = emptyToNull(String(formData.get('packLabel') ?? '').trim());
 
   if (!Number.isInteger(productId)) return { error: 'Pick a product.' };
-  if (!Number.isFinite(packSize) || packSize <= 0) return { error: 'Pack size must be a positive number.' };
+  if (!Number.isFinite(packSize) || packSize <= 0) {
+    return { error: 'Pack size must be a positive number.', values: snapshot(formData) };
+  }
 
   await db.insert(variants).values({ productId, packSize, packLabel });
   refreshAll();

@@ -190,7 +190,15 @@ export async function getProducts(includeArchived = false): Promise<ProductRow[]
 
 export interface ProductDetail extends ProductRow {
   archivedAt: Date | null;
-  substances: { name: string; namePl: string | null; amountMg: number | null; amountText: string | null }[];
+  /** True when any batch exists, including used-up ones. Blocks permanent delete. */
+  hasBatches: boolean;
+  substances: {
+    id: number;
+    name: string;
+    namePl: string | null;
+    amountMg: number | null;
+    amountText: string | null;
+  }[];
   packs: {
     id: number;
     packSize: number;
@@ -219,6 +227,7 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
 
   const substanceRows = await db
     .select({
+      id: substances.id,
       name: substances.name,
       namePl: substances.namePl,
       amountMg: productSubstances.amountMg,
@@ -268,6 +277,7 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     hasExpiry: product.hasExpiry,
     notes: product.notes,
     archivedAt: product.archivedAt,
+    hasBatches: batchRows.length > 0,
     variantCount: variantRows.length,
     inStockUnits: Math.round(inStockUnits * 100) / 100,
     substances: substanceRows,
@@ -306,6 +316,15 @@ export async function getManufacturers(): Promise<string[]> {
     .orderBy(sql`${products.manufacturer} collate nocase`);
 
   return rows.map((r) => r.manufacturer).filter((m): m is string => m !== null && m !== '');
+}
+
+/** Substance names already in use, for the product form's suggestions. */
+export async function getSubstanceNames(): Promise<string[]> {
+  const rows = await db
+    .select({ name: substances.name })
+    .from(substances)
+    .orderBy(sql`${substances.name} collate nocase`);
+  return rows.map((r) => r.name);
 }
 
 export interface VariantRow {

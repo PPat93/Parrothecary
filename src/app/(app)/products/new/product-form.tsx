@@ -15,7 +15,13 @@ import { createProduct, type FormResult } from '../../actions';
 
 const initialState: FormResult = { error: null };
 
-export function ProductForm({ manufacturers }: { manufacturers: string[] }) {
+export function ProductForm({
+  manufacturers,
+  substanceNames,
+}: {
+  manufacturers: string[];
+  substanceNames: string[];
+}) {
   const [state, formAction, pending] = useActionState(createProduct, initialState);
 
   // React resets the form once the action returns, so every field reads back
@@ -99,11 +105,38 @@ export function ProductForm({ manufacturers }: { manufacturers: string[] }) {
         className="flex flex-col gap-3 rounded-xl border p-3"
         style={{ borderColor: 'var(--border)' }}
       >
-        <legend className="px-1 text-sm font-medium">First pack size (optional)</legend>
-        <Field label="Units per pack" hint="Tablets, ml or sachets in one sealed pack.">
+        <legend className="px-1 text-sm font-medium">Active substance (optional)</legend>
+        <Field label="Substance" hint="Pick one already used, or type a new one.">
+          <TextInput
+            name="substance"
+            list="substances"
+            placeholder="Paracetamol"
+            defaultValue={prev.substance ?? ''}
+          />
+          <Datalist id="substances" options={substanceNames} />
+        </Field>
+        <Field label="Amount per unit" hint="Free text: 500 mg, 4000 IU, 0,9%.">
+          <TextInput
+            name="substanceAmount"
+            placeholder="500 mg"
+            defaultValue={prev.substanceAmount ?? ''}
+          />
+        </Field>
+      </fieldset>
+
+      <fieldset
+        className="flex flex-col gap-3 rounded-xl border p-3"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        <legend className="px-1 text-sm font-medium">Pack size</legend>
+        <Field
+          label="Units per pack"
+          hint="Required — without a pack size this product cannot hold boxes or be shopped for."
+        >
           <TextInput
             name="packSize"
             inputMode="decimal"
+            required
             placeholder="60"
             defaultValue={prev.packSize ?? ''}
           />

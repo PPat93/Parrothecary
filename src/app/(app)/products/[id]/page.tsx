@@ -6,8 +6,14 @@ import { ExpiryBadge } from '@/components/expiry-badge';
 import { todayIso } from '@/domain/date';
 import { formatMoney, money } from '@/domain/money';
 import { formatQuantity } from '@/domain/quantity';
-import { getProduct } from '@/lib/queries';
-import { archiveProduct, unarchiveProduct } from '../../actions';
+import { getProduct, getSubstanceNames } from '@/lib/queries';
+import {
+  archiveProduct,
+  deleteProduct,
+  removeSubstanceFromProduct,
+  unarchiveProduct,
+} from '../../actions';
+import { AddPackForm, AddSubstanceForm } from './add-forms';
 
 const STATUS_LABELS: Record<string, string> = {
   in_stock: 'in stock',
@@ -18,7 +24,10 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const product = await getProduct(Number(id));
+  const [product, substanceNames] = await Promise.all([
+    getProduct(Number(id)),
+    getSubstanceNames(),
+  ]);
   if (!product) notFound();
 
   const today = todayIso();
@@ -83,22 +92,51 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         {product.notes ? <Row label="Notes" value={product.notes} /> : null}
       </Section>
 
-      {product.substances.length > 0 ? (
-        <Section title="Active substances">
-          {product.substances.map((s) => (
-            <Row
-              key={s.name}
-              label={s.namePl && s.namePl !== s.name ? `${s.name} (${s.namePl})` : s.name}
-              value={s.amountText ?? (s.amountMg !== null ? `${s.amountMg} mg` : '—')}
-            />
-          ))}
-        </Section>
-      ) : null}
+      <Section title="Active substances">
+        {product.substances.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            None recorded.
+          </p>
+        ) : (
+          product.substances.map((s) => (
+            <div key={s.id} className="flex items-center justify-between gap-3 py-1 text-sm">
+              <span className="min-w-0 break-words">
+                {s.namePl && s.namePl !== s.name ? `${s.name} (${s.namePl})` : s.name}
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span style={{ color: 'var(--muted)' }}>
+                  {s.amountText ?? (s.amountMg !== null ? `${s.amountMg} mg` : '—')}
+                </span>
+                <form action={removeSubstanceFromProduct}>
+                  <input type="hidden" name="productId" value={product.id} />
+                  <input type="hidden" name="substanceId" value={s.id} />
+                  <button
+                    type="submit"
+                    aria-label={`Remove ${s.name}`}
+                    className="rounded-lg border px-2 py-1 text-xs"
+                    style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+                  >
+                    Remove
+                  </button>
+                </form>
+              </span>
+            </div>
+          ))
+        )}
+        <AddSubstanceForm productId={product.id} substanceNames={substanceNames} />
+      </Section>
 
       <Section title={`Packs (${product.packs.length})`}>
         {product.packs.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>
-            No pack sizes defined, so boxes cannot be added yet.
+          <p
+            className="rounded-xl border p-3 text-sm"
+            style={{
+              borderColor: 'var(--color-warning)',
+              color: 'var(--color-warning)',
+            }}
+          >
+            This product has no pack size, so it cannot hold boxes or go on a shopping list. Add one
+            below to make it usable.
           </p>
         ) : (
           <div className="flex flex-col gap-4">
@@ -162,6 +200,16 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             ))}
           </div>
         )}
+
+        <details className="mt-4">
+          <summary className="cursor-pointer text-sm font-medium">Add another pack size</summary>
+          <p className="mt-2 text-xs" style={{ color: 'var(--muted)' }}>
+            A pack size cannot be changed once it exists — boxes and past purchases are recorded
+            against it, so editing it would rewrite what those numbers meant. Add a new pack size
+            instead; the old one keeps its history.
+          </p>
+          <AddPackForm productId={product.id} unitName={product.unitName} />
+        </details>
       </Section>
 
       {!product.archivedAt ? (
@@ -176,7 +224,28 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
           />
         </form>
-      ) : null}
+      ) : (
+        <div className="mt-6 flex flex-col items-center gap-2">
+          {product.hasBatches ? (
+            <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
+              This product cannot be deleted because boxes of it exist — including used-up and
+              binned ones. Those records are your consumption and spend history.
+            </p>
+          ) : (
+            <form action={deleteProduct}>
+              <input type="hidden" name="id" value={product.id} />
+              <ConfirmButton
+                label="Delete permanently"
+                title="Delete this product for good?"
+                message={`${product.name} will be erased completely, along with its pack sizes and substance links. This cannot be undone. It is only offered because no boxes of it were ever recorded.`}
+                confirmLabel="Yes, delete it"
+                className="rounded-lg border px-4 py-2 text-sm"
+                style={{ borderColor: 'var(--color-critical)', color: 'var(--color-critical)' }}
+              />
+            </form>
+          )}
+        </div>
+      )}
     </div>
   );
 }

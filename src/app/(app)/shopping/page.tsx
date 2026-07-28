@@ -154,8 +154,16 @@ export default async function ShoppingPage() {
                       {stage.status === 'arrived' ? (
                         <Link
                           href={`/shopping/${item.id}/receive`}
-                          className="rounded-lg border px-3 py-1.5 text-xs font-medium"
-                          style={{ borderColor: 'var(--border)' }}
+                          /*
+                           * inline-flex + min-h matches the sibling <button>s:
+                           * the global 44px tap-target rule only applies to
+                           * buttons, so this link rendered visibly shorter.
+                           */
+                          className="inline-flex min-h-[44px] items-center rounded-lg border px-3 text-xs font-medium"
+                          style={{
+                            borderColor: 'var(--color-accent)',
+                            color: 'var(--color-accent)',
+                          }}
                         >
                           Add to stock
                         </Link>

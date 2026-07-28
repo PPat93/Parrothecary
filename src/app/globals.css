@@ -11,15 +11,23 @@
  * sometimes gets read in a bright bathroom.
  */
 
+/*
+ * Hues sampled from the artwork rather than picked by eye. The first pass was
+ * eyeballed and every one had drifted — the red read pink (H 25 vs 30) and the
+ * blue read purple (H 245 vs 225). Hue is what makes a palette feel like one
+ * family, so it is taken from the logo exactly; lightness and chroma are then
+ * tuned up, because the artwork's soft neon is too pale to carry meaning in a
+ * 12px badge.
+ */
 @theme {
-  /* Neon green — the parrot's eye. In date, all good. */
-  --color-ok: oklch(0.82 0.17 152);
-  /* Neon amber. Not in the logo, but the expiry view needs a middle band. */
-  --color-warning: oklch(0.84 0.16 85);
-  /* Neon red — the medical cross. Expired, destructive, stop. */
-  --color-critical: oklch(0.66 0.22 25);
-  /* Neon blue — the capsule. Interactive: buttons, links, focus. */
-  --color-accent: oklch(0.72 0.16 245);
+  /* Green eye — logo H 158. In date, all good. */
+  --color-ok: oklch(0.80 0.15 158);
+  /* Amber bandaid — logo H 71. The middle expiry band. */
+  --color-warning: oklch(0.82 0.16 71);
+  /* Red cross — logo H 30. Expired, destructive, stop. */
+  --color-critical: oklch(0.64 0.19 30);
+  /* Blue capsule — logo H 225. Interactive: buttons, links, focus. */
+  --color-accent: oklch(0.76 0.14 225);
 }
 
 :root {
@@ -50,11 +58,11 @@
     --text: oklch(0.22 0.018 260);
     --muted: oklch(0.52 0.018 260);
 
-    /* Same hues, pulled down so they hold contrast against white. */
-    --color-ok: oklch(0.56 0.15 152);
-    --color-warning: oklch(0.62 0.14 75);
-    --color-critical: oklch(0.55 0.21 25);
-    --color-accent: oklch(0.55 0.17 245);
+    /* Same logo hues, pulled down so they hold contrast against white. */
+    --color-ok: oklch(0.54 0.14 158);
+    --color-warning: oklch(0.60 0.14 71);
+    --color-critical: oklch(0.53 0.19 30);
+    --color-accent: oklch(0.54 0.15 225);
     --accent-ink: oklch(0.99 0 0);
 
     /* No glow in daylight — it just reads as a blurry edge. */
