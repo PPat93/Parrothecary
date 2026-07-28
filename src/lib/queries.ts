@@ -340,6 +340,27 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
   };
 }
 
+/**
+ * Which pack does this barcode belong to?
+ *
+ * A retail stripe is only an identifier, so it is worthless until it is in this
+ * table. Unknown codes are therefore an opportunity rather than an error: the
+ * scanner offers to attach it, and the cabinet teaches itself.
+ */
+export async function findVariantByBarcode(code: string): Promise<VariantRow | null> {
+  const rows = await db
+    .select({ variantId: variantBarcodes.variantId })
+    .from(variantBarcodes)
+    .where(eq(variantBarcodes.code, code))
+    .limit(1);
+
+  const variantId = rows[0]?.variantId;
+  if (variantId === undefined) return null;
+
+  const options = await getVariantOptions();
+  return options.find((option) => option.id === variantId) ?? null;
+}
+
 /** Distinct manufacturers already in use, for the product form's suggestions. */
 export async function getManufacturers(): Promise<string[]> {
   const rows = await db

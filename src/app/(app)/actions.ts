@@ -6,6 +6,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
 import {
+  BARCODE_TYPES,
   BATCH_STATUSES,
   CURRENCIES,
   DOSE_FORMS,
@@ -16,8 +17,11 @@ import {
   products,
   shoppingItems,
   substances,
+  variantBarcodes,
   variants,
 } from '@/db/schema';
+import { parseScan } from '@/domain/barcode';
+import { findVariantByBarcode } from '@/lib/queries';
 import { normaliseExpiry } from '@/domain/expiry';
 import { parseAmount } from '@/domain/money';
 import { endSession } from '@/lib/session';
@@ -510,6 +514,58 @@ export async function deleteBatch(formData: FormData): Promise<void> {
   await db.delete(batches).where(eq(batches.id, id));
   refreshAll();
   redirect('/');
+}
+
+export interface ScanResult {
+  code: string;
+  /** Null when this code has never been seen before. */
+  variantId: number | null;
+  variantLabel: string | null;
+  expiry: string | null;
+  lotNumber: string | null;
+}
+
+/**
+ * Resolve a scan against the barcode table and hand back whatever the code
+ * itself carried. Called from the scanner as soon as the camera reads a code.
+ */
+export async function resolveScan(raw: string, format?: string): Promise<ScanResult> {
+  const parsed = parseScan(raw, format);
+  const variant = await findVariantByBarcode(parsed.code);
+
+  return {
+    code: parsed.code,
+    variantId: variant?.id ?? null,
+    variantLabel: variant?.productLabel ?? null,
+    // Re-formatted the way the expiry field expects it, so it can be dropped
+    // straight into the form.
+    expiry: parsed.expiryDate
+      ? parsed.expiryPrecision === 'month'
+        ? `${parsed.expiryDate.slice(5, 7)}.${parsed.expiryDate.slice(0, 4)}`
+        : `${parsed.expiryDate.slice(8, 10)}.${parsed.expiryDate.slice(5, 7)}.${parsed.expiryDate.slice(0, 4)}`
+      : null,
+    lotNumber: parsed.lotNumber,
+  };
+}
+
+/** Teach the cabinet a code it has not seen, so the next scan just works. */
+export async function linkBarcode(formData: FormData): Promise<void> {
+  const variantId = Number(formData.get('variantId'));
+  const code = String(formData.get('code') ?? '').trim();
+  const type = String(formData.get('barcodeType') ?? 'ean13');
+
+  if (!Number.isInteger(variantId) || !code) return;
+
+  await db
+    .insert(variantBarcodes)
+    .values({
+      variantId,
+      code,
+      type: (BARCODE_TYPES.find((t) => t === type) ?? 'other') as (typeof BARCODE_TYPES)[number],
+    })
+    .onConflictDoNothing();
+
+  refreshAll();
 }
 
 /** One-tap +/- from the stock list. Clamps at zero rather than going negative. */
