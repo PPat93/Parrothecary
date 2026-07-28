@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ActionButton } from '@/components/action-button';
 import { BackLink } from '@/components/back-link';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ExpiryBadge } from '@/components/expiry-badge';
@@ -56,8 +57,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
         <Link
           href={`/products/${product.id}/edit`}
-          className="shrink-0 rounded-lg border px-3 py-1.5 text-sm"
-          style={{ borderColor: 'var(--border)' }}
+          className="inline-flex min-h-[44px] shrink-0 items-center rounded-lg border px-3 text-sm font-medium"
+          style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent)' }}
         >
           Edit
         </Link>
@@ -71,13 +72,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           <span>This product is archived.</span>
           <form action={unarchiveProduct}>
             <input type="hidden" name="id" value={product.id} />
-            <button
-              type="submit"
-              className="rounded-lg border px-3 py-1.5 text-xs"
-              style={{ borderColor: 'var(--border)' }}
-            >
-              Restore
-            </button>
+            <ActionButton tone="ok">Restore</ActionButton>
           </form>
         </div>
       ) : null}
@@ -110,14 +105,13 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                 <form action={removeSubstanceFromProduct}>
                   <input type="hidden" name="productId" value={product.id} />
                   <input type="hidden" name="substanceId" value={s.id} />
-                  <button
-                    type="submit"
+                  <ActionButton
                     aria-label={`Remove ${s.name}`}
+                    tone="critical"
                     className="rounded-lg border px-2 py-1 text-xs"
-                    style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
                   >
                     Remove
-                  </button>
+                  </ActionButton>
                 </form>
               </span>
             </div>
@@ -220,8 +214,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             title="Archive this product?"
             message={`${product.name} will disappear from the product list and the "add box" picker. Its history and past spend are kept, and you can restore it.`}
             confirmLabel="Yes, archive"
-            className="rounded-lg border px-4 py-2 text-sm"
-            style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+            tone="warning"
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
           />
         </form>
       ) : (
@@ -239,8 +233,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                 title="Delete this product for good?"
                 message={`${product.name} will be erased completely, along with its pack sizes and substance links. This cannot be undone. It is only offered because no boxes of it were ever recorded.`}
                 confirmLabel="Yes, delete it"
-                className="rounded-lg border px-4 py-2 text-sm"
-                style={{ borderColor: 'var(--color-critical)', color: 'var(--color-critical)' }}
+                tone="critical"
+                className="rounded-lg border px-4 py-2 text-sm font-medium"
               />
             </form>
           )}

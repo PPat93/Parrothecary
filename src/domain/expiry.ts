@@ -111,13 +111,20 @@ export function expiryStatus(
   return 'ok';
 }
 
-/** How it should read on screen: "11/2027" for month precision, "15.11.2027" for day. */
+/**
+ * "11.2027" for month precision, "15.11.2027" for day.
+ *
+ * Both use the same separator on purpose. A slash for one and dots for the
+ * other made a stock list look inconsistent rather than precise. The month form
+ * still omits the day — we never invent one — but it now reads as the same kind
+ * of date, just shorter.
+ */
 export function formatExpiry(input: ExpiryInput): string {
   if (!input.hasExpiry) return 'no expiry';
   if (input.expiryDate === null) return 'date unknown';
 
   const [year, month, day] = input.expiryDate.split('-');
-  if (input.precision === 'month') return `${month}/${year}`;
+  if (input.precision === 'month') return `${month}.${year}`;
   return `${day}.${month}.${year}`;
 }
 

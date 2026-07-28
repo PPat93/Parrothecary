@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
+import { toneStyle } from '@/components/tone';
 import { Datalist, ErrorText, Field, TextInput } from '@/components/form';
 import { addSubstanceToProduct, createVariant, type FormResult } from '../../actions';
 
@@ -12,7 +13,7 @@ function Submit({ pending, children }: { pending: boolean; children: React.React
       type="submit"
       disabled={pending}
       className="rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-      style={{ background: 'var(--color-accent)', color: 'var(--accent-ink)' }}
+      style={toneStyle('ok', 'solid')}
     >
       {pending ? 'Saving…' : children}
     </button>

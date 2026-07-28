@@ -107,3 +107,54 @@ input,
 select {
   min-height: 44px;
 }
+
+/*
+ * Press feedback. A tap used to produce nothing at all until the server
+ * responded, so it was genuinely unclear whether a button had registered —
+ * which matters most on the destructive ones. The press is immediate and
+ * local; the spinner in ActionButton covers the round trip after it.
+ */
+button,
+a {
+  transition:
+    transform 90ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+button:not(:disabled):active,
+a:active {
+  transform: scale(0.96);
+}
+
+/* Tinting the fill on press reads clearly on outline buttons, which are most
+   of them, without needing a different colour per tone. */
+button.is-action:not(:disabled):active {
+  background-color: color-mix(in oklch, currentColor 18%, transparent) !important;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* Hover only where a pointer actually exists — on a phone :hover sticks after
+   a tap and leaves buttons looking permanently highlighted. */
+@media (hover: hover) {
+  button.is-action:not(:disabled):hover {
+    background-color: color-mix(in oklch, currentColor 10%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  a {
+    transition: none;
+  }
+  button:not(:disabled):active,
+  a:active {
+    transform: none;
+  }
+}

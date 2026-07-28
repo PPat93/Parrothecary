@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ActionButton, type Tone } from '@/components/action-button';
 import { ConfirmButton } from '@/components/confirm-button';
 import { SHOPPING_STATUSES, TERMINAL_SHOPPING_STATUSES } from '@/db/schema';
 import { getShoppingList, getVariantOptions, type ShoppingRow } from '@/lib/queries';
@@ -128,6 +129,7 @@ export default async function ShoppingPage() {
                           status={previous.status}
                           label="←"
                           title={`Back to ${previous.title}`}
+                          tone="neutral"
                         />
                       ) : null}
 
@@ -140,8 +142,7 @@ export default async function ShoppingPage() {
                             title="Mark as not received?"
                             message={`${item.quantityPacks} × ${item.name} will be filed under "Didn't arrive" — damaged, lost or cancelled. Nothing is added to stock.`}
                             confirmLabel="Yes, it didn't arrive"
-                            className="rounded-lg border px-3 py-1.5 text-xs"
-                            style={{ borderColor: 'var(--border)' }}
+                            tone="critical"
                           />
                         </form>
                       ) : null}
@@ -186,8 +187,7 @@ export default async function ShoppingPage() {
                                 : `${item.quantityPacks} × ${item.name} will be removed from the shopping list.`
                             }
                             confirmLabel="Yes, clear it"
-                            className="rounded-lg border px-3 py-1.5 text-xs"
-                            style={{ borderColor: 'var(--border)' }}
+                            tone="critical"
                           />
                         </form>
                       )}
@@ -217,24 +217,21 @@ function StatusButton({
   status,
   label,
   title,
+  tone = 'accent',
 }: {
   id: number;
   status: string;
   label: string;
   title: string;
+  tone?: Tone;
 }) {
   return (
     <form action={setShoppingStatus}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="status" value={status} />
-      <button
-        type="submit"
-        title={title}
-        className="rounded-lg border px-3 py-1.5 text-xs"
-        style={{ borderColor: 'var(--border)' }}
-      >
+      <ActionButton tone={tone} title={title}>
         {label}
-      </button>
+      </ActionButton>
     </form>
   );
 }
