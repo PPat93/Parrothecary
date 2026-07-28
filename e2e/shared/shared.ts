@@ -1,4 +1,5 @@
 
 export const TEXTS = {
-    appName: "Parrothecary"
+    appName: `Parrothecary`,
+    subtitle: `Domowa apteczka`
 }
