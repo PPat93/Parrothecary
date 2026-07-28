@@ -28,6 +28,13 @@ const digest = await hash(password, {
   parallelism: 1,
 });
 
+// --raw prints the bare hash and nothing else, for piping into CI env vars.
+// The escaping below exists only for .env files; a real env var must not have it.
+if (process.argv.includes('--raw')) {
+  console.log(digest);
+  process.exit(0);
+}
+
 // Next's env loader does shell-style variable expansion, so an unescaped
 // Argon2 hash ($argon2id$v=19$m=...) is silently gutted and every login fails.
 // Quoting does not help — only escaping does. Emit it ready to paste.

@@ -127,4 +127,7 @@ camera access, passkeys and home-screen install, all of which browsers block on 
 - **Phase 3** — household members, dose schedules with one-tap daily confirmation, run-out
   projection, Trips with an `order_by` deadline, auto-generated shopping list, price history.
 - **Phase 4** — push notifications, statistics, waste tracking, xlsx export, passkeys.
-- **Phase 5** — duplicate-substance warnings, audit log, PL/EN toggle, deployment and backups.
+- **Phase 5** — duplicate-substance warnings, audit log, cabinet audit mode, deployment and backups.
+
+The interface is English-only by design. Product *data* is bilingual — every product carries a
+`name` and an optional `nameAlt`, and search matches both — but the UI itself is not translated.

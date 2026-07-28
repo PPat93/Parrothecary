@@ -36,11 +36,14 @@ seed/photos/*
 seed/my-stock.mjs
 seed/catalog.md
 
-# testing (e2e artefacts — Playwright is owned by the user)
+# testing — Vitest coverage plus every Playwright artefact.
+# These are regenerated on each run and must never be committed.
 coverage/
 test-results/
 playwright-report/
+blob-report/
 playwright/.cache/
+playwright/.auth/
 
 # os / editor
 .DS_Store
