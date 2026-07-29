@@ -17,6 +17,7 @@ import {
   variantBarcodes,
   variants,
 } from '@/db/schema';
+import type { FefoBatch } from '@/domain/fefo';
 
 /**
  * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
@@ -616,12 +617,17 @@ export interface MemberScheduleRow {
   startDate: string;
   endDate: string | null;
   notes: string | null;
-  archivedAt: Date | null;
-  hasDoseEvents: boolean;
 }
 
 export interface HouseholdMemberDetail extends HouseholdMemberRow {
+  /**
+   * True if ANY schedule this person ever had — including ones already
+   * removed — logged a confirmed dose. Removing a schedule with history
+   * archives rather than deletes it (see removeSchedule), so this has to look
+   * past what is currently shown to guard the member-level delete correctly.
+   */
   hasDoseEvents: boolean;
+  /** Only schedules still in effect — a removed one simply does not show. */
   schedules: MemberScheduleRow[];
 }
 
@@ -646,30 +652,37 @@ export async function getHouseholdMember(id: number): Promise<HouseholdMemberDet
       startDate: doseSchedules.startDate,
       endDate: doseSchedules.endDate,
       notes: doseSchedules.notes,
-      archivedAt: doseSchedules.archivedAt,
     })
     .from(doseSchedules)
     .innerJoin(products, eq(doseSchedules.productId, products.id))
-    .where(eq(doseSchedules.memberId, id))
+    .where(and(eq(doseSchedules.memberId, id), isNull(doseSchedules.archivedAt)))
     .orderBy(sql`${products.name} collate nocase`);
 
-  const scheduleIds = scheduleRows.map((s) => s.id);
-  const eventRows = scheduleIds.length
-    ? await db
-        .selectDistinct({ scheduleId: doseEvents.scheduleId })
-        .from(doseEvents)
-        .where(inArray(doseEvents.scheduleId, scheduleIds))
-    : [];
-  const schedulesWithEvents = new Set(eventRows.map((e) => e.scheduleId));
+  // Deliberately over ALL schedules, including already-removed ones — a
+  // schedule that logged doses and was then removed still means this person
+  // has real history, which is what blocks a permanent delete.
+  const allScheduleIds = (
+    await db.select({ id: doseSchedules.id }).from(doseSchedules).where(eq(doseSchedules.memberId, id))
+  ).map((s) => s.id);
+
+  const hasDoseEvents = allScheduleIds.length
+    ? (
+        await db
+          .select({ id: doseEvents.id })
+          .from(doseEvents)
+          .where(inArray(doseEvents.scheduleId, allScheduleIds))
+          .limit(1)
+      ).length > 0
+    : false;
 
   return {
     id: member.id,
     name: member.name,
     notes: member.notes,
     archivedAt: member.archivedAt,
-    activeScheduleCount: scheduleRows.filter((s) => s.archivedAt === null).length,
-    hasDoseEvents: schedulesWithEvents.size > 0,
-    schedules: scheduleRows.map((s) => ({ ...s, hasDoseEvents: schedulesWithEvents.has(s.id) })),
+    activeScheduleCount: scheduleRows.length,
+    hasDoseEvents,
+    schedules: scheduleRows,
   };
 }
 
@@ -708,6 +721,42 @@ export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> 
     .innerJoin(products, eq(doseSchedules.productId, products.id))
     .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)))
     .orderBy(sql`${householdMembers.name} collate nocase`, sql`${products.name} collate nocase`);
+}
+
+/**
+ * Batches for a set of products, in the shape domain/fefo already understands.
+ * Lets the doses board answer "is there actually anything to confirm this
+ * against" using the same rules FEFO itself uses, rather than a second,
+ * possibly-diverging definition of "in stock".
+ */
+export async function getBatchesForProducts(
+  productIds: number[],
+): Promise<Map<number, FefoBatch[]>> {
+  const map = new Map<number, FefoBatch[]>();
+  if (productIds.length === 0) return map;
+
+  const rows = await db
+    .select({
+      id: batches.id,
+      quantityRemaining: batches.quantityRemaining,
+      expiryDate: batches.expiryDate,
+      expiryPrecision: batches.expiryPrecision,
+      openedAt: batches.openedAt,
+      status: batches.status,
+      hasExpiry: products.hasExpiry,
+      productId: variants.productId,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(inArray(variants.productId, productIds));
+
+  for (const { productId, ...batch } of rows) {
+    const list = map.get(productId);
+    if (list) list.push(batch);
+    else map.set(productId, [batch]);
+  }
+  return map;
 }
 
 /**

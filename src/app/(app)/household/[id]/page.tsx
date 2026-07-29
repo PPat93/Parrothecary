@@ -7,14 +7,7 @@ import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { todayIso } from '@/domain/date';
 import { formatQuantity } from '@/domain/quantity';
 import { getHouseholdMember, getProducts } from '@/lib/queries';
-import {
-  archiveMember,
-  archiveSchedule,
-  deleteMember,
-  deleteSchedule,
-  unarchiveMember,
-  unarchiveSchedule,
-} from '../../actions';
+import { archiveMember, deleteMember, removeSchedule, unarchiveMember } from '../../actions';
 import { ScheduleForm } from './schedule-form';
 
 export default async function MemberPage({ params }: { params: Promise<{ id: string }> }) {
@@ -87,42 +80,20 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
                       {formatQuantity(s.doseUnits, s.unitName)} · {s.timesPerDay}×/day · from{' '}
                       {s.startDate}
                       {s.endDate ? ` to ${s.endDate}` : ''}
-                      {s.archivedAt ? ' · archived' : ''}
                       {s.notes ? ` · ${s.notes}` : ''}
                     </p>
                   </div>
 
-                  {s.archivedAt ? (
-                    <div className="flex shrink-0 gap-2">
-                      <form action={unarchiveSchedule}>
-                        <input type="hidden" name="id" value={s.id} />
-                        <ActionButton tone="ok">Restore</ActionButton>
-                      </form>
-                      {!s.hasDoseEvents ? (
-                        <form action={deleteSchedule}>
-                          <input type="hidden" name="id" value={s.id} />
-                          <ConfirmButton
-                            label="Delete"
-                            title="Delete this schedule?"
-                            message={`The schedule for ${s.productName} will be erased completely. This cannot be undone. It is only offered because no dose was ever confirmed against it.`}
-                            confirmLabel="Yes, delete it"
-                            tone="critical"
-                          />
-                        </form>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <form action={archiveSchedule} className="shrink-0">
-                      <input type="hidden" name="id" value={s.id} />
-                      <ConfirmButton
-                        label="Stop"
-                        title="Stop this schedule?"
-                        message={`${s.productName} will no longer show on the daily board. Past confirmations are kept, and this can be restored.`}
-                        confirmLabel="Yes, stop it"
-                        tone="warning"
-                      />
-                    </form>
-                  )}
+                  <form action={removeSchedule} className="shrink-0">
+                    <input type="hidden" name="id" value={s.id} />
+                    <ConfirmButton
+                      label="Remove"
+                      title="Remove this schedule?"
+                      message={`${s.productName} will no longer show on the daily board. If a dose was ever confirmed against it, that history is kept and the schedule is only retired, not erased; otherwise it is deleted outright.`}
+                      confirmLabel="Yes, remove it"
+                      tone="critical"
+                    />
+                  </form>
                 </div>
               </li>
             ))}

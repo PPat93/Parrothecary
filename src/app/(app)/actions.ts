@@ -955,40 +955,29 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
   redirect(`/household/${memberId}`);
 }
 
-export async function archiveSchedule(formData: FormData): Promise<void> {
+/**
+ * One button, no separate archive step. A schedule that never logged a dose
+ * is deleted outright — recreating it costs nothing. One that did is archived
+ * instead, silently: the doses board and this person's list both already
+ * filter to non-archived schedules, so it disappears from view either way,
+ * but a confirmed dose is never erased.
+ */
+export async function removeSchedule(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
-  await db.update(doseSchedules).set({ archivedAt: new Date() }).where(eq(doseSchedules.id, id));
-  refreshAll();
-}
-
-export async function unarchiveSchedule(formData: FormData): Promise<void> {
-  const id = Number(formData.get('id'));
-  if (!Number.isInteger(id)) return;
-  await db.update(doseSchedules).set({ archivedAt: null }).where(eq(doseSchedules.id, id));
-  refreshAll();
-}
-
-/** Same guard as deleteMember: only an archived schedule with no history. */
-export async function deleteSchedule(formData: FormData): Promise<void> {
-  const id = Number(formData.get('id'));
-  if (!Number.isInteger(id)) return;
-
-  const rows = await db
-    .select({ archivedAt: doseSchedules.archivedAt })
-    .from(doseSchedules)
-    .where(eq(doseSchedules.id, id))
-    .limit(1);
-  if (!rows[0]?.archivedAt) return;
 
   const eventRows = await db
     .select({ id: doseEvents.id })
     .from(doseEvents)
     .where(eq(doseEvents.scheduleId, id))
     .limit(1);
-  if (eventRows.length > 0) return;
 
-  await db.delete(doseSchedules).where(eq(doseSchedules.id, id));
+  if (eventRows.length > 0) {
+    await db.update(doseSchedules).set({ archivedAt: new Date() }).where(eq(doseSchedules.id, id));
+  } else {
+    await db.delete(doseSchedules).where(eq(doseSchedules.id, id));
+  }
+
   refreshAll();
 }
 
