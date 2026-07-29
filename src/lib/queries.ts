@@ -5,9 +5,11 @@ import { db } from '@/db';
 import {
   batches,
   productSubstances,
+  productSymptoms,
   products,
   shoppingItems,
   substances,
+  symptoms,
   trips,
   variantBarcodes,
   variants,
@@ -83,6 +85,14 @@ export async function getStock(search?: string): Promise<StockRow[]> {
             join substances s on s.id = ps.substance_id
             where ps.product_id = ${products.id}
               and (s.name like ${pattern} or s.name_pl like ${pattern})
+          )`,
+          // "what do we have for a sore throat" — the question you actually ask
+          // at 2am, when you cannot remember what the box is called.
+          sql`exists (
+            select 1 from product_symptoms psy
+            join symptoms sy on sy.id = psy.symptom_id
+            where psy.product_id = ${products.id}
+              and (sy.name_en like ${pattern} or sy.name_pl like ${pattern})
           )`,
         ),
       )
@@ -201,6 +211,7 @@ export interface ProductDetail extends ProductRow {
     amountMg: number | null;
     amountText: string | null;
   }[];
+  symptoms: { id: number; nameEn: string; namePl: string | null }[];
   packs: {
     id: number;
     packSize: number;
@@ -239,6 +250,13 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     .innerJoin(substances, eq(productSubstances.substanceId, substances.id))
     .where(eq(productSubstances.productId, id))
     .orderBy(asc(substances.name));
+
+  const symptomRows = await db
+    .select({ id: symptoms.id, nameEn: symptoms.nameEn, namePl: symptoms.namePl })
+    .from(productSymptoms)
+    .innerJoin(symptoms, eq(productSymptoms.symptomId, symptoms.id))
+    .where(eq(productSymptoms.productId, id))
+    .orderBy(sql`${symptoms.nameEn} collate nocase`);
 
   const variantRows = await db
     .select()
@@ -284,6 +302,7 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     variantCount: variantRows.length,
     inStockUnits: Math.round(inStockUnits * 100) / 100,
     substances: substanceRows,
+    symptoms: symptomRows,
     packs: variantRows.map((variant) => ({
       id: variant.id,
       packSize: variant.packSize,
@@ -373,6 +392,38 @@ export async function getManufacturers(): Promise<string[]> {
     .orderBy(sql`${products.manufacturer} collate nocase`);
 
   return rows.map((r) => r.manufacturer).filter((m): m is string => m !== null && m !== '');
+}
+
+/**
+ * Symptom tags for every product at once, keyed by product id.
+ *
+ * One query rather than one per row — the stock and product lists both need
+ * this for every item they render, and doing it per product would be a classic
+ * N+1 on the busiest pages in the app.
+ */
+export async function getProductSymptoms(): Promise<Map<number, string[]>> {
+  const rows = await db
+    .select({ productId: productSymptoms.productId, nameEn: symptoms.nameEn })
+    .from(productSymptoms)
+    .innerJoin(symptoms, eq(productSymptoms.symptomId, symptoms.id))
+    .orderBy(sql`${symptoms.nameEn} collate nocase`);
+
+  const byProduct = new Map<number, string[]>();
+  for (const row of rows) {
+    const existing = byProduct.get(row.productId);
+    if (existing) existing.push(row.nameEn);
+    else byProduct.set(row.productId, [row.nameEn]);
+  }
+  return byProduct;
+}
+
+/** Every symptom tag in use, so the picker suggests rather than demands typing. */
+export async function getSymptomNames(): Promise<string[]> {
+  const rows = await db
+    .select({ nameEn: symptoms.nameEn })
+    .from(symptoms)
+    .orderBy(sql`${symptoms.nameEn} collate nocase`);
+  return rows.map((r) => r.nameEn);
 }
 
 /** Substance names already in use, for the product form's suggestions. */

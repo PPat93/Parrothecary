@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { formatQuantity } from '@/domain/quantity';
-import { getProducts } from '@/lib/queries';
+import { SymptomTags } from '@/components/symptom-tags';
+import { getProducts, getProductSymptoms } from '@/lib/queries';
 
 export default async function ProductsPage({
   searchParams,
@@ -10,7 +11,10 @@ export default async function ProductsPage({
 }) {
   const { archived } = await searchParams;
   const showArchived = archived === '1';
-  const rows = await getProducts(showArchived);
+  const [rows, symptomsByProduct] = await Promise.all([
+    getProducts(showArchived),
+    getProductSymptoms(),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -78,6 +82,7 @@ export default async function ProductsPage({
                       .filter(Boolean)
                       .join(' · ')}
                   </p>
+                  <SymptomTags names={symptomsByProduct.get(row.id)} />
                 </div>
 
                 <span

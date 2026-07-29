@@ -3,7 +3,13 @@
 import { useActionState } from 'react';
 import { toneStyle } from '@/components/tone';
 import { Datalist, ErrorText, Field, TextInput } from '@/components/form';
-import { addBarcode, addSubstanceToProduct, createVariant, type FormResult } from '../../actions';
+import {
+  addBarcode,
+  addSubstanceToProduct,
+  addSymptomToProduct,
+  createVariant,
+  type FormResult,
+} from '../../actions';
 
 const initialState: FormResult = { error: null };
 
@@ -43,6 +49,36 @@ export function AddPackForm({ productId, unitName }: { productId: number; unitNa
       </div>
       <ErrorText>{state.error}</ErrorText>
       <Submit pending={pending}>Add pack size</Submit>
+    </form>
+  );
+}
+
+export function AddSymptomForm({
+  productId,
+  symptomNames,
+}: {
+  productId: number;
+  symptomNames: string[];
+}) {
+  const [state, formAction, pending] = useActionState(addSymptomToProduct, initialState);
+  const prev = state.values ?? {};
+
+  return (
+    <form action={formAction} className="mt-3 flex flex-col gap-2">
+      <input type="hidden" name="productId" value={productId} />
+      <div className="flex gap-2">
+        <TextInput
+          name="symptom"
+          list="symptoms"
+          required
+          placeholder="sore throat"
+          aria-label="What it is used for"
+          defaultValue={prev.symptom ?? ''}
+        />
+        <Datalist id="symptoms" options={symptomNames} />
+        <Submit pending={pending}>Add</Submit>
+      </div>
+      <ErrorText>{state.error}</ErrorText>
     </form>
   );
 }

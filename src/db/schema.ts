@@ -183,7 +183,12 @@ export const symptoms = sqliteTable(
   'symptoms',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    namePl: text('name_pl').notNull(),
+    /**
+     * Optional. The interface is English-only, so requiring a Polish name for
+     * every tag would be friction — but keeping the column means searching
+     * "gardło" can still find the sore-throat shelf.
+     */
+    namePl: text('name_pl'),
     nameEn: text('name_en').notNull(),
     ...timestamps,
   },

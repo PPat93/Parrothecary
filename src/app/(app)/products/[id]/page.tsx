@@ -7,16 +7,17 @@ import { ExpiryBadge } from '@/components/expiry-badge';
 import { todayIso } from '@/domain/date';
 import { formatMoney, money } from '@/domain/money';
 import { formatQuantity } from '@/domain/quantity';
-import { getProduct, getSubstanceNames } from '@/lib/queries';
+import { getProduct, getSubstanceNames, getSymptomNames } from '@/lib/queries';
 import {
   archiveProduct,
   deleteProduct,
   removeBarcode,
   removeProductPhoto,
   removeSubstanceFromProduct,
+  removeSymptomFromProduct,
   unarchiveProduct,
 } from '../../actions';
-import { AddBarcodeForm, AddPackForm, AddSubstanceForm } from './add-forms';
+import { AddBarcodeForm, AddPackForm, AddSubstanceForm, AddSymptomForm } from './add-forms';
 import { PhotoForm } from './photo-form';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -28,9 +29,10 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [product, substanceNames] = await Promise.all([
+  const [product, substanceNames, symptomNames] = await Promise.all([
     getProduct(Number(id)),
     getSubstanceNames(),
+    getSymptomNames(),
   ]);
   if (!product) notFound();
 
@@ -145,6 +147,41 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           ))
         )}
         <AddSubstanceForm productId={product.id} substanceNames={substanceNames} />
+      </Section>
+
+      <Section title="Used for">
+        {product.symptoms.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            Not tagged yet. Tags are what make “what do we have for a sore throat” work — the
+            question you actually ask, when you cannot remember the brand.
+          </p>
+        ) : (
+          <ul className="flex flex-wrap gap-2">
+            {product.symptoms.map((s) => (
+              <li key={s.id}>
+                <form action={removeSymptomFromProduct} className="flex">
+                  <input type="hidden" name="productId" value={product.id} />
+                  <input type="hidden" name="symptomId" value={s.id} />
+                  <span
+                    className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    {s.nameEn}
+                    <button
+                      type="submit"
+                      aria-label={`Remove ${s.nameEn}`}
+                      className="is-action rounded px-1"
+                      style={{ color: 'var(--color-critical)', minHeight: 0 }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+        <AddSymptomForm productId={product.id} symptomNames={symptomNames} />
       </Section>
 
       <Section title={`Packs (${product.packs.length})`}>

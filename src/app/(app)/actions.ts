@@ -16,7 +16,9 @@ import {
   productSubstances,
   products,
   shoppingItems,
+  productSymptoms,
   substances,
+  symptoms,
   variantBarcodes,
   variants,
 } from '@/db/schema';
@@ -202,6 +204,56 @@ export async function addSubstanceToProduct(
   await linkSubstance(productId, name, amount);
   refreshAll();
   return { error: null, ok: true };
+}
+
+/**
+ * Tag a product with what it is for. Matching is case-insensitive so "Sore
+ * throat" and "sore throat" stay one tag — two spellings would split the shelf
+ * in half and quietly hide things from the search.
+ */
+export async function addSymptomToProduct(
+  _prev: FormResult,
+  formData: FormData,
+): Promise<FormResult> {
+  const productId = Number(formData.get('productId'));
+  const name = String(formData.get('symptom') ?? '').trim();
+
+  if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
+  if (!name) return { error: 'Enter what it is used for.', values: snapshot(formData) };
+
+  const existing = await db
+    .select({ id: symptoms.id })
+    .from(symptoms)
+    .where(sql`lower(${symptoms.nameEn}) = lower(${name})`)
+    .limit(1);
+
+  let symptomId = existing[0]?.id;
+  if (symptomId === undefined) {
+    const created = await db
+      .insert(symptoms)
+      .values({ nameEn: name })
+      .returning({ id: symptoms.id });
+    symptomId = created[0]?.id;
+  }
+  if (symptomId === undefined) return { error: 'Could not save that.' };
+
+  await db.insert(productSymptoms).values({ productId, symptomId }).onConflictDoNothing();
+
+  refreshAll();
+  return { error: null, ok: true };
+}
+
+export async function removeSymptomFromProduct(formData: FormData): Promise<void> {
+  const productId = Number(formData.get('productId'));
+  const symptomId = Number(formData.get('symptomId'));
+  if (!Number.isInteger(productId) || !Number.isInteger(symptomId)) return;
+
+  await db
+    .delete(productSymptoms)
+    .where(
+      and(eq(productSymptoms.productId, productId), eq(productSymptoms.symptomId, symptomId)),
+    );
+  refreshAll();
 }
 
 export async function removeSubstanceFromProduct(formData: FormData): Promise<void> {
