@@ -1,20 +1,25 @@
 import Link from 'next/link';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { formatQuantity } from '@/domain/quantity';
+import { SearchBox } from '@/components/search-box';
 import { SymptomTags } from '@/components/symptom-tags';
 import { getProducts, getProductSymptoms } from '@/lib/queries';
 
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<{ archived?: string; q?: string }>;
 }) {
-  const { archived } = await searchParams;
+  const { archived, q } = await searchParams;
   const showArchived = archived === '1';
+  const search = q ?? '';
   const [rows, symptomsByProduct] = await Promise.all([
-    getProducts(showArchived),
+    getProducts(showArchived, search),
     getProductSymptoms(),
   ]);
+
+  // Switching tabs keeps whatever you were searching for.
+  const tabQuery = search ? `&q=${encodeURIComponent(search)}` : '';
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -29,16 +34,31 @@ export default async function ProductsPage({
         className="mb-4 grid grid-cols-2 gap-1 rounded-xl border p-1 text-center text-sm"
         style={{ borderColor: 'var(--border)' }}
       >
-        <Tab href="/products" label="Active" active={!showArchived} />
-        <Tab href="/products?archived=1" label="Archived" active={showArchived} />
+        <Tab
+          href={`/products${search ? `?q=${encodeURIComponent(search)}` : ''}`}
+          label="Active"
+          active={!showArchived}
+        />
+        <Tab href={`/products?archived=1${tabQuery}`} label="Archived" active={showArchived} />
       </div>
+
+      <SearchBox
+        action="/products"
+        value={search}
+        placeholder="Name, brand, substance or symptom…"
+        hidden={showArchived ? { archived: '1' } : undefined}
+      />
 
       {rows.length === 0 ? (
         <div
           className="rounded-2xl border border-dashed p-8 text-center text-sm"
           style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
         >
-          {showArchived ? 'Nothing archived.' : 'The product database is empty.'}
+          {search
+            ? `No ${showArchived ? 'archived ' : ''}products match “${search}”.`
+            : showArchived
+              ? 'Nothing archived.'
+              : 'The product database is empty.'}
         </div>
       ) : (
         <ul className="flex flex-col gap-2">

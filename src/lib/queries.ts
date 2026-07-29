@@ -173,7 +173,37 @@ export interface ProductRow {
   inStockUnits: number;
 }
 
-export async function getProducts(includeArchived = false): Promise<ProductRow[]> {
+/**
+ * `search` matches the same fields as the stock list — name, alternate name,
+ * manufacturer, active substance and symptom tag — so the two searches behave
+ * identically and you do not have to remember which page understands what.
+ */
+function matchesSearch(pattern: string) {
+  return or(
+    like(products.name, pattern),
+    like(products.nameAlt, pattern),
+    like(products.manufacturer, pattern),
+    sql`exists (
+      select 1 from product_substances ps
+      join substances s on s.id = ps.substance_id
+      where ps.product_id = ${products.id}
+        and (s.name like ${pattern} or s.name_pl like ${pattern})
+    )`,
+    sql`exists (
+      select 1 from product_symptoms psy
+      join symptoms sy on sy.id = psy.symptom_id
+      where psy.product_id = ${products.id}
+        and (sy.name_en like ${pattern} or sy.name_pl like ${pattern})
+    )`,
+  );
+}
+
+export async function getProducts(includeArchived = false, search?: string): Promise<ProductRow[]> {
+  const query = search?.trim();
+  const pattern = query ? `%${query}%` : null;
+  const archiveFilter = includeArchived
+    ? isNotNull(products.archivedAt)
+    : isNull(products.archivedAt);
   const rows = await db
     .select({
       id: products.id,
@@ -193,7 +223,7 @@ export async function getProducts(includeArchived = false): Promise<ProductRow[]
     .from(products)
     .leftJoin(variants, eq(variants.productId, products.id))
     .leftJoin(batches, eq(batches.variantId, variants.id))
-    .where(includeArchived ? isNotNull(products.archivedAt) : isNull(products.archivedAt))
+    .where(pattern ? and(archiveFilter, matchesSearch(pattern)) : archiveFilter)
     .groupBy(products.id)
     .orderBy(byName);
 
