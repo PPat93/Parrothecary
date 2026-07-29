@@ -45,6 +45,17 @@ export default async function ProductsPage({
                 className="flex items-center gap-3 rounded-xl border p-3"
                 style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
               >
+                {/* Recognising a box by sight beats reading a Polish name. */}
+                {row.photoPath ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/photo/${row.photoPath}-thumb`}
+                    alt=""
+                    className="h-11 w-11 shrink-0 rounded-lg border object-cover"
+                    style={{ borderColor: 'var(--border)' }}
+                  />
+                ) : null}
+
                 <div className="min-w-0 flex-1">
                   <p className="font-medium break-words">
                     {row.name}

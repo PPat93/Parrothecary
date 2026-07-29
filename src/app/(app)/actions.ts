@@ -21,6 +21,7 @@ import {
   variants,
 } from '@/db/schema';
 import { isValidEan13, parseScan } from '@/domain/barcode';
+import { deletePhoto, savePhoto } from '@/lib/photos';
 import { findVariantByBarcode } from '@/lib/queries';
 import { normaliseExpiry } from '@/domain/expiry';
 import { parseAmount } from '@/domain/money';
@@ -616,6 +617,59 @@ export async function addBarcode(_prev: FormResult, formData: FormData): Promise
 
   refreshAll();
   return { error: null, ok: true };
+}
+
+export async function setProductPhoto(
+  _prev: FormResult,
+  formData: FormData,
+): Promise<FormResult> {
+  const productId = Number(formData.get('productId'));
+  const file = formData.get('photo');
+
+  if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
+  if (!(file instanceof File)) return { error: 'Choose a photo first.' };
+
+  const saved = await savePhoto(file);
+  if ('error' in saved) return { error: saved.error };
+
+  const rows = await db
+    .select({ photoPath: products.photoPath })
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+
+  await db
+    .update(products)
+    .set({ photoPath: saved.id, updatedAt: new Date() })
+    .where(eq(products.id, productId));
+
+  // Replacing a photo should not leave the old pair behind for ever.
+  const previous = rows[0]?.photoPath;
+  if (previous) await deletePhoto(previous);
+
+  refreshAll();
+  return { error: null, ok: true };
+}
+
+export async function removeProductPhoto(formData: FormData): Promise<void> {
+  const productId = Number(formData.get('productId'));
+  if (!Number.isInteger(productId)) return;
+
+  const rows = await db
+    .select({ photoPath: products.photoPath })
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+
+  await db
+    .update(products)
+    .set({ photoPath: null, updatedAt: new Date() })
+    .where(eq(products.id, productId));
+
+  const existing = rows[0]?.photoPath;
+  if (existing) await deletePhoto(existing);
+
+  refreshAll();
 }
 
 export async function removeBarcode(formData: FormData): Promise<void> {

@@ -12,10 +12,12 @@ import {
   archiveProduct,
   deleteProduct,
   removeBarcode,
+  removeProductPhoto,
   removeSubstanceFromProduct,
   unarchiveProduct,
 } from '../../actions';
 import { AddBarcodeForm, AddPackForm, AddSubstanceForm } from './add-forms';
+import { PhotoForm } from './photo-form';
 
 const STATUS_LABELS: Record<string, string> = {
   in_stock: 'in stock',
@@ -77,6 +79,30 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           </form>
         </div>
       ) : null}
+
+      <Section title="Photo">
+        {product.photoPath ? (
+          <div className="flex flex-col items-start gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/photo/${product.photoPath}`}
+              alt={`${product.name} packaging`}
+              className="max-h-64 w-auto rounded-xl border"
+              style={{ borderColor: 'var(--border)' }}
+            />
+            <form action={removeProductPhoto}>
+              <input type="hidden" name="productId" value={product.id} />
+              <ActionButton tone="critical">Remove photo</ActionButton>
+            </form>
+          </div>
+        ) : (
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            No photo. A picture of the box is often quicker to recognise than the name,
+            especially on Polish packaging.
+          </p>
+        )}
+        <PhotoForm productId={product.id} hasPhoto={product.photoPath !== null} />
+      </Section>
 
       <Section title="Details">
         <Row label="Form" value={product.form} />

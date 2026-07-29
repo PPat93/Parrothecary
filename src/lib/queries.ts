@@ -158,6 +158,7 @@ export interface ProductRow {
   isPrescription: boolean;
   hasExpiry: boolean;
   notes: string | null;
+  photoPath: string | null;
   variantCount: number;
   inStockUnits: number;
 }
@@ -175,6 +176,7 @@ export async function getProducts(includeArchived = false): Promise<ProductRow[]
       isPrescription: products.isPrescription,
       hasExpiry: products.hasExpiry,
       notes: products.notes,
+      photoPath: products.photoPath,
       variantCount: sql<number>`count(distinct ${variants.id})`,
       inStockUnits: sql<number>`coalesce(sum(case when ${batches.status} = 'in_stock' then ${batches.quantityRemaining} else 0 end), 0)`,
     })
@@ -276,6 +278,7 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     isPrescription: product.isPrescription,
     hasExpiry: product.hasExpiry,
     notes: product.notes,
+    photoPath: product.photoPath,
     archivedAt: product.archivedAt,
     hasBatches: batchRows.length > 0,
     variantCount: variantRows.length,
