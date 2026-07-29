@@ -31,6 +31,9 @@ const cases = [
   ['/icons/icon-192.png', 'asset', 'allow'],
   ['/icons/icon-512.png', 'asset', 'allow'],
   ['/icons/maskable-512.png', 'asset', 'allow'],
+  // Box photos are NOT public like the PWA icons — the extensionless path keeps
+  // them under the proxy, and the route re-checks the session itself.
+  ['/photo/00000000-0000-0000-0000-000000000000', 'page', 'protect'],
 ];
 
 let failures = 0;
