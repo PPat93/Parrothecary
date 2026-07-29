@@ -16,7 +16,9 @@ import {
   productSubstances,
   products,
   shoppingItems,
+  productSymptoms,
   substances,
+  symptoms,
   variantBarcodes,
   variants,
 } from '@/db/schema';
@@ -69,6 +71,7 @@ const productSchema = z.object({
   packLabel: optionalText,
   substance: optionalText,
   substanceAmount: optionalText,
+  symptom: optionalText,
 });
 
 export async function createProduct(_prev: FormResult, formData: FormData): Promise<FormResult> {
@@ -86,6 +89,7 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
     packLabel: formData.get('packLabel'),
     substance: formData.get('substance'),
     substanceAmount: formData.get('substanceAmount'),
+    symptom: formData.get('symptom'),
   });
 
   if (!parsed.success) {
@@ -137,6 +141,9 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
 
   if (data.substance) {
     await linkSubstance(productId, data.substance, data.substanceAmount);
+  }
+  if (data.symptom) {
+    await linkSymptom(productId, data.symptom);
   }
 
   refreshAll();
@@ -204,6 +211,59 @@ export async function addSubstanceToProduct(
   return { error: null, ok: true };
 }
 
+/**
+ * Tag a product with what it is for. Matching is case-insensitive so "Sore
+ * throat" and "sore throat" stay one tag — two spellings would split the shelf
+ * in half and quietly hide things from the search.
+ */
+async function linkSymptom(productId: number, name: string): Promise<void> {
+  const existing = await db
+    .select({ id: symptoms.id })
+    .from(symptoms)
+    .where(sql`lower(${symptoms.nameEn}) = lower(${name})`)
+    .limit(1);
+
+  let symptomId = existing[0]?.id;
+  if (symptomId === undefined) {
+    const created = await db
+      .insert(symptoms)
+      .values({ nameEn: name })
+      .returning({ id: symptoms.id });
+    symptomId = created[0]?.id;
+  }
+  if (symptomId === undefined) return;
+
+  await db.insert(productSymptoms).values({ productId, symptomId }).onConflictDoNothing();
+}
+
+export async function addSymptomToProduct(
+  _prev: FormResult,
+  formData: FormData,
+): Promise<FormResult> {
+  const productId = Number(formData.get('productId'));
+  const name = String(formData.get('symptom') ?? '').trim();
+
+  if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
+  if (!name) return { error: 'Enter what it is used for.', values: snapshot(formData) };
+
+  await linkSymptom(productId, name);
+  refreshAll();
+  return { error: null, ok: true };
+}
+
+export async function removeSymptomFromProduct(formData: FormData): Promise<void> {
+  const productId = Number(formData.get('productId'));
+  const symptomId = Number(formData.get('symptomId'));
+  if (!Number.isInteger(productId) || !Number.isInteger(symptomId)) return;
+
+  await db
+    .delete(productSymptoms)
+    .where(
+      and(eq(productSymptoms.productId, productId), eq(productSymptoms.symptomId, symptomId)),
+    );
+  refreshAll();
+}
+
 export async function removeSubstanceFromProduct(formData: FormData): Promise<void> {
   const productId = Number(formData.get('productId'));
   const substanceId = Number(formData.get('substanceId'));
@@ -230,6 +290,7 @@ const productEditSchema = productSchema.omit({
   packLabel: true,
   substance: true,
   substanceAmount: true,
+  symptom: true,
 });
 
 export async function updateProduct(_prev: FormResult, formData: FormData): Promise<FormResult> {

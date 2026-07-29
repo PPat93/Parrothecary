@@ -3,9 +3,10 @@ import { ActionButton } from '@/components/action-button';
 import { ExpiryBadge } from '@/components/expiry-badge';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { SearchBox } from '@/components/search-box';
+import { SymptomTags } from '@/components/symptom-tags';
 import { todayIso } from '@/domain/date';
 import { formatQuantity } from '@/domain/quantity';
-import { getStock, groupByProduct } from '@/lib/queries';
+import { getProductSymptoms, getStock, groupByProduct } from '@/lib/queries';
 import { adjustBatch } from './actions';
 
 export default async function StockPage({
@@ -16,7 +17,8 @@ export default async function StockPage({
   const { q } = await searchParams;
   const search = q ?? '';
   const today = todayIso();
-  const groups = groupByProduct(await getStock(search));
+  const [rows, symptomsByProduct] = await Promise.all([getStock(search), getProductSymptoms()]);
+  const groups = groupByProduct(rows);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -27,7 +29,7 @@ export default async function StockPage({
         </Link>
       </header>
 
-      <SearchBox action="/" value={search} placeholder="Name, brand or substance…" />
+      <SearchBox action="/" value={search} placeholder="Name, brand, substance or symptom…" />
 
       {groups.length === 0 ? (
         search ? (
@@ -69,6 +71,8 @@ export default async function StockPage({
                   {group.nameAlt}
                 </p>
               ) : null}
+
+              <SymptomTags names={symptomsByProduct.get(group.productId)} />
 
               <ul className="mt-3 flex flex-col gap-2">
                 {group.boxes.map((box) => (

@@ -13,13 +13,29 @@ export function SearchBox({
   action,
   value,
   placeholder,
+  hidden,
 }: {
   action: string;
   value: string;
   placeholder: string;
+  /**
+   * Other query params to carry through. A GET form submits only its own
+   * fields, so without this, searching from the Archived tab would drop you
+   * back into Active with no explanation.
+   */
+  hidden?: Record<string, string>;
 }) {
+  const clearHref = hidden
+    ? `${action}?${new URLSearchParams(hidden).toString()}`
+    : action;
+
   return (
     <form action={action} className="mb-4">
+      {hidden
+        ? Object.entries(hidden).map(([name, v]) => (
+            <input key={name} type="hidden" name={name} value={v} />
+          ))
+        : null}
       <div className="relative">
         <input
           type="search"
@@ -40,7 +56,7 @@ export function SearchBox({
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5">
           {value ? (
             <Link
-              href={action}
+              href={clearHref}
               aria-label="Clear search"
               title="Clear search"
               className="is-action flex h-9 w-9 items-center justify-center rounded-lg"
