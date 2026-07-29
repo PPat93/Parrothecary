@@ -18,9 +18,11 @@ const initialState: FormResult = { error: null };
 export function ProductForm({
   manufacturers,
   substanceNames,
+  symptomNames,
 }: {
   manufacturers: string[];
   substanceNames: string[];
+  symptomNames: string[];
 }) {
   const [state, formAction, pending] = useActionState(createProduct, initialState);
 
@@ -121,6 +123,25 @@ export function ProductForm({
             placeholder="500 mg"
             defaultValue={prev.substanceAmount ?? ''}
           />
+        </Field>
+      </fieldset>
+
+      <fieldset
+        className="flex flex-col gap-3 rounded-xl border p-3"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        <legend className="px-1 text-sm font-medium">Used for (optional)</legend>
+        <Field
+          label="Symptom"
+          hint="Tagging now is what makes “what do we have for a sore throat” work later. More can be added afterwards."
+        >
+          <TextInput
+            name="symptom"
+            list="symptoms"
+            placeholder="sore throat"
+            defaultValue={prev.symptom ?? ''}
+          />
+          <Datalist id="symptoms" options={symptomNames} />
         </Field>
       </fieldset>
 

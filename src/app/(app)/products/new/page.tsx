@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
-import { getManufacturers, getSubstanceNames } from '@/lib/queries';
+import { getManufacturers, getSubstanceNames, getSymptomNames } from '@/lib/queries';
 import { ProductForm } from './product-form';
 
 export default async function NewProductPage() {
-  const [manufacturers, substanceNames] = await Promise.all([
+  const [manufacturers, substanceNames, symptomNames] = await Promise.all([
     getManufacturers(),
     getSubstanceNames(),
+    getSymptomNames(),
   ]);
 
   return (
@@ -19,7 +20,11 @@ export default async function NewProductPage() {
           Cancel
         </Link>
       </header>
-      <ProductForm manufacturers={manufacturers} substanceNames={substanceNames} />
+      <ProductForm
+        manufacturers={manufacturers}
+        substanceNames={substanceNames}
+        symptomNames={symptomNames}
+      />
     </div>
   );
 }
