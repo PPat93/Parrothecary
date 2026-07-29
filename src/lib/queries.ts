@@ -4,6 +4,9 @@ import { and, asc, eq, inArray, isNotNull, isNull, like, or, sql } from 'drizzle
 import { db } from '@/db';
 import {
   batches,
+  doseEvents,
+  doseSchedules,
+  householdMembers,
   productSubstances,
   productSymptoms,
   products,
@@ -570,4 +573,168 @@ export async function getShoppingItem(id: number): Promise<ShoppingRow | null> {
     .limit(1);
 
   return rows[0] ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Household members and dosing                                       */
+/* ------------------------------------------------------------------ */
+
+export interface HouseholdMemberRow {
+  id: number;
+  name: string;
+  notes: string | null;
+  archivedAt: Date | null;
+  activeScheduleCount: number;
+}
+
+export async function getHouseholdMembers(includeArchived = false): Promise<HouseholdMemberRow[]> {
+  return db
+    .select({
+      id: householdMembers.id,
+      name: householdMembers.name,
+      notes: householdMembers.notes,
+      archivedAt: householdMembers.archivedAt,
+      activeScheduleCount: sql<number>`count(distinct case when ${doseSchedules.archivedAt} is null then ${doseSchedules.id} end)`,
+    })
+    .from(householdMembers)
+    .leftJoin(doseSchedules, eq(doseSchedules.memberId, householdMembers.id))
+    .where(
+      includeArchived ? isNotNull(householdMembers.archivedAt) : isNull(householdMembers.archivedAt),
+    )
+    .groupBy(householdMembers.id)
+    .orderBy(sql`${householdMembers.name} collate nocase`);
+}
+
+export interface MemberScheduleRow {
+  id: number;
+  productId: number;
+  productName: string;
+  productStrength: string | null;
+  unitName: string;
+  doseUnits: number;
+  timesPerDay: number;
+  startDate: string;
+  endDate: string | null;
+  notes: string | null;
+  archivedAt: Date | null;
+  hasDoseEvents: boolean;
+}
+
+export interface HouseholdMemberDetail extends HouseholdMemberRow {
+  hasDoseEvents: boolean;
+  schedules: MemberScheduleRow[];
+}
+
+export async function getHouseholdMember(id: number): Promise<HouseholdMemberDetail | null> {
+  const rows = await db
+    .select()
+    .from(householdMembers)
+    .where(eq(householdMembers.id, id))
+    .limit(1);
+  const member = rows[0];
+  if (!member) return null;
+
+  const scheduleRows = await db
+    .select({
+      id: doseSchedules.id,
+      productId: products.id,
+      productName: products.name,
+      productStrength: products.strength,
+      unitName: products.unitName,
+      doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+      startDate: doseSchedules.startDate,
+      endDate: doseSchedules.endDate,
+      notes: doseSchedules.notes,
+      archivedAt: doseSchedules.archivedAt,
+    })
+    .from(doseSchedules)
+    .innerJoin(products, eq(doseSchedules.productId, products.id))
+    .where(eq(doseSchedules.memberId, id))
+    .orderBy(sql`${products.name} collate nocase`);
+
+  const scheduleIds = scheduleRows.map((s) => s.id);
+  const eventRows = scheduleIds.length
+    ? await db
+        .selectDistinct({ scheduleId: doseEvents.scheduleId })
+        .from(doseEvents)
+        .where(inArray(doseEvents.scheduleId, scheduleIds))
+    : [];
+  const schedulesWithEvents = new Set(eventRows.map((e) => e.scheduleId));
+
+  return {
+    id: member.id,
+    name: member.name,
+    notes: member.notes,
+    archivedAt: member.archivedAt,
+    activeScheduleCount: scheduleRows.filter((s) => s.archivedAt === null).length,
+    hasDoseEvents: schedulesWithEvents.size > 0,
+    schedules: scheduleRows.map((s) => ({ ...s, hasDoseEvents: schedulesWithEvents.has(s.id) })),
+  };
+}
+
+export interface DoseScheduleBoardRow {
+  scheduleId: number;
+  memberId: number;
+  memberName: string;
+  productId: number;
+  productName: string;
+  productStrength: string | null;
+  unitName: string;
+  doseUnits: number;
+  timesPerDay: number;
+  startDate: string;
+  endDate: string | null;
+}
+
+/** Every active schedule, for every active member — the "today" board. */
+export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> {
+  return db
+    .select({
+      scheduleId: doseSchedules.id,
+      memberId: householdMembers.id,
+      memberName: householdMembers.name,
+      productId: products.id,
+      productName: products.name,
+      productStrength: products.strength,
+      unitName: products.unitName,
+      doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+      startDate: doseSchedules.startDate,
+      endDate: doseSchedules.endDate,
+    })
+    .from(doseSchedules)
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .innerJoin(products, eq(doseSchedules.productId, products.id))
+    .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)))
+    .orderBy(sql`${householdMembers.name} collate nocase`, sql`${products.name} collate nocase`);
+}
+
+/**
+ * Confirmed occurrences for a set of schedules, on or after `since`. Keyed
+ * "scheduleId:date" so the board can look up a schedule+day pair in one hop.
+ */
+export async function getTakenOccurrences(
+  scheduleIds: number[],
+  since: string,
+): Promise<Map<string, Set<number>>> {
+  const map = new Map<string, Set<number>>();
+  if (scheduleIds.length === 0) return map;
+
+  const rows = await db
+    .selectDistinct({
+      scheduleId: doseEvents.scheduleId,
+      date: doseEvents.date,
+      occurrence: doseEvents.occurrence,
+    })
+    .from(doseEvents)
+    .where(and(inArray(doseEvents.scheduleId, scheduleIds), sql`${doseEvents.date} >= ${since}`));
+
+  for (const row of rows) {
+    const key = `${row.scheduleId}:${row.date}`;
+    const set = map.get(key);
+    if (set) set.add(row.occurrence);
+    else map.set(key, new Set([row.occurrence]));
+  }
+  return map;
 }

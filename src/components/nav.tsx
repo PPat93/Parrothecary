@@ -34,10 +34,18 @@ const ICONS = {
       <path d="M8 9h8M8 13h8M8 17h5" />
     </>
   ),
+  doses: (
+    <>
+      <rect x="4" y="5" width="16" height="15" rx="2" />
+      <path d="M8 3v4M16 3v4M4 10h16" />
+      <path d="M9 14.5l2 2 4-4.5" />
+    </>
+  ),
 } as const;
 
 const TABS = [
   { href: '/', label: 'Stock', icon: 'stock' },
+  { href: '/doses', label: 'Doses', icon: 'doses' },
   { href: '/expiring', label: 'Expiring', icon: 'expiring' },
   { href: '/shopping', label: 'Shopping', icon: 'shopping' },
   { href: '/products', label: 'Products', icon: 'products' },
@@ -48,7 +56,7 @@ export function Nav() {
 
   return (
     <nav
-      className="sticky bottom-0 z-10 grid grid-cols-4 border-t pb-[env(safe-area-inset-bottom)]"
+      className="sticky bottom-0 z-10 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)]"
       style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
     >
       {TABS.map((tab) => {
