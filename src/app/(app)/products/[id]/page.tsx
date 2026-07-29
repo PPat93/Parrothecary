@@ -11,10 +11,11 @@ import { getProduct, getSubstanceNames } from '@/lib/queries';
 import {
   archiveProduct,
   deleteProduct,
+  removeBarcode,
   removeSubstanceFromProduct,
   unarchiveProduct,
 } from '../../actions';
-import { AddPackForm, AddSubstanceForm } from './add-forms';
+import { AddBarcodeForm, AddPackForm, AddSubstanceForm } from './add-forms';
 
 const STATUS_LABELS: Record<string, string> = {
   in_stock: 'in stock',
@@ -141,14 +142,31 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                 </p>
 
                 {pack.barcodes.length > 0 ? (
-                  <p className="mt-0.5 text-xs tabular-nums" style={{ color: 'var(--muted)' }}>
-                    {pack.barcodes.map((b) => `${b.code} (${b.type})`).join(' · ')}
-                  </p>
+                  <ul className="mt-1 flex flex-col gap-1">
+                    {pack.barcodes.map((b) => (
+                      <li key={b.code} className="flex items-center gap-2 text-xs">
+                        <span className="tabular-nums">{b.code}</span>
+                        <span style={{ color: 'var(--muted)' }}>{b.type}</span>
+                        <form action={removeBarcode}>
+                          <input type="hidden" name="code" value={b.code} />
+                          <ActionButton
+                            aria-label={`Remove barcode ${b.code}`}
+                            tone="critical"
+                            className="rounded-lg border px-2 py-0.5 text-xs"
+                          >
+                            Remove
+                          </ActionButton>
+                        </form>
+                      </li>
+                    ))}
+                  </ul>
                 ) : (
                   <p className="mt-0.5 text-xs" style={{ color: 'var(--muted)' }}>
-                    no barcode recorded
+                    No barcode recorded — type the digits printed under the stripe, or scan the box.
                   </p>
                 )}
+
+                <AddBarcodeForm variantId={pack.id} />
 
                 <ul className="mt-2 flex flex-col gap-2">
                   {pack.boxes.length === 0 ? (

@@ -6,6 +6,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
 import {
+  BARCODE_TYPES,
   BATCH_STATUSES,
   CURRENCIES,
   DOSE_FORMS,
@@ -16,8 +17,11 @@ import {
   products,
   shoppingItems,
   substances,
+  variantBarcodes,
   variants,
 } from '@/db/schema';
+import { isValidEan13, parseScan } from '@/domain/barcode';
+import { findVariantByBarcode } from '@/lib/queries';
 import { normaliseExpiry } from '@/domain/expiry';
 import { parseAmount } from '@/domain/money';
 import { endSession } from '@/lib/session';
@@ -510,6 +514,117 @@ export async function deleteBatch(formData: FormData): Promise<void> {
   await db.delete(batches).where(eq(batches.id, id));
   refreshAll();
   redirect('/');
+}
+
+export interface ScanResult {
+  code: string;
+  /** Null when this code has never been seen before. */
+  variantId: number | null;
+  variantLabel: string | null;
+  expiry: string | null;
+  lotNumber: string | null;
+}
+
+/**
+ * Resolve a scan against the barcode table and hand back whatever the code
+ * itself carried. Called from the scanner as soon as the camera reads a code.
+ */
+export async function resolveScan(raw: string, format?: string): Promise<ScanResult> {
+  const parsed = parseScan(raw, format);
+  const variant = await findVariantByBarcode(parsed.code);
+
+  return {
+    code: parsed.code,
+    variantId: variant?.id ?? null,
+    variantLabel: variant?.productLabel ?? null,
+    // Re-formatted the way the expiry field expects it, so it can be dropped
+    // straight into the form.
+    expiry: parsed.expiryDate
+      ? parsed.expiryPrecision === 'month'
+        ? `${parsed.expiryDate.slice(5, 7)}.${parsed.expiryDate.slice(0, 4)}`
+        : `${parsed.expiryDate.slice(8, 10)}.${parsed.expiryDate.slice(5, 7)}.${parsed.expiryDate.slice(0, 4)}`
+      : null,
+    lotNumber: parsed.lotNumber,
+  };
+}
+
+/**
+ * Attach a code to a pack. Shared by the scanner and by typing one in.
+ *
+ * Normalised through the same parser either way, so a code typed from the box
+ * matches the same box when scanned — a 12-digit UPC-A widened to 13, a GS1
+ * payload reduced to its GTIN.
+ */
+async function attachBarcode(
+  variantId: number,
+  rawCode: string,
+  declaredType: string,
+): Promise<string | null> {
+  const parsed = parseScan(rawCode);
+  const code = parsed.code;
+  if (!code) return 'Enter a barcode.';
+
+  // Typos are the whole risk with manual entry, and a 13-digit code carries its
+  // own check digit — so refuse one that fails it rather than storing a code
+  // that will never match anything.
+  if (/^\d{13}$/.test(code) && !isValidEan13(code)) {
+    return `${code} is not a valid barcode — its check digit does not match. Re-read the digits under the stripe.`;
+  }
+
+  const existing = await db
+    .select({ variantId: variantBarcodes.variantId })
+    .from(variantBarcodes)
+    .where(eq(variantBarcodes.code, code))
+    .limit(1);
+
+  const owner = existing[0]?.variantId;
+  if (owner !== undefined) {
+    return owner === variantId
+      ? 'That barcode is already on this pack.'
+      : 'That barcode already belongs to a different pack.';
+  }
+
+  const type =
+    parsed.type === 'other'
+      ? ((BARCODE_TYPES.find((t) => t === declaredType) ?? 'other') as (typeof BARCODE_TYPES)[number])
+      : (parsed.type as (typeof BARCODE_TYPES)[number]);
+
+  await db.insert(variantBarcodes).values({ variantId, code, type });
+  return null;
+}
+
+/** Teach the cabinet a code it has not seen, so the next scan just works. */
+export async function linkBarcode(formData: FormData): Promise<void> {
+  const variantId = Number(formData.get('variantId'));
+  const code = String(formData.get('code') ?? '').trim();
+  if (!Number.isInteger(variantId) || !code) return;
+
+  await attachBarcode(variantId, code, String(formData.get('barcodeType') ?? 'ean13'));
+  refreshAll();
+}
+
+/** Typed in by hand, for packs whose code was never scanned or photographed. */
+export async function addBarcode(_prev: FormResult, formData: FormData): Promise<FormResult> {
+  const variantId = Number(formData.get('variantId'));
+  const code = String(formData.get('code') ?? '').trim();
+
+  if (!Number.isInteger(variantId)) return { error: 'Unknown pack.' };
+  if (!code) return { error: 'Enter a barcode.', values: snapshot(formData) };
+
+  const error = await attachBarcode(variantId, code, String(formData.get('barcodeType') ?? 'ean13'));
+  if (error) return { error, values: snapshot(formData) };
+
+  refreshAll();
+  return { error: null, ok: true };
+}
+
+export async function removeBarcode(formData: FormData): Promise<void> {
+  const code = String(formData.get('code') ?? '').trim();
+  if (!code) return;
+
+  // Codes are globally unique, so this needs no pack id.
+  await db.delete(variantBarcodes).where(eq(variantBarcodes.code, code));
+  refreshAll();
 }
 
 /** One-tap +/- from the stock list. Clamps at zero rather than going negative. */

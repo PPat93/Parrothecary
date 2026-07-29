@@ -3,7 +3,7 @@
 import { useActionState } from 'react';
 import { toneStyle } from '@/components/tone';
 import { Datalist, ErrorText, Field, TextInput } from '@/components/form';
-import { addSubstanceToProduct, createVariant, type FormResult } from '../../actions';
+import { addBarcode, addSubstanceToProduct, createVariant, type FormResult } from '../../actions';
 
 const initialState: FormResult = { error: null };
 
@@ -43,6 +43,29 @@ export function AddPackForm({ productId, unitName }: { productId: number; unitNa
       </div>
       <ErrorText>{state.error}</ErrorText>
       <Submit pending={pending}>Add pack size</Submit>
+    </form>
+  );
+}
+
+export function AddBarcodeForm({ variantId }: { variantId: number }) {
+  const [state, formAction, pending] = useActionState(addBarcode, initialState);
+  const prev = state.values ?? {};
+
+  return (
+    <form action={formAction} className="mt-2 flex flex-col gap-2">
+      <input type="hidden" name="variantId" value={variantId} />
+      <div className="flex gap-2">
+        <TextInput
+          name="code"
+          inputMode="numeric"
+          required
+          placeholder="5909991434090"
+          aria-label="Barcode digits"
+          defaultValue={prev.code ?? ''}
+        />
+        <Submit pending={pending}>Add</Submit>
+      </div>
+      <ErrorText>{state.error}</ErrorText>
     </form>
   );
 }
