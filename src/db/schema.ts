@@ -387,6 +387,91 @@ export const shoppingItems = sqliteTable(
 );
 
 /* ------------------------------------------------------------------ */
+/* Household members and dosing                                       */
+/* ------------------------------------------------------------------ */
+
+export const householdMembers = sqliteTable(
+  'household_members',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    notes: text('notes'),
+    archivedAt: integer('archived_at', { mode: 'timestamp' }),
+    ...timestamps,
+  },
+  (t) => [index('household_members_archived_idx').on(t.archivedAt)],
+);
+
+/**
+ * "Piotr: 1 Euthyrox tablet daily." Tied to a Product, not a Variant — dosing
+ * does not care which pack size is open, only what is being taken.
+ */
+export const doseSchedules = sqliteTable(
+  'dose_schedules',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => householdMembers.id, { onDelete: 'cascade' }),
+    productId: integer('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'restrict' }),
+
+    /** Units per single dose, in the product's own base unit. */
+    doseUnits: real('dose_units').notNull(),
+    /** Independent doses per day (morning + evening = 2), not a split of one. */
+    timesPerDay: integer('times_per_day').notNull().default(1),
+
+    /** Confirming a dose before this date is not offered. */
+    startDate: text('start_date').notNull(),
+    /** Null = ongoing. Set for a course of antibiotics or a seasonal supplement. */
+    endDate: text('end_date'),
+
+    notes: text('notes'),
+    archivedAt: integer('archived_at', { mode: 'timestamp' }),
+    ...timestamps,
+  },
+  (t) => [
+    index('dose_schedules_member_idx').on(t.memberId),
+    index('dose_schedules_product_idx').on(t.productId),
+  ],
+);
+
+/**
+ * A confirmed dose. Rows are only ever created by tapping "taken" — there is
+ * no row for a missed dose, because "missed" is derived (see domain/dosing.ts),
+ * not stored. batchId + quantity record exactly what was decremented, so
+ * un-confirming can put it back precisely rather than guessing.
+ *
+ * One dose can produce more than one row: if it emptied one batch and spilled
+ * into the next (FEFO), each batch touched gets its own row.
+ */
+export const doseEvents = sqliteTable(
+  'dose_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    scheduleId: integer('schedule_id')
+      .notNull()
+      .references(() => doseSchedules.id, { onDelete: 'cascade' }),
+    /** Calendar day this dose belongs to — not when it was actually tapped. */
+    date: text('date').notNull(),
+    /** 1-based: which of the day's timesPerDay occurrences this is. */
+    occurrence: integer('occurrence').notNull(),
+    batchId: integer('batch_id')
+      .notNull()
+      .references(() => batches.id, { onDelete: 'restrict' }),
+    quantity: real('quantity').notNull(),
+    confirmedAt: integer('confirmed_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [
+    index('dose_events_schedule_date_idx').on(t.scheduleId, t.date),
+    index('dose_events_batch_idx').on(t.batchId),
+  ],
+);
+
+/* ------------------------------------------------------------------ */
 /* Auth                                                                */
 /* ------------------------------------------------------------------ */
 

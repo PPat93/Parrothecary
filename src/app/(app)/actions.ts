@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
 import {
@@ -13,6 +13,9 @@ import {
   SHOPPING_STATUSES,
   UNIT_NAMES,
   batches,
+  doseEvents,
+  doseSchedules,
+  householdMembers,
   productSubstances,
   products,
   shoppingItems,
@@ -23,6 +26,8 @@ import {
   variants,
 } from '@/db/schema';
 import { isValidEan13, parseScan } from '@/domain/barcode';
+import { todayIso } from '@/domain/date';
+import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { deletePhoto, savePhoto } from '@/lib/photos';
 import { findVariantByBarcode } from '@/lib/queries';
 import { normaliseExpiry } from '@/domain/expiry';
@@ -821,6 +826,272 @@ export async function removeShoppingItem(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
   await db.delete(shoppingItems).where(eq(shoppingItems.id, id));
+  refreshAll();
+}
+
+/* ------------------------------------------------------------------ */
+/* Household members and dosing                                       */
+/* ------------------------------------------------------------------ */
+
+export async function createMember(_prev: FormResult, formData: FormData): Promise<FormResult> {
+  const name = String(formData.get('name') ?? '').trim();
+  const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
+  if (!name) return { error: 'Enter a name.', values: snapshot(formData) };
+
+  const inserted = await db
+    .insert(householdMembers)
+    .values({ name, notes })
+    .returning({ id: householdMembers.id });
+
+  const id = inserted[0]?.id;
+  if (id === undefined) return { error: 'Could not save that.', values: snapshot(formData) };
+
+  refreshAll();
+  redirect(`/household/${id}`);
+}
+
+export async function updateMember(_prev: FormResult, formData: FormData): Promise<FormResult> {
+  const id = Number(formData.get('id'));
+  const name = String(formData.get('name') ?? '').trim();
+  const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
+
+  if (!Number.isInteger(id)) return { error: 'Unknown person.' };
+  if (!name) return { error: 'Enter a name.', values: snapshot(formData) };
+
+  await db
+    .update(householdMembers)
+    .set({ name, notes, updatedAt: new Date() })
+    .where(eq(householdMembers.id, id));
+
+  refreshAll();
+  redirect(`/household/${id}`);
+}
+
+export async function archiveMember(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+  await db.update(householdMembers).set({ archivedAt: new Date() }).where(eq(householdMembers.id, id));
+  refreshAll();
+}
+
+export async function unarchiveMember(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+  await db.update(householdMembers).set({ archivedAt: null }).where(eq(householdMembers.id, id));
+  refreshAll();
+}
+
+/**
+ * Guarded like deleteProduct: only when archived, and only when none of their
+ * schedules ever logged a confirmed dose — those rows are real stock history.
+ */
+export async function deleteMember(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  const rows = await db
+    .select({ archivedAt: householdMembers.archivedAt })
+    .from(householdMembers)
+    .where(eq(householdMembers.id, id))
+    .limit(1);
+  if (!rows[0]?.archivedAt) return;
+
+  const scheduleIds = (
+    await db
+      .select({ id: doseSchedules.id })
+      .from(doseSchedules)
+      .where(eq(doseSchedules.memberId, id))
+  ).map((s) => s.id);
+
+  if (scheduleIds.length > 0) {
+    const eventRows = await db
+      .select({ id: doseEvents.id })
+      .from(doseEvents)
+      .where(inArray(doseEvents.scheduleId, scheduleIds))
+      .limit(1);
+    if (eventRows.length > 0) return;
+  }
+
+  // Schedules cascade from the member; safe, since we just confirmed none of
+  // them have a single confirmed dose to lose.
+  await db.delete(householdMembers).where(eq(householdMembers.id, id));
+  refreshAll();
+  redirect('/household?archived=1');
+}
+
+export async function createSchedule(_prev: FormResult, formData: FormData): Promise<FormResult> {
+  const memberId = Number(formData.get('memberId'));
+  const productId = Number(formData.get('productId'));
+  const doseUnits = Number(formData.get('doseUnits'));
+  const timesPerDay = Number(formData.get('timesPerDay') || 1);
+  const startDate = String(formData.get('startDate') ?? '').trim();
+  const endDate = emptyToNull(String(formData.get('endDate') ?? '').trim());
+  const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
+
+  const fail = (error: string): FormResult => ({ error, values: snapshot(formData) });
+
+  if (!Number.isInteger(memberId)) return fail('Unknown person.');
+  if (!Number.isInteger(productId)) return fail('Pick what is being taken.');
+  if (!Number.isFinite(doseUnits) || doseUnits <= 0) {
+    return fail('Dose per time must be a positive number.');
+  }
+  if (!Number.isInteger(timesPerDay) || timesPerDay < 1) {
+    return fail('Times per day must be a whole number, at least 1.');
+  }
+  if (!startDate) return fail('Pick a start date.');
+  if (endDate && endDate < startDate) return fail('The end date is before the start date.');
+
+  await db.insert(doseSchedules).values({
+    memberId,
+    productId,
+    doseUnits,
+    timesPerDay,
+    startDate,
+    endDate,
+    notes,
+  });
+
+  refreshAll();
+  redirect(`/household/${memberId}`);
+}
+
+/**
+ * One button, no separate archive step. A schedule that never logged a dose
+ * is deleted outright — recreating it costs nothing. One that did is archived
+ * instead, silently: the doses board and this person's list both already
+ * filter to non-archived schedules, so it disappears from view either way,
+ * but a confirmed dose is never erased.
+ */
+export async function removeSchedule(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  const eventRows = await db
+    .select({ id: doseEvents.id })
+    .from(doseEvents)
+    .where(eq(doseEvents.scheduleId, id))
+    .limit(1);
+
+  if (eventRows.length > 0) {
+    await db.update(doseSchedules).set({ archivedAt: new Date() }).where(eq(doseSchedules.id, id));
+  } else {
+    await db.delete(doseSchedules).where(eq(doseSchedules.id, id));
+  }
+
+  refreshAll();
+}
+
+/**
+ * Confirm one dose occurrence. Allocates the units via FEFO from the
+ * schedule's product and writes one dose_events row per batch actually
+ * touched, so undoDose can reverse exactly what happened rather than guessing.
+ *
+ * No explicit transaction, matching the rest of this file (e.g.
+ * receiveShoppingItem) — better-sqlite3 statements are synchronous and this
+ * runs single-user on a home LAN, so the risk of a mid-write crash is the same
+ * one already accepted elsewhere.
+ */
+export async function confirmDose(formData: FormData): Promise<void> {
+  const scheduleId = Number(formData.get('scheduleId'));
+  const date = String(formData.get('date') ?? '').trim();
+  const occurrence = Number(formData.get('occurrence'));
+  if (!Number.isInteger(scheduleId) || !date || !Number.isInteger(occurrence)) return;
+
+  const scheduleRows = await db
+    .select({
+      doseUnits: doseSchedules.doseUnits,
+      productId: doseSchedules.productId,
+      hasExpiry: products.hasExpiry,
+    })
+    .from(doseSchedules)
+    .innerJoin(products, eq(doseSchedules.productId, products.id))
+    .where(eq(doseSchedules.id, scheduleId))
+    .limit(1);
+  const schedule = scheduleRows[0];
+  if (!schedule) return;
+
+  const batchRows = await db
+    .select({
+      id: batches.id,
+      quantityRemaining: batches.quantityRemaining,
+      expiryDate: batches.expiryDate,
+      expiryPrecision: batches.expiryPrecision,
+      openedAt: batches.openedAt,
+      status: batches.status,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .where(and(eq(variants.productId, schedule.productId), eq(batches.status, 'in_stock')));
+
+  const fefoBatches: FefoBatch[] = batchRows.map((b) => ({ ...b, hasExpiry: schedule.hasExpiry }));
+  const { allocations } = allocateFefo(fefoBatches, schedule.doseUnits, todayIso());
+  if (allocations.length === 0) return; // nothing in stock to take this from
+
+  for (const allocation of allocations) {
+    await db
+      .update(batches)
+      .set({
+        quantityRemaining: sql`max(0, round((${batches.quantityRemaining} - ${allocation.quantity}) * 100) / 100)`,
+        // Taking a dose implicitly opens the pack, same as the stock stepper.
+        openedAt: sql`coalesce(${batches.openedAt}, date('now'))`,
+        updatedAt: new Date(),
+      })
+      .where(eq(batches.id, allocation.batchId));
+
+    await db
+      .update(batches)
+      .set({ status: 'consumed' })
+      .where(sql`${batches.id} = ${allocation.batchId} and ${batches.quantityRemaining} <= 0`);
+
+    await db.insert(doseEvents).values({
+      scheduleId,
+      date,
+      occurrence,
+      batchId: allocation.batchId,
+      quantity: allocation.quantity,
+    });
+  }
+
+  refreshAll();
+}
+
+/** Un-confirm a dose, returning exactly what was taken to the batch it came from. */
+export async function undoDose(formData: FormData): Promise<void> {
+  const scheduleId = Number(formData.get('scheduleId'));
+  const date = String(formData.get('date') ?? '').trim();
+  const occurrence = Number(formData.get('occurrence'));
+  if (!Number.isInteger(scheduleId) || !date || !Number.isInteger(occurrence)) return;
+
+  const events = await db
+    .select({ id: doseEvents.id, batchId: doseEvents.batchId, quantity: doseEvents.quantity })
+    .from(doseEvents)
+    .where(
+      and(
+        eq(doseEvents.scheduleId, scheduleId),
+        eq(doseEvents.date, date),
+        eq(doseEvents.occurrence, occurrence),
+      ),
+    );
+
+  for (const event of events) {
+    await db
+      .update(batches)
+      .set({
+        quantityRemaining: sql`round((${batches.quantityRemaining} + ${event.quantity}) * 100) / 100`,
+        updatedAt: new Date(),
+      })
+      .where(eq(batches.id, event.batchId));
+
+    // Only resurrect a batch that was auto-retired by hitting zero — leave a
+    // deliberately discarded or expired batch exactly as the user left it.
+    await db
+      .update(batches)
+      .set({ status: 'in_stock' })
+      .where(and(eq(batches.id, event.batchId), eq(batches.status, 'consumed')));
+
+    await db.delete(doseEvents).where(eq(doseEvents.id, event.id));
+  }
+
   refreshAll();
 }
 

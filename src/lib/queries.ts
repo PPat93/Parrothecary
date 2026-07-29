@@ -4,6 +4,9 @@ import { and, asc, eq, inArray, isNotNull, isNull, like, or, sql } from 'drizzle
 import { db } from '@/db';
 import {
   batches,
+  doseEvents,
+  doseSchedules,
+  householdMembers,
   productSubstances,
   productSymptoms,
   products,
@@ -14,6 +17,7 @@ import {
   variantBarcodes,
   variants,
 } from '@/db/schema';
+import type { FefoBatch } from '@/domain/fefo';
 
 /**
  * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
@@ -570,4 +574,216 @@ export async function getShoppingItem(id: number): Promise<ShoppingRow | null> {
     .limit(1);
 
   return rows[0] ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Household members and dosing                                       */
+/* ------------------------------------------------------------------ */
+
+export interface HouseholdMemberRow {
+  id: number;
+  name: string;
+  notes: string | null;
+  archivedAt: Date | null;
+  activeScheduleCount: number;
+}
+
+export async function getHouseholdMembers(includeArchived = false): Promise<HouseholdMemberRow[]> {
+  return db
+    .select({
+      id: householdMembers.id,
+      name: householdMembers.name,
+      notes: householdMembers.notes,
+      archivedAt: householdMembers.archivedAt,
+      activeScheduleCount: sql<number>`count(distinct case when ${doseSchedules.archivedAt} is null then ${doseSchedules.id} end)`,
+    })
+    .from(householdMembers)
+    .leftJoin(doseSchedules, eq(doseSchedules.memberId, householdMembers.id))
+    .where(
+      includeArchived ? isNotNull(householdMembers.archivedAt) : isNull(householdMembers.archivedAt),
+    )
+    .groupBy(householdMembers.id)
+    .orderBy(sql`${householdMembers.name} collate nocase`);
+}
+
+export interface MemberScheduleRow {
+  id: number;
+  productId: number;
+  productName: string;
+  productStrength: string | null;
+  unitName: string;
+  doseUnits: number;
+  timesPerDay: number;
+  startDate: string;
+  endDate: string | null;
+  notes: string | null;
+}
+
+export interface HouseholdMemberDetail extends HouseholdMemberRow {
+  /**
+   * True if ANY schedule this person ever had — including ones already
+   * removed — logged a confirmed dose. Removing a schedule with history
+   * archives rather than deletes it (see removeSchedule), so this has to look
+   * past what is currently shown to guard the member-level delete correctly.
+   */
+  hasDoseEvents: boolean;
+  /** Only schedules still in effect — a removed one simply does not show. */
+  schedules: MemberScheduleRow[];
+}
+
+export async function getHouseholdMember(id: number): Promise<HouseholdMemberDetail | null> {
+  const rows = await db
+    .select()
+    .from(householdMembers)
+    .where(eq(householdMembers.id, id))
+    .limit(1);
+  const member = rows[0];
+  if (!member) return null;
+
+  const scheduleRows = await db
+    .select({
+      id: doseSchedules.id,
+      productId: products.id,
+      productName: products.name,
+      productStrength: products.strength,
+      unitName: products.unitName,
+      doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+      startDate: doseSchedules.startDate,
+      endDate: doseSchedules.endDate,
+      notes: doseSchedules.notes,
+    })
+    .from(doseSchedules)
+    .innerJoin(products, eq(doseSchedules.productId, products.id))
+    .where(and(eq(doseSchedules.memberId, id), isNull(doseSchedules.archivedAt)))
+    .orderBy(sql`${products.name} collate nocase`);
+
+  // Deliberately over ALL schedules, including already-removed ones — a
+  // schedule that logged doses and was then removed still means this person
+  // has real history, which is what blocks a permanent delete.
+  const allScheduleIds = (
+    await db.select({ id: doseSchedules.id }).from(doseSchedules).where(eq(doseSchedules.memberId, id))
+  ).map((s) => s.id);
+
+  const hasDoseEvents = allScheduleIds.length
+    ? (
+        await db
+          .select({ id: doseEvents.id })
+          .from(doseEvents)
+          .where(inArray(doseEvents.scheduleId, allScheduleIds))
+          .limit(1)
+      ).length > 0
+    : false;
+
+  return {
+    id: member.id,
+    name: member.name,
+    notes: member.notes,
+    archivedAt: member.archivedAt,
+    activeScheduleCount: scheduleRows.length,
+    hasDoseEvents,
+    schedules: scheduleRows,
+  };
+}
+
+export interface DoseScheduleBoardRow {
+  scheduleId: number;
+  memberId: number;
+  memberName: string;
+  productId: number;
+  productName: string;
+  productStrength: string | null;
+  unitName: string;
+  doseUnits: number;
+  timesPerDay: number;
+  startDate: string;
+  endDate: string | null;
+}
+
+/** Every active schedule, for every active member — the "today" board. */
+export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> {
+  return db
+    .select({
+      scheduleId: doseSchedules.id,
+      memberId: householdMembers.id,
+      memberName: householdMembers.name,
+      productId: products.id,
+      productName: products.name,
+      productStrength: products.strength,
+      unitName: products.unitName,
+      doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+      startDate: doseSchedules.startDate,
+      endDate: doseSchedules.endDate,
+    })
+    .from(doseSchedules)
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .innerJoin(products, eq(doseSchedules.productId, products.id))
+    .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)))
+    .orderBy(sql`${householdMembers.name} collate nocase`, sql`${products.name} collate nocase`);
+}
+
+/**
+ * Batches for a set of products, in the shape domain/fefo already understands.
+ * Lets the doses board answer "is there actually anything to confirm this
+ * against" using the same rules FEFO itself uses, rather than a second,
+ * possibly-diverging definition of "in stock".
+ */
+export async function getBatchesForProducts(
+  productIds: number[],
+): Promise<Map<number, FefoBatch[]>> {
+  const map = new Map<number, FefoBatch[]>();
+  if (productIds.length === 0) return map;
+
+  const rows = await db
+    .select({
+      id: batches.id,
+      quantityRemaining: batches.quantityRemaining,
+      expiryDate: batches.expiryDate,
+      expiryPrecision: batches.expiryPrecision,
+      openedAt: batches.openedAt,
+      status: batches.status,
+      hasExpiry: products.hasExpiry,
+      productId: variants.productId,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(inArray(variants.productId, productIds));
+
+  for (const { productId, ...batch } of rows) {
+    const list = map.get(productId);
+    if (list) list.push(batch);
+    else map.set(productId, [batch]);
+  }
+  return map;
+}
+
+/**
+ * Confirmed occurrences for a set of schedules, on or after `since`. Keyed
+ * "scheduleId:date" so the board can look up a schedule+day pair in one hop.
+ */
+export async function getTakenOccurrences(
+  scheduleIds: number[],
+  since: string,
+): Promise<Map<string, Set<number>>> {
+  const map = new Map<string, Set<number>>();
+  if (scheduleIds.length === 0) return map;
+
+  const rows = await db
+    .selectDistinct({
+      scheduleId: doseEvents.scheduleId,
+      date: doseEvents.date,
+      occurrence: doseEvents.occurrence,
+    })
+    .from(doseEvents)
+    .where(and(inArray(doseEvents.scheduleId, scheduleIds), sql`${doseEvents.date} >= ${since}`));
+
+  for (const row of rows) {
+    const key = `${row.scheduleId}:${row.date}`;
+    const set = map.get(key);
+    if (set) set.add(row.occurrence);
+    else map.set(key, new Set([row.occurrence]));
+  }
+  return map;
 }
