@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ActionButton, type Tone } from '@/components/action-button';
 import { ConfirmButton } from '@/components/confirm-button';
 import { SHOPPING_STATUSES, TERMINAL_SHOPPING_STATUSES } from '@/db/schema';
-import { getShoppingList, getVariantOptions, type ShoppingRow } from '@/lib/queries';
+import { getShoppingList, getTripOptions, getVariantOptions, type ShoppingRow } from '@/lib/queries';
 import { removeShoppingItem, setShoppingStatus } from '../actions';
 import { AddShoppingForm } from './add-form';
 
@@ -31,7 +31,11 @@ const STAGES: { status: (typeof SHOPPING_STATUSES)[number]; title: string; blurb
 const ACTIVE_STAGES = STAGES.filter((s) => !TERMINAL_SHOPPING_STATUSES.some((t) => t === s.status));
 
 export default async function ShoppingPage() {
-  const [items, variants] = await Promise.all([getShoppingList(), getVariantOptions()]);
+  const [items, variants, trips] = await Promise.all([
+    getShoppingList(),
+    getVariantOptions(),
+    getTripOptions(),
+  ]);
 
   const byStatus = new Map<string, ShoppingRow[]>();
   for (const item of items) {
@@ -60,7 +64,7 @@ export default async function ShoppingPage() {
         >
           <summary className="cursor-pointer text-sm font-medium">Add an item</summary>
           <div className="mt-3">
-            <AddShoppingForm variants={variants} />
+            <AddShoppingForm variants={variants} trips={trips} />
           </div>
         </details>
       )}
@@ -110,6 +114,21 @@ export default async function ShoppingPage() {
                       </p>
                       <p className="text-xs" style={{ color: 'var(--muted)' }}>
                         {item.packLabel ?? `${item.packSize} ${item.unitName}`}
+                        {/* Which restock this belongs to. Absent means bought
+                            locally, which is a real answer, so it says so. */}
+                        {item.tripLabel ? (
+                          <>
+                            {' · '}
+                            <Link
+                              href={`/trips/${item.tripId}`}
+                              className="underline underline-offset-2"
+                            >
+                              {item.tripLabel}
+                            </Link>
+                          </>
+                        ) : (
+                          ' · no trip'
+                        )}
                       </p>
                       {/* Own line, wrapping: notes are free text and get long. */}
                       {item.notes ? (

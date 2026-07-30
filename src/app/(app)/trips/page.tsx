@@ -9,7 +9,9 @@ export default async function TripsPage() {
   const trips = await getTrips();
 
   const planned = trips.filter((t) => t.status === 'planned');
-  const completed = trips.filter((t) => t.status === 'completed');
+  // Soonest-first is right for what is coming; for what is done, the most
+  // recent is the one you actually want to look back at.
+  const completed = trips.filter((t) => t.status === 'completed').reverse();
 
   return (
     <div className="mx-auto w-full max-w-2xl">

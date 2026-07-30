@@ -10,8 +10,14 @@ import { formatQuantity } from '@/domain/quantity';
 import { unitsDueBetween } from '@/domain/dosing';
 import { unitsShort } from '@/domain/runout';
 import { daysUntilOrderBy } from '@/domain/trip';
-import { getBatchesForProducts, getScheduledProducts, getTrip } from '@/lib/queries';
-import { deleteTrip, setTripStatus } from '../../actions';
+import {
+  getBatchesForProducts,
+  getScheduledProducts,
+  getTrip,
+  getUnassignedShoppingItems,
+} from '@/lib/queries';
+import { deleteTrip, setShoppingTrip, setTripStatus } from '../../actions';
+import { ActionButton } from '@/components/action-button';
 
 export default async function TripPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,7 +25,10 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   if (!trip) notFound();
 
   const today = todayIso();
-  const scheduled = await getScheduledProducts();
+  const [scheduled, unassigned] = await Promise.all([
+    getScheduledProducts(),
+    getUnassignedShoppingItems(),
+  ]);
   const stock = await getBatchesForProducts(scheduled.map((p) => p.productId));
 
   /*
@@ -82,8 +91,24 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         {trip.notes ? <Row label="Notes" value={trip.notes} /> : null}
       </Section>
 
-      <Section title="Runs out before this trip">
-        {shortfalls.length === 0 ? (
+      {/*
+        Planning only. A collected trip cannot be planned for, and projecting to
+        a date in the past reported "everything lasts past 2025-10-15" — true,
+        and useless. Reopening the trip brings this back.
+      */}
+      {trip.status === 'planned' ? (
+        <Section title="Runs out before this trip">
+        {deadline < today ? (
+          /*
+           * Both dates are behind us on a trip still marked planned. Projecting
+           * to a past date returns nothing due, which renders as "nothing to
+           * order" — a confident wrong answer. Say what is actually wrong.
+           */
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            This trip’s dates have all passed. Mark it collected, or move the dates forward, and
+            the projection will mean something again.
+          </p>
+        ) : shortfalls.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--muted)' }}>
             {scheduled.length === 0
               ? 'Nobody is on a regular dose, so there is nothing to project. This list is built from dose schedules.'
@@ -135,7 +160,8 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
             </ul>
           </>
         )}
-      </Section>
+        </Section>
+      ) : null}
 
       <Section title="On the list for this trip">
         {trip.items.length === 0 ? (
@@ -169,11 +195,76 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                     {item.status}
                   </p>
                 </div>
+
+                <form action={setShoppingTrip} className="shrink-0">
+                  <input type="hidden" name="id" value={item.id} />
+                  <input type="hidden" name="tripId" value="" />
+                  <ActionButton
+                    tone="warning"
+                    variant="outline"
+                    title="Take this off the trip — the line itself stays on the shopping list"
+                    className="rounded-lg border px-2.5 py-1 text-xs"
+                  >
+                    Unassign
+                  </ActionButton>
+                </form>
               </li>
             ))}
           </ul>
         )}
       </Section>
+
+      {/*
+        Planned trips only, matching getTripOptions: attaching a purchase to a
+        restock that already happened is nearly always a mistake, so it is not
+        offered in either place.
+      */}
+      {trip.status === 'planned' && unassigned.length > 0 ? (
+        <Section title="Not on any trip">
+          <p className="mb-3 text-xs" style={{ color: 'var(--muted)' }}>
+            Already on the shopping list but not tied to a restock. Attach anything you mean to
+            order for this one.
+          </p>
+          <ul className="flex flex-col gap-2">
+            {unassigned.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center gap-3 rounded-xl border p-2.5"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {item.name}
+                    {item.strength ? (
+                      <span className="font-normal" style={{ color: 'var(--muted)' }}>
+                        {' '}
+                        {item.strength}
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                    {item.quantityPacks} × {item.packLabel ?? `${item.packSize} ${item.unitName}`} ·{' '}
+                    {item.status}
+                  </p>
+                </div>
+
+                <form action={setShoppingTrip} className="shrink-0">
+                  <input type="hidden" name="id" value={item.id} />
+                  <input type="hidden" name="tripId" value={trip.id} />
+                  <ActionButton
+                    tone="accent"
+                    variant="outline"
+                    title="Assign to this trip"
+                    className="rounded-lg border px-2.5 py-1 text-xs"
+                  >
+                    Add to trip
+                  </ActionButton>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
 
       <div className="mt-6 flex flex-col items-center gap-3">
         <form action={setTripStatus}>

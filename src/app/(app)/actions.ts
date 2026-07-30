@@ -11,6 +11,7 @@ import {
   CURRENCIES,
   DOSE_FORMS,
   SHOPPING_STATUSES,
+  TERMINAL_SHOPPING_STATUSES,
   TRIP_STATUSES,
   UNIT_NAMES,
   batches,
@@ -566,11 +567,34 @@ export async function receiveShoppingItem(
   formData: FormData,
 ): Promise<FormResult> {
   const itemId = Number(formData.get('itemId'));
-  const variantId = Number(formData.get('variantId'));
   const fail = (error: string): FormResult => ({ error, values: snapshot(formData) });
 
-  if (!Number.isInteger(itemId) || !Number.isInteger(variantId)) {
+  if (!Number.isInteger(itemId)) {
     return fail('That shopping item no longer exists.');
+  }
+
+  /*
+   * Re-read the line rather than trusting the form, and refuse one that has
+   * already been received. Without this, resubmitting the page — a back button,
+   * a bookmark, a double tap before the redirect lands — created a second box
+   * in the cupboard and left the first one orphaned from its shopping line.
+   *
+   * The variant comes from the line too. It decides which product the new box
+   * belongs to, and that is not something a stale form should get to choose.
+   */
+  const itemRows = await db
+    .select({ variantId: shoppingItems.variantId, status: shoppingItems.status })
+    .from(shoppingItems)
+    .where(eq(shoppingItems.id, itemId))
+    .limit(1);
+
+  const item = itemRows[0];
+  if (!item) return fail('That shopping item no longer exists.');
+  if (item.status === 'in_stock') {
+    return fail('This one is already in the cupboard — it was received before.');
+  }
+  if (item.status === 'not_received') {
+    return fail('This line is marked as never arrived. Move it back into the flow first.');
   }
 
   const parsed = parseBatchFields(formData);
@@ -578,7 +602,7 @@ export async function receiveShoppingItem(
 
   const inserted = await db
     .insert(batches)
-    .values({ variantId, ...parsed.fields })
+    .values({ variantId: item.variantId, ...parsed.fields })
     .returning({ id: batches.id });
 
   const batchId = inserted[0]?.id;
@@ -864,6 +888,7 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
   const variantId = Number(formData.get('variantId'));
   const quantityPacks = Number(formData.get('quantityPacks') ?? 1);
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
+  const tripId = await parseTripId(formData.get('tripId'));
 
   if (!Number.isInteger(variantId)) {
     return { error: 'Pick which pack to buy.', values: snapshot(formData) };
@@ -875,9 +900,43 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
     };
   }
 
-  await db.insert(shoppingItems).values({ variantId, quantityPacks, notes });
+  await db.insert(shoppingItems).values({ variantId, quantityPacks, notes, tripId });
   refreshAll();
   return { error: null, ok: true };
+}
+
+/**
+ * Empty means "no trip", which is a real answer rather than a missing one —
+ * the Solgar was bought locally in Ireland, outside any restock trip.
+ *
+ * The trip is checked to still exist, not merely to be a number. Two phones
+ * share this app: one can delete a trip while the other has the shopping form
+ * open, and `trip_id` is a real foreign key, so writing a stale id throws
+ * SQLITE_CONSTRAINT_FOREIGNKEY and the form dies with a crash page. Falling
+ * back to "no trip" loses only the association, which the trip page can restore
+ * in one tap.
+ */
+async function parseTripId(raw: FormDataEntryValue | null): Promise<number | null> {
+  const value = String(raw ?? '').trim();
+  if (value === '') return null;
+
+  const id = Number(value);
+  if (!Number.isInteger(id)) return null;
+
+  const rows = await db.select({ id: trips.id }).from(trips).where(eq(trips.id, id)).limit(1);
+  return rows[0]?.id ?? null;
+}
+
+/** Move a line to another trip, or off trips entirely. */
+export async function setShoppingTrip(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  await db
+    .update(shoppingItems)
+    .set({ tripId: await parseTripId(formData.get('tripId')), updatedAt: new Date() })
+    .where(eq(shoppingItems.id, id));
+  refreshAll();
 }
 
 export async function setShoppingStatus(formData: FormData): Promise<void> {
@@ -885,6 +944,23 @@ export async function setShoppingStatus(formData: FormData): Promise<void> {
   const status = String(formData.get('status'));
   if (!Number.isInteger(id)) return;
   if (!SHOPPING_STATUSES.some((s) => s === status)) return;
+
+  /*
+   * Settled lines do not move. The list already stops offering the arrows once
+   * something is in the cupboard or recorded as never-arrived, and the server
+   * has to agree: dragging an in_stock line back to "to buy" would leave a real
+   * box in the cupboard attached to a line pretending it was never bought.
+   * Clearing the line is the way out, not walking it backwards.
+   */
+  const rows = await db
+    .select({ status: shoppingItems.status })
+    .from(shoppingItems)
+    .where(eq(shoppingItems.id, id))
+    .limit(1);
+
+  const current = rows[0]?.status;
+  if (current === undefined) return;
+  if (TERMINAL_SHOPPING_STATUSES.some((s) => s === current)) return;
 
   await db
     .update(shoppingItems)

@@ -1142,3 +1142,48 @@ export async function getScheduledProducts(): Promise<ScheduledProduct[]> {
   }
   return [...map.values()];
 }
+
+export interface TripOption {
+  id: number;
+  label: string;
+  collectionDate: string;
+}
+
+/**
+ * Trips a new purchase could belong to — planned ones only, soonest first.
+ *
+ * The first entry is the sensible default for anything added today: with two or
+ * three restocks a year, almost everything you put on the list is for the next
+ * one. Completed trips are excluded because assigning a purchase to a trip that
+ * already happened is nearly always a mistake; the trip page can still be
+ * edited if it genuinely was one.
+ */
+export async function getTripOptions(): Promise<TripOption[]> {
+  return db
+    .select({ id: trips.id, label: trips.label, collectionDate: trips.collectionDate })
+    .from(trips)
+    .where(eq(trips.status, 'planned'))
+    .orderBy(asc(trips.collectionDate));
+}
+
+/**
+ * Lines not yet attached to any trip, and still in play.
+ *
+ * Terminal lines are excluded: something already in the cupboard or recorded as
+ * never-arrived has no business being reassigned to a future trip.
+ */
+export async function getUnassignedShoppingItems(): Promise<ShoppingRow[]> {
+  return db
+    .select(shoppingSelection)
+    .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .leftJoin(trips, eq(shoppingItems.tripId, trips.id))
+    .where(
+      and(
+        isNull(shoppingItems.tripId),
+        inArray(shoppingItems.status, ['to_buy', 'ordered', 'arrived']),
+      ),
+    )
+    .orderBy(byName);
+}
