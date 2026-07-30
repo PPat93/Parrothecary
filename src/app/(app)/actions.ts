@@ -31,6 +31,7 @@ import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { deletePhoto, savePhoto } from '@/lib/photos';
 import { findVariantByBarcode } from '@/lib/queries';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
+import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
 import { parseAmount } from '@/domain/money';
 import { endSession } from '@/lib/session';
 
@@ -122,14 +123,14 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
 
   // Distinguish missing from invalid: telling someone a filled-in field is
   // "required" sends them looking for a blank box that is not there.
-  const packSize = Number(data.packSize ?? '');
+  const packSize = parseUnits(data.packSize ?? '');
   if (data.packSize === null) {
     return {
       error: 'Pack size is required — how many units are in one sealed pack?',
       values: snapshot(formData),
     };
   }
-  if (!Number.isFinite(packSize) || packSize <= 0) {
+  if (packSize === null || packSize <= 0) {
     return {
       error: `"${data.packSize}" is not a valid pack size. Enter a positive number, like 60.`,
       values: snapshot(formData),
@@ -436,11 +437,11 @@ export async function archiveProduct(formData: FormData): Promise<void> {
 
 export async function createVariant(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const productId = Number(formData.get('productId'));
-  const packSize = Number(formData.get('packSize'));
+  const packSize = parseUnits(String(formData.get('packSize') ?? ''));
   const packLabel = emptyToNull(String(formData.get('packLabel') ?? '').trim());
 
   if (!Number.isInteger(productId)) return { error: 'Pick a product.' };
-  if (!Number.isFinite(packSize) || packSize <= 0) {
+  if (packSize === null || packSize <= 0) {
     return { error: 'Pack size must be a positive number.', values: snapshot(formData) };
   }
 
@@ -490,9 +491,9 @@ interface BatchFields {
  * physical thing arriving in the house, so they parse identically.
  */
 function parseBatchFields(formData: FormData): { fields: BatchFields } | { error: string } {
-  const quantity = Number(String(formData.get('quantityRemaining') ?? '').trim());
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    return { error: 'Quantity must be a positive number.' };
+  const quantity = parseUnits(String(formData.get('quantityRemaining') ?? ''));
+  if (quantity === null || quantity <= 0) {
+    return { error: 'Quantity must be a positive number — 30, 32.5 or 32,5 all work.' };
   }
 
   let expiryDate: string | null = null;
@@ -989,7 +990,7 @@ export async function deleteMember(formData: FormData): Promise<void> {
 export async function createSchedule(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const memberId = Number(formData.get('memberId'));
   const productId = Number(formData.get('productId'));
-  const doseUnits = Number(formData.get('doseUnits'));
+  const doseUnits = parseUnits(String(formData.get('doseUnits') ?? ''));
   const timesPerDay = Number(formData.get('timesPerDay') || 1);
   const intervalDays = Number(formData.get('intervalDays') || 1);
   const startDate = String(formData.get('startDate') ?? '').trim();
@@ -1000,8 +1001,18 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
 
   if (!Number.isInteger(memberId)) return fail('Unknown person.');
   if (!Number.isInteger(productId)) return fail('Pick what is being taken.');
-  if (!Number.isFinite(doseUnits) || doseUnits <= 0) {
-    return fail('Dose per time must be a positive number.');
+  if (doseUnits === null || doseUnits <= 0) {
+    return fail('Dose per time must be a positive number — 1, 0.5 or 0,5 all work.');
+  }
+  /*
+   * Refused rather than rounded. Quantities are stored to two decimals, so an
+   * eighth of a tablet would leave 0.04 of it behind after eight doses — the
+   * kind of quiet arithmetic error that makes someone stop trusting the counts.
+   */
+  if (!isTrackableQuantity(doseUnits)) {
+    return fail(
+      `Doses are tracked to ${UNIT_PRECISION} of a unit. ${doseUnits} is finer than that — round it, or record the dose in a smaller unit.`,
+    );
   }
   if (!Number.isInteger(timesPerDay) || timesPerDay < 1) {
     return fail('Times per day must be a whole number, at least 1.');

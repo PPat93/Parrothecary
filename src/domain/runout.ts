@@ -53,7 +53,18 @@ export function projectRunOut(
 ): RunOutProjection | null {
   if (dailyRate <= 0) return null;
 
-  const daysRemaining = Math.max(0, Math.floor(totalUnitsAvailable / dailyRate));
+  /*
+   * Snapped before flooring. A fractional rate makes the quotient land a hair
+   * under a whole number — three quarter-tablets a day over a week gives
+   * 2.25 / 0.32142857… = 6.999999999999999, which floors to 6 and reports a day
+   * less of supply than there is. Always in that direction, so it under-reports
+   * rather than over, but it is still wrong and it only shows up once doses stop
+   * being whole numbers.
+   */
+  const days = totalUnitsAvailable / dailyRate;
+  const snapped = Math.abs(days - Math.round(days)) < 1e-9 ? Math.round(days) : days;
+
+  const daysRemaining = Math.max(0, Math.floor(snapped));
   return { daysRemaining, runOutDate: addDays(today, daysRemaining) };
 }
 

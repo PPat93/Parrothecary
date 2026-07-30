@@ -82,3 +82,25 @@ describe('runOutSeverity', () => {
     expect(runOutSeverity({ daysRemaining: 5, runOutDate: TODAY }, tight)).toBe('critical');
   });
 });
+
+describe('projectRunOut — fractional rates', () => {
+  it('does not lose a day to float error on a fractional rate', () => {
+    // Three quarter-tablets a week: 2.25 / (2.25/7) is 6.999999999999999 in
+    // floating point, which floored to 6 before this was snapped.
+    const rate = scheduleDailyRate({ doseUnits: 0.75, timesPerDay: 3, intervalDays: 7 });
+    expect(projectRunOut(2.25, rate, TODAY)?.daysRemaining).toBe(7);
+    expect(projectRunOut(4.5, rate, TODAY)?.daysRemaining).toBe(14);
+    expect(projectRunOut(9, rate, TODAY)?.daysRemaining).toBe(28);
+  });
+
+  it('still floors a genuinely partial day', () => {
+    // Snapping must not become rounding: 6.5 days of supply is 6 whole days.
+    expect(projectRunOut(3.25, 0.5, TODAY)?.daysRemaining).toBe(6);
+    expect(projectRunOut(9.9, 1, TODAY)?.daysRemaining).toBe(9);
+  });
+
+  it('handles a half-tablet daily dose', () => {
+    const rate = scheduleDailyRate({ doseUnits: 0.5, timesPerDay: 1, intervalDays: 1 });
+    expect(projectRunOut(30, rate, TODAY)?.daysRemaining).toBe(60);
+  });
+});
