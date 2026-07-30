@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { TripUrgencyBadge } from '@/components/trip-urgency-badge';
 import { todayIso } from '@/domain/date';
+import { formatMoney, money } from '@/domain/money';
 import { getTrips } from '@/lib/queries';
 
 export default async function TripsPage() {
@@ -78,6 +79,9 @@ function Section({
                   {trip.itemCount > 0
                     ? ` · ${trip.itemCount} ${trip.itemCount === 1 ? 'item' : 'items'}`
                     : ' · nothing on the list yet'}
+                  {trip.spentMinorEur > 0
+                    ? ` · ${formatMoney(money(trip.spentMinorEur, 'EUR'), { showCurrency: true })}`
+                    : ''}
                 </p>
               </div>
 

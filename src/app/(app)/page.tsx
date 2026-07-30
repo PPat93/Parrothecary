@@ -7,6 +7,7 @@ import { SearchBox } from '@/components/search-box';
 import { SymptomTags } from '@/components/symptom-tags';
 import { todayIso } from '@/domain/date';
 import { totalAvailable } from '@/domain/fefo';
+import { formatMoney, money } from '@/domain/money';
 import { formatQuantity } from '@/domain/quantity';
 import { projectRunOut } from '@/domain/runout';
 import {
@@ -14,6 +15,7 @@ import {
   getProductDailyRates,
   getProductSymptoms,
   getStock,
+  getStockValue,
   groupByProduct,
   toExpiryInput,
 } from '@/lib/queries';
@@ -27,10 +29,11 @@ export default async function StockPage({
   const { q } = await searchParams;
   const search = q ?? '';
   const today = todayIso();
-  const [rows, symptomsByProduct, dailyRates] = await Promise.all([
+  const [rows, symptomsByProduct, dailyRates, value] = await Promise.all([
     getStock(search),
     getProductSymptoms(),
     getProductDailyRates(),
+    getStockValue(),
   ]);
   const groups = groupByProduct(rows, today);
 
@@ -173,6 +176,19 @@ export default async function StockPage({
           })}
         </ul>
       )}
+
+      {/* What is sitting in those drawers, at what it cost. Prorated by what is
+          left in each box — the number that makes over-buying visible. */}
+      {value.minorEur > 0 && !search ? (
+        <p className="mt-6 text-center text-xs" style={{ color: 'var(--muted)' }}>
+          In the cupboard: {formatMoney(money(value.minorEur, 'EUR'), { showCurrency: true })} of
+          stock at what it cost
+          {value.unpricedBoxes > 0
+            ? `, plus ${value.unpricedBoxes} ${value.unpricedBoxes === 1 ? 'box' : 'boxes'} with no price recorded`
+            : ''}
+          .
+        </p>
+      ) : null}
     </div>
   );
 }

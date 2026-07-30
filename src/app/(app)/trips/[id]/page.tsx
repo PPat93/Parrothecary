@@ -6,6 +6,7 @@ import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { TripUrgencyBadge } from '@/components/trip-urgency-badge';
 import { todayIso } from '@/domain/date';
 import { totalAvailable } from '@/domain/fefo';
+import { formatMoney, money } from '@/domain/money';
 import { formatQuantity } from '@/domain/quantity';
 import { unitsDueBetween } from '@/domain/dosing';
 import { unitsShort } from '@/domain/runout';
@@ -14,6 +15,7 @@ import {
   getBatchesForProducts,
   getScheduledProducts,
   getTrip,
+  getTripMoney,
   getUnassignedShoppingItems,
 } from '@/lib/queries';
 import { shoppingStatusLabel } from '@/lib/labels';
@@ -26,9 +28,10 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   if (!trip) notFound();
 
   const today = todayIso();
-  const [scheduled, unassigned] = await Promise.all([
+  const [scheduled, unassigned, spend] = await Promise.all([
     getScheduledProducts(),
     getUnassignedShoppingItems(),
+    getTripMoney(Number(id)),
   ]);
   const stock = await getBatchesForProducts(scheduled.map((p) => p.productId));
 
@@ -90,6 +93,46 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
           <Row label="Status" value="collected" />
         )}
         {trip.notes ? <Row label="Notes" value={trip.notes} /> : null}
+      </Section>
+
+      <Section title="What it cost">
+        {spend.spentBoxes === 0 && spend.estimatedLines === 0 && spend.unpricedLines === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            Nothing bought or listed for this trip yet.
+          </p>
+        ) : (
+          <>
+            {spend.spentBoxes > 0 ? (
+              <Row
+                label="Spent"
+                value={`${formatMoney(money(spend.spentMinorEur, 'EUR'), { showCurrency: true })} · ${spend.spentBoxes} ${spend.spentBoxes === 1 ? 'box' : 'boxes'} received`}
+              />
+            ) : null}
+
+            {spend.estimatedLines > 0 ? (
+              <Row
+                label="Still to buy"
+                value={`about ${formatMoney(money(spend.estimatedMinorEur, 'EUR'), { showCurrency: true })} · ${spend.estimatedLines} ${spend.estimatedLines === 1 ? 'line' : 'lines'}`}
+              />
+            ) : null}
+
+            {/* Never folded into the estimate — a total that quietly leaves
+                lines out reads as complete and is not. */}
+            {spend.unpricedLines > 0 ? (
+              <p className="pt-1 text-xs" style={{ color: 'var(--muted)' }}>
+                {spend.unpricedLines} more {spend.unpricedLines === 1 ? 'line has' : 'lines have'} no
+                price on record, so {spend.unpricedLines === 1 ? 'it is' : 'they are'} not in that
+                estimate.
+              </p>
+            ) : null}
+
+            {spend.estimatedLines > 0 ? (
+              <p className="pt-1 text-xs" style={{ color: 'var(--muted)' }}>
+                Estimated from what each was last bought for, converted at the rate recorded then.
+              </p>
+            ) : null}
+          </>
+        )}
       </Section>
 
       {/*
