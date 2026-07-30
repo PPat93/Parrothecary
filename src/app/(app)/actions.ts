@@ -30,7 +30,7 @@ import { todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { deletePhoto, savePhoto } from '@/lib/photos';
 import { findVariantByBarcode } from '@/lib/queries';
-import { normaliseExpiry } from '@/domain/expiry';
+import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
 import { parseAmount } from '@/domain/money';
 import { endSession } from '@/lib/session';
 
@@ -68,6 +68,19 @@ const productSchema = z.object({
   isPrescription: z.coerce.boolean(),
   hasExpiry: z.coerce.boolean(),
   /*
+   * Blank means zero — no tolerance past the printed date. That has to be the
+   * default: a field left alone must never quietly extend how long something
+   * is treated as safe to take.
+   */
+  expiryGraceDays: optionalText.transform((value, ctx) => {
+    const result = parseGraceDays(value);
+    if (!result.ok) {
+      ctx.addIssue(result.message);
+      return z.NEVER;
+    }
+    return result.days;
+  }),
+  /*
    * Required, not optional. A product with no pack cannot receive a box and
    * cannot be put on a shopping list, so it can only ever be archived — a dead
    * end that was easy to create and easy to miss.
@@ -90,6 +103,7 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
     notes: formData.get('notes'),
     isPrescription: formData.get('isPrescription') === 'on',
     hasExpiry: formData.get('hasExpiry') === 'on',
+    expiryGraceDays: formData.get('expiryGraceDays'),
     packSize: formData.get('packSize'),
     packLabel: formData.get('packLabel'),
     substance: formData.get('substance'),
@@ -134,6 +148,7 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
       notes: data.notes,
       isPrescription: data.isPrescription,
       hasExpiry: data.hasExpiry,
+      expiryGraceDays: data.expiryGraceDays,
     })
     .returning({ id: products.id });
 
@@ -312,6 +327,7 @@ export async function updateProduct(_prev: FormResult, formData: FormData): Prom
     notes: formData.get('notes'),
     isPrescription: formData.get('isPrescription') === 'on',
     hasExpiry: formData.get('hasExpiry') === 'on',
+    expiryGraceDays: formData.get('expiryGraceDays'),
   });
 
   if (!parsed.success) {
@@ -629,11 +645,16 @@ export async function resolveScan(raw: string, format?: string): Promise<ScanRes
     variantId: variant?.id ?? null,
     variantLabel: variant?.productLabel ?? null,
     // Re-formatted the way the expiry field expects it, so it can be dropped
-    // straight into the form.
+    // straight into the form. Grace is irrelevant to how a date is written, but
+    // this goes through formatExpiry rather than slicing the string by hand so
+    // there is only one definition of what an expiry looks like on screen.
     expiry: parsed.expiryDate
-      ? parsed.expiryPrecision === 'month'
-        ? `${parsed.expiryDate.slice(5, 7)}.${parsed.expiryDate.slice(0, 4)}`
-        : `${parsed.expiryDate.slice(8, 10)}.${parsed.expiryDate.slice(5, 7)}.${parsed.expiryDate.slice(0, 4)}`
+      ? formatExpiry({
+          expiryDate: parsed.expiryDate,
+          precision: parsed.expiryPrecision,
+          hasExpiry: true,
+          graceDays: 0,
+        })
       : null,
     lotNumber: parsed.lotNumber,
   };
@@ -1026,6 +1047,7 @@ export async function confirmDose(formData: FormData): Promise<void> {
       doseUnits: doseSchedules.doseUnits,
       productId: doseSchedules.productId,
       hasExpiry: products.hasExpiry,
+      expiryGraceDays: products.expiryGraceDays,
     })
     .from(doseSchedules)
     .innerJoin(products, eq(doseSchedules.productId, products.id))
@@ -1047,7 +1069,11 @@ export async function confirmDose(formData: FormData): Promise<void> {
     .innerJoin(variants, eq(batches.variantId, variants.id))
     .where(and(eq(variants.productId, schedule.productId), eq(batches.status, 'in_stock')));
 
-  const fefoBatches: FefoBatch[] = batchRows.map((b) => ({ ...b, hasExpiry: schedule.hasExpiry }));
+  const fefoBatches: FefoBatch[] = batchRows.map((b) => ({
+    ...b,
+    hasExpiry: schedule.hasExpiry,
+    expiryGraceDays: schedule.expiryGraceDays,
+  }));
   const { allocations } = allocateFefo(fefoBatches, schedule.doseUnits, todayIso());
   if (allocations.length === 0) return; // nothing in stock to take this from
 

@@ -1,6 +1,5 @@
 import type { IsoDate } from './date';
-import { differenceInDays } from './date';
-import type { ExpiryPrecision } from './expiry';
+import { isDosable, type ExpiryPrecision } from './expiry';
 
 /**
  * FEFO — First Expired, First Out. Which box do we open?
@@ -19,6 +18,13 @@ export interface FefoBatch {
   hasExpiry: boolean;
   openedAt: string | null;
   status: string;
+  /**
+   * Days past the printed date this product may still be dosed from. Comes
+   * from the product, denormalised onto the batch. Required rather than
+   * optional on purpose: a caller that forgets it should fail to compile, not
+   * silently widen the window.
+   */
+  expiryGraceDays: number;
 }
 
 export interface Allocation {
@@ -33,7 +39,11 @@ export interface AllocationPlan {
 }
 
 export interface FefoOptions {
-  /** Include batches already past their date. Off by default. */
+  /**
+   * Include batches past their usable window entirely, grace and all. Off by
+   * default. Not the same as the grace window — grace is the product's normal
+   * tolerance, this is an override on top of it.
+   */
   allowExpired?: boolean;
 }
 
@@ -47,7 +57,7 @@ export function sortByFefo(batches: FefoBatch[], today: IsoDate, options: FefoOp
   const usable = batches.filter((b) => {
     if (b.status !== 'in_stock') return false;
     if (b.quantityRemaining <= 0) return false;
-    if (!allowExpired && isExpired(b, today)) return false;
+    if (!allowExpired && !stillUsable(b, today)) return false;
     return true;
   });
 
@@ -103,16 +113,27 @@ export function nextBatchToOpen(
   return sortByFefo(batches, today, options)[0] ?? null;
 }
 
-/** Total usable units on hand, ignoring anything already expired. */
+/** Total usable units on hand, ignoring anything past its grace window. */
 export function totalAvailable(batches: FefoBatch[], today: IsoDate, options: FefoOptions = {}): number {
   return round(
     sortByFefo(batches, today, options).reduce((sum, b) => sum + b.quantityRemaining, 0),
   );
 }
 
-function isExpired(batch: FefoBatch, today: IsoDate): boolean {
-  if (!batch.hasExpiry || batch.expiryDate === null) return false;
-  return differenceInDays(today, batch.expiryDate) < 0;
+/**
+ * Whether this box may still be dosed from — delegated to `isDosable` rather
+ * than compared here, so allocation and every screen answer with one rule.
+ */
+function stillUsable(batch: FefoBatch, today: IsoDate): boolean {
+  return isDosable(
+    {
+      expiryDate: batch.expiryDate,
+      precision: batch.expiryPrecision,
+      hasExpiry: batch.hasExpiry,
+      graceDays: batch.expiryGraceDays,
+    },
+    today,
+  );
 }
 
 /** Sort key: non-expiring stock sorts last so perishable stock is used first. */

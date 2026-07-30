@@ -114,6 +114,19 @@ export const products = sqliteTable(
      */
     hasExpiry: integer('has_expiry', { mode: 'boolean' }).notNull().default(true),
 
+    /**
+     * How many days past the printed date this product is still considered
+     * usable for dosing. Per product, not global, and 0 by default — because
+     * an expiry date means different things for different things. Paracetamol
+     * tablets a month past date are fine; sterile saline, eye drops, an
+     * adrenaline pen or an antibiotic are not, and one shared constant could
+     * not tell them apart.
+     *
+     * Affects only what FEFO is willing to allocate. The expiry view still
+     * reports the box as expired, because it factually is.
+     */
+    expiryGraceDays: integer('expiry_grace_days').notNull().default(0),
+
     /** Photo of the box front, relative to the uploads directory. */
     photoPath: text('photo_path'),
     notes: text('notes'),

@@ -15,6 +15,7 @@ import {
   getProductSymptoms,
   getStock,
   groupByProduct,
+  toExpiryInput,
 } from '@/lib/queries';
 import { adjustBatch } from './actions';
 
@@ -31,7 +32,7 @@ export default async function StockPage({
     getProductSymptoms(),
     getProductDailyRates(),
   ]);
-  const groups = groupByProduct(rows);
+  const groups = groupByProduct(rows, today);
 
   // Only products with an active dose schedule get projected — a rate we
   // do not have is not a rate of zero, so this stays a separate lookup rather
@@ -89,8 +90,16 @@ export default async function StockPage({
                     </span>
                   ) : null}
                 </h2>
-                <span className="shrink-0 text-sm tabular-nums" style={{ color: 'var(--muted)' }}>
+                <span className="shrink-0 text-right text-sm tabular-nums" style={{ color: 'var(--muted)' }}>
                   {formatQuantity(group.totalUnits, group.unitName)}
+                  {/* Past-date stock is real and still in the cupboard, so it is
+                      not hidden — but it is never folded into the number that
+                      drives "do I need to buy more". */}
+                  {group.pastDateUnits > 0 ? (
+                    <span className="block text-xs" style={{ color: 'var(--color-warning)' }}>
+                      +{group.pastDateUnits} past date
+                    </span>
+                  ) : null}
                 </span>
               </div>
 
@@ -110,14 +119,7 @@ export default async function StockPage({
               <ul className="mt-3 flex flex-col gap-2">
                 {group.boxes.map((box) => (
                   <li key={box.batchId} className="flex flex-wrap items-center gap-2">
-                    <ExpiryBadge
-                      today={today}
-                      input={{
-                        expiryDate: box.expiryDate,
-                        precision: box.expiryPrecision,
-                        hasExpiry: box.hasExpiry,
-                      }}
-                    />
+                    <ExpiryBadge today={today} input={toExpiryInput(box)} />
 
                     <span className="min-w-0 flex-1 text-sm tabular-nums">
                       {formatQuantity(box.quantityRemaining, box.unitName, box.packSize)}

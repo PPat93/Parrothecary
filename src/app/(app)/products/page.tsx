@@ -106,10 +106,15 @@ export default async function ProductsPage({
                 </div>
 
                 <span
-                  className="shrink-0 text-sm tabular-nums"
+                  className="shrink-0 text-right text-sm tabular-nums"
                   style={{ color: 'var(--muted)' }}
                 >
                   {formatQuantity(row.inStockUnits, row.unitName)}
+                  {row.pastDateUnits > 0 ? (
+                    <span className="block text-xs" style={{ color: 'var(--color-warning)' }}>
+                      +{row.pastDateUnits} past date
+                    </span>
+                  ) : null}
                 </span>
 
                 <span aria-hidden style={{ color: 'var(--muted)' }}>

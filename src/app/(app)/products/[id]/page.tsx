@@ -112,7 +112,23 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         <Row label="Manufacturer" value={product.manufacturer ?? '—'} />
         <Row label="Prescription" value={product.isPrescription ? 'yes' : 'no'} />
         <Row label="Expires" value={product.hasExpiry ? 'yes' : 'no'} />
-        <Row label="In stock" value={formatQuantity(product.inStockUnits, product.unitName)} />
+        {product.hasExpiry ? (
+          <Row
+            label="Usable past date"
+            value={
+              product.expiryGraceDays > 0
+                ? `${product.expiryGraceDays} days — doses still come out of a box this far past its date`
+                : 'no — the printed date is the limit'
+            }
+          />
+        ) : null}
+        <Row
+          label="In stock"
+          value={
+            formatQuantity(product.inStockUnits, product.unitName) +
+            (product.pastDateUnits > 0 ? ` · plus ${product.pastDateUnits} past date` : '')
+          }
+        />
         {product.notes ? <Row label="Notes" value={product.notes} /> : null}
       </Section>
 
@@ -249,6 +265,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                             expiryDate: box.expiryDate,
                             precision: box.expiryPrecision,
                             hasExpiry: product.hasExpiry,
+                            graceDays: product.expiryGraceDays,
                           }}
                         />
                         <span className="text-sm tabular-nums">

@@ -3,11 +3,21 @@ import { ExpiryBadge } from '@/components/expiry-badge';
 import { todayIso } from '@/domain/date';
 import { daysUntilExpiry, expiryStatus, type ExpiryStatus } from '@/domain/expiry';
 import { formatQuantity } from '@/domain/quantity';
-import { getExpiringStock, type StockRow } from '@/lib/queries';
+import { getExpiringStock, toExpiryInput, type StockRow } from '@/lib/queries';
 import { setBatchStatus } from '../actions';
 
 const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
-  { status: 'expired', title: 'Expired', blurb: 'Past its date — bin it and record the waste.' },
+  {
+    status: 'expired',
+    title: 'Expired',
+    blurb: 'Past its date and past what it tolerates — bin it and record the waste.',
+  },
+  {
+    status: 'in_grace',
+    title: 'Past date, still in use',
+    blurb:
+      'Doses are still being taken from these. Bin one early whenever you would rather not use it.',
+  },
   {
     status: 'critical',
     title: 'Going soon',
@@ -22,10 +32,7 @@ export default async function ExpiringPage() {
 
   const byStatus = new Map<ExpiryStatus, StockRow[]>();
   for (const row of rows) {
-    const status = expiryStatus(
-      { expiryDate: row.expiryDate, precision: row.expiryPrecision, hasExpiry: row.hasExpiry },
-      today,
-    );
+    const status = expiryStatus(toExpiryInput(row), today);
     byStatus.set(status, [...(byStatus.get(status) ?? []), row]);
   }
 
@@ -57,14 +64,7 @@ export default async function ExpiringPage() {
 
                 <ul className="flex flex-col gap-2">
                   {items.map((row) => {
-                    const days = daysUntilExpiry(
-                      {
-                        expiryDate: row.expiryDate,
-                        precision: row.expiryPrecision,
-                        hasExpiry: row.hasExpiry,
-                      },
-                      today,
-                    );
+                    const days = daysUntilExpiry(toExpiryInput(row), today);
 
                     return (
                       <li
@@ -72,14 +72,7 @@ export default async function ExpiringPage() {
                         className="flex items-center gap-2 rounded-xl border p-3"
                         style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
                       >
-                        <ExpiryBadge
-                          today={today}
-                          input={{
-                            expiryDate: row.expiryDate,
-                            precision: row.expiryPrecision,
-                            hasExpiry: row.hasExpiry,
-                          }}
-                        />
+                        <ExpiryBadge today={today} input={toExpiryInput(row)} />
 
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">

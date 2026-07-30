@@ -103,6 +103,18 @@ export function ProductForm({
         defaultChecked={submitted ? prev.hasExpiry === 'on' : true}
       />
 
+      <Field
+        label="Still usable past its date (days)"
+        hint="Leave blank for none. 60 suits paracetamol tablets; keep it at zero for eye drops, sprays, sterile dressings and antibiotics. Only affects what doses are taken from — the expiry list still calls the box expired."
+      >
+        <TextInput
+          name="expiryGraceDays"
+          inputMode="numeric"
+          placeholder="0"
+          defaultValue={prev.expiryGraceDays ?? ''}
+        />
+      </Field>
+
       <fieldset
         className="flex flex-col gap-3 rounded-xl border p-3"
         style={{ borderColor: 'var(--border)' }}
