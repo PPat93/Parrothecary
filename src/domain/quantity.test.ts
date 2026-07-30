@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatQuantity,
+  isLowStock,
   isTrackableQuantity,
   packsNeeded,
   packsToUnits,
@@ -164,5 +165,38 @@ describe('isTrackableQuantity', () => {
 
   it('is not fooled by float representation of a valid value', () => {
     expect(isTrackableQuantity(0.1 + 0.2)).toBe(true); // 0.30000000000000004
+  });
+});
+
+describe('isLowStock', () => {
+  it('is true when there is nothing left', () => {
+    expect(isLowStock(0, 60)).toBe(true);
+  });
+
+  it('is true below a quarter of a pack', () => {
+    expect(isLowStock(14, 60)).toBe(true);
+    expect(isLowStock(11, 90)).toBe(true); // Finaster: 11 of 90 really is low
+  });
+
+  it('is false for a barely-touched pack', () => {
+    // The case that made the first rule wrong: one opened tub, 58 of 60 left,
+    // was flagged as running low because no sealed box sat behind it.
+    expect(isLowStock(58, 60)).toBe(false);
+    expect(isLowStock(55, 60)).toBe(false);
+  });
+
+  it('treats exactly a quarter as still enough', () => {
+    expect(isLowStock(15, 60)).toBe(false);
+    expect(isLowStock(14.99, 60)).toBe(true);
+  });
+
+  it('handles single-item packs, where one is a full pack', () => {
+    expect(isLowStock(1, 1)).toBe(false);
+    expect(isLowStock(0, 1)).toBe(true);
+  });
+
+  it('does not divide by a missing pack size', () => {
+    expect(isLowStock(5, 0)).toBe(false);
+    expect(isLowStock(0, 0)).toBe(true);
   });
 });

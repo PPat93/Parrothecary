@@ -1388,3 +1388,71 @@ export async function deleteTrip(formData: FormData): Promise<void> {
   refreshAll();
   redirect('/trips');
 }
+
+/**
+ * Add everything ticked on the trip audit worksheet to that trip's list.
+ *
+ * One submit for the whole cabinet, because the audit is a single sitting twice
+ * a year, not fifteen separate decisions spread over a week.
+ *
+ * Idempotent by product: a line already on this trip is skipped rather than
+ * duplicated. The worksheet shows those as "on the list" instead of a tick box,
+ * but two phones can be looking at the same screen, so the check is repeated
+ * here where it actually counts.
+ */
+export async function addAuditSelection(formData: FormData): Promise<void> {
+  const tripId = Number(formData.get('tripId'));
+  if (!Number.isInteger(tripId)) return;
+
+  const picked = formData.getAll('pick').map(String);
+  if (picked.length === 0) redirect(`/trips/${tripId}`);
+
+  // Already-listed is judged per product, not per pack: having the sixties on
+  // the list already means this product is handled, whichever size it was.
+  const existing = await db
+    .select({ productId: variants.productId })
+    .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .where(
+      and(
+        eq(shoppingItems.tripId, tripId),
+        inArray(shoppingItems.status, ['to_buy', 'ordered', 'arrived']),
+      ),
+    );
+  const alreadyOn = new Set(existing.map((row) => row.productId));
+
+  for (const key of picked) {
+    const productId = Number(key);
+    if (!Number.isInteger(productId) || alreadyOn.has(productId)) continue;
+
+    // Each row carries its own pack choice and quantity, both keyed by product
+    // — the chosen pack can change while the form is open, so it cannot be the
+    // key itself.
+    const variantId = Number(formData.get(`variant-${key}`) ?? 0);
+    const packs = Number(formData.get(`packs-${key}`) ?? 0);
+    if (!Number.isInteger(variantId) || !Number.isInteger(packs) || packs < 1) continue;
+
+    /*
+     * The pack has to belong to the product that was ticked. Nothing in the UI
+     * can produce a mismatch, but this writes a shopping line from ids in a
+     * submitted form, and a line pointing at another product's pack would be
+     * silently wrong rather than loudly broken.
+     */
+    const owned = await db
+      .select({ id: variants.id })
+      .from(variants)
+      .where(and(eq(variants.id, variantId), eq(variants.productId, productId)))
+      .limit(1);
+    if (owned.length === 0) continue;
+
+    await db.insert(shoppingItems).values({
+      tripId,
+      variantId,
+      quantityPacks: packs,
+      notes: 'From the trip audit.',
+    });
+  }
+
+  refreshAll();
+  redirect(`/trips/${tripId}`);
+}

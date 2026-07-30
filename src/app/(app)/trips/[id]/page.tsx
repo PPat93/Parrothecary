@@ -16,6 +16,7 @@ import {
   getTrip,
   getUnassignedShoppingItems,
 } from '@/lib/queries';
+import { shoppingStatusLabel } from '@/lib/labels';
 import { deleteTrip, setShoppingTrip, setTripStatus } from '../../actions';
 import { ActionButton } from '@/components/action-button';
 
@@ -98,6 +99,15 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
       */}
       {trip.status === 'planned' ? (
         <Section title="Runs out before this trip">
+        <p className="mb-3">
+          <Link
+            href={`/trips/${trip.id}/audit`}
+            className={LINK_BUTTON}
+            style={toneStyle('accent')}
+          >
+            Run the cabinet audit
+          </Link>
+        </p>
         {deadline < today ? (
           /*
            * Both dates are behind us on a trip still marked planned. Projecting
@@ -192,7 +202,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                   </p>
                   <p className="text-xs" style={{ color: 'var(--muted)' }}>
                     {item.quantityPacks} × {item.packLabel ?? `${item.packSize} ${item.unitName}`} ·{' '}
-                    {item.status}
+                    {shoppingStatusLabel(item.status)}
                   </p>
                 </div>
 
@@ -244,7 +254,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                   </p>
                   <p className="text-xs" style={{ color: 'var(--muted)' }}>
                     {item.quantityPacks} × {item.packLabel ?? `${item.packSize} ${item.unitName}`} ·{' '}
-                    {item.status}
+                    {shoppingStatusLabel(item.status)}
                   </p>
                 </div>
 
