@@ -11,6 +11,7 @@ import {
   CURRENCIES,
   DOSE_FORMS,
   SHOPPING_STATUSES,
+  TRIP_STATUSES,
   UNIT_NAMES,
   batches,
   doseEvents,
@@ -22,6 +23,7 @@ import {
   productSymptoms,
   substances,
   symptoms,
+  trips,
   variantBarcodes,
   variants,
 } from '@/db/schema';
@@ -29,7 +31,8 @@ import { isValidEan13, parseScan } from '@/domain/barcode';
 import { todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { deletePhoto, savePhoto } from '@/lib/photos';
-import { findVariantByBarcode } from '@/lib/queries';
+import { findVariantByBarcode, getPreviousCollectionDate } from '@/lib/queries';
+import { defaultOrderByDate } from '@/domain/trip';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
 import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
 import { parseAmount } from '@/domain/money';
@@ -1219,4 +1222,93 @@ function snapshot(formData: FormData): Record<string, string> {
 
 function emptyToNull(value: string | undefined): string | null {
   return value === undefined || value === '' ? null : value;
+}
+
+/* ------------------------------------------------------------------ */
+/* Trips                                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Shared by create and edit. The order-by date is optional in the form: left
+ * blank it is derived, because the midpoint rule is what you want nine times
+ * out of ten and typing it out by hand invites arithmetic mistakes.
+ */
+async function parseTripFields(
+  formData: FormData,
+  excludeTripId?: number,
+): Promise<{ fields: { label: string; collectionDate: string; orderByDate: string; notes: string | null } } | { error: string }> {
+  const label = String(formData.get('label') ?? '').trim();
+  const collectionDate = String(formData.get('collectionDate') ?? '').trim();
+  const orderByRaw = String(formData.get('orderByDate') ?? '').trim();
+  const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
+
+  if (!label) return { error: 'Give the trip a name — "October 2026" is enough.' };
+  if (!collectionDate) return { error: 'When is everything being collected?' };
+
+  const previous = await getPreviousCollectionDate(collectionDate, excludeTripId);
+  const orderByDate = orderByRaw || defaultOrderByDate(collectionDate, previous);
+
+  if (orderByDate > collectionDate) {
+    return { error: 'The order deadline is after the collection date — orders would arrive too late.' };
+  }
+
+  return { fields: { label, collectionDate, orderByDate, notes } };
+}
+
+export async function createTrip(_prev: FormResult, formData: FormData): Promise<FormResult> {
+  const parsed = await parseTripFields(formData);
+  if ('error' in parsed) return { error: parsed.error, values: snapshot(formData) };
+
+  const inserted = await db.insert(trips).values(parsed.fields).returning({ id: trips.id });
+  const id = inserted[0]?.id;
+  if (id === undefined) return { error: 'Could not save the trip.', values: snapshot(formData) };
+
+  refreshAll();
+  redirect(`/trips/${id}`);
+}
+
+export async function updateTrip(_prev: FormResult, formData: FormData): Promise<FormResult> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return { error: 'Unknown trip.' };
+
+  const parsed = await parseTripFields(formData, id);
+  if ('error' in parsed) return { error: parsed.error, values: snapshot(formData) };
+
+  await db
+    .update(trips)
+    .set({ ...parsed.fields, updatedAt: new Date() })
+    .where(eq(trips.id, id));
+
+  refreshAll();
+  redirect(`/trips/${id}`);
+}
+
+export async function setTripStatus(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  const status = String(formData.get('status'));
+  if (!Number.isInteger(id)) return;
+  if (!TRIP_STATUSES.some((s) => s === status)) return;
+
+  await db
+    .update(trips)
+    .set({ status: status as (typeof TRIP_STATUSES)[number], updatedAt: new Date() })
+    .where(eq(trips.id, id));
+
+  refreshAll();
+  redirect(`/trips/${id}`);
+}
+
+/**
+ * No archive step and no guard, unlike products and people. A trip carries no
+ * history of its own — the boxes bought on it keep their own purchase dates and
+ * prices, and shopping lines are only unassigned (the FK is `set null`), never
+ * deleted. So a mistyped trip can simply go.
+ */
+export async function deleteTrip(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  await db.delete(trips).where(eq(trips.id, id));
+  refreshAll();
+  redirect('/trips');
 }

@@ -1,4 +1,4 @@
-import { addDays, type IsoDate } from './date';
+import { addDays, differenceInDays, type IsoDate } from './date';
 import { DEFAULT_THRESHOLDS, type ExpiryThresholds } from './expiry';
 
 /**
@@ -66,6 +66,26 @@ export function projectRunOut(
 
   const daysRemaining = Math.max(0, Math.floor(snapped));
   return { daysRemaining, runOutDate: addDays(today, daysRemaining) };
+}
+
+/**
+ * Units short of covering everything already due by a date.
+ *
+ * `unitsDue` comes from the schedules themselves (see `unitsDueBetween`) rather
+ * than from an average rate, so a course that ends next week is not projected
+ * across the whole window.
+ *
+ * Rounded up: you cannot buy 2.4 tablets, and under-ordering is the expensive
+ * mistake when there are only two restock trips a year.
+ */
+export function unitsShort(unitsDue: number, totalUnitsAvailable: number): number {
+  const short = unitsDue - totalUnitsAvailable;
+  if (short <= 0) return 0;
+
+  // A fractional dose lands a hair off a whole number, and ceil() would turn
+  // 6.000000000000001 into 7 units to buy.
+  const snapped = Math.abs(short - Math.round(short)) < 1e-9 ? Math.round(short) : short;
+  return Math.ceil(snapped);
 }
 
 export function runOutSeverity(

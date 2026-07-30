@@ -11,6 +11,7 @@ import {
   productSymptoms,
   products,
   shoppingItems,
+  TRIP_STATUSES,
   substances,
   symptoms,
   trips,
@@ -981,4 +982,163 @@ export async function getTakenOccurrences(
     else map.set(key, new Set([row.occurrence]));
   }
   return map;
+}
+
+/* ------------------------------------------------------------------ */
+/* Trips                                                              */
+/* ------------------------------------------------------------------ */
+
+export interface TripRow {
+  id: number;
+  label: string;
+  collectionDate: string;
+  orderByDate: string | null;
+  status: (typeof TRIP_STATUSES)[number];
+  notes: string | null;
+  /** Shopping lines assigned to this trip, whatever their status. */
+  itemCount: number;
+}
+
+export async function getTrips(): Promise<TripRow[]> {
+  const rows = await db
+    .select({
+      id: trips.id,
+      label: trips.label,
+      collectionDate: trips.collectionDate,
+      orderByDate: trips.orderByDate,
+      status: trips.status,
+      notes: trips.notes,
+      itemCount: sql<number>`count(${shoppingItems.id})`,
+    })
+    .from(trips)
+    .leftJoin(shoppingItems, eq(shoppingItems.tripId, trips.id))
+    .groupBy(trips.id)
+    // Soonest collection first: the next trip is the one you act on.
+    .orderBy(asc(trips.collectionDate));
+
+  return rows;
+}
+
+/**
+ * The collection date of the trip before this one — what the order-by default
+ * is halved from. Excludes the trip being edited, so re-saving a trip does not
+ * measure it against itself.
+ */
+export async function getPreviousCollectionDate(
+  collectionDate: string,
+  excludeTripId?: number,
+): Promise<string | null> {
+  const rows = await db
+    .select({ collectionDate: trips.collectionDate })
+    .from(trips)
+    .where(
+      excludeTripId === undefined
+        ? sql`${trips.collectionDate} < ${collectionDate}`
+        : and(
+            sql`${trips.collectionDate} < ${collectionDate}`,
+            sql`${trips.id} <> ${excludeTripId}`,
+          ),
+    )
+    .orderBy(sql`${trips.collectionDate} desc`)
+    .limit(1);
+
+  return rows[0]?.collectionDate ?? null;
+}
+
+export interface TripDetail extends TripRow {
+  items: ShoppingRow[];
+}
+
+export async function getTrip(id: number): Promise<TripDetail | null> {
+  const rows = await db.select().from(trips).where(eq(trips.id, id)).limit(1);
+  const trip = rows[0];
+  if (!trip) return null;
+
+  const items = await db
+    .select(shoppingSelection)
+    .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .leftJoin(trips, eq(shoppingItems.tripId, trips.id))
+    .where(eq(shoppingItems.tripId, id))
+    .orderBy(byName);
+
+  return {
+    id: trip.id,
+    label: trip.label,
+    collectionDate: trip.collectionDate,
+    orderByDate: trip.orderByDate,
+    status: trip.status,
+    notes: trip.notes,
+    itemCount: items.length,
+    items,
+  };
+}
+
+export interface ScheduledProduct {
+  productId: number;
+  name: string;
+  strength: string | null;
+  unitName: string;
+  /**
+   * Every live schedule for this product, kept individually rather than summed
+   * into a rate. Planning has to know that one of them ends next week.
+   */
+  schedules: {
+    doseUnits: number;
+    timesPerDay: number;
+    intervalDays: number;
+    startDate: string;
+    endDate: string | null;
+  }[];
+}
+
+/**
+ * Every product someone is actually on, with the schedules behind it.
+ *
+ * Deliberately not filtered by stock: a product with nothing left is the most
+ * important row in a "what do we need to order" list, and a query built from
+ * the stock table would silently drop it.
+ */
+export async function getScheduledProducts(): Promise<ScheduledProduct[]> {
+  const rows = await db
+    .select({
+      productId: products.id,
+      name: products.name,
+      strength: products.strength,
+      unitName: products.unitName,
+      doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
+      startDate: doseSchedules.startDate,
+      endDate: doseSchedules.endDate,
+    })
+    .from(doseSchedules)
+    .innerJoin(products, eq(doseSchedules.productId, products.id))
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)))
+    .orderBy(byName);
+
+  const map = new Map<number, ScheduledProduct>();
+  for (const row of rows) {
+    let entry = map.get(row.productId);
+    if (!entry) {
+      entry = {
+        productId: row.productId,
+        name: row.name,
+        strength: row.strength,
+        unitName: row.unitName,
+        schedules: [],
+      };
+      map.set(row.productId, entry);
+    }
+    entry.schedules.push({
+      doseUnits: row.doseUnits,
+      timesPerDay: row.timesPerDay,
+      intervalDays: row.intervalDays,
+      startDate: row.startDate,
+      endDate: row.endDate,
+    });
+  }
+  return [...map.values()];
 }

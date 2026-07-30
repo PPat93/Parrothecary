@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectRunOut, runOutSeverity, scheduleDailyRate } from './runout';
+import { projectRunOut, runOutSeverity, scheduleDailyRate, unitsShort } from './runout';
 
 const TODAY = '2026-07-26';
 
@@ -102,5 +102,29 @@ describe('projectRunOut — fractional rates', () => {
   it('handles a half-tablet daily dose', () => {
     const rate = scheduleDailyRate({ doseUnits: 0.5, timesPerDay: 1, intervalDays: 1 });
     expect(projectRunOut(30, rate, TODAY)?.daysRemaining).toBe(60);
+  });
+});
+
+describe('unitsShort', () => {
+  it('is zero when stock covers what is due', () => {
+    expect(unitsShort(10, 10)).toBe(0);
+    expect(unitsShort(10, 500)).toBe(0);
+  });
+
+  it('subtracts what is already in the cupboard', () => {
+    expect(unitsShort(10, 4)).toBe(6);
+  });
+
+  it('rounds up, because you cannot buy part of a tablet', () => {
+    expect(unitsShort(5, 2.4)).toBe(3);
+  });
+
+  it('does not turn a float artefact into an extra unit', () => {
+    // 0.1 * 3 is 0.30000000000000004; short by exactly 6 must not become 7.
+    expect(unitsShort(6 + (0.1 * 3 - 0.3), 0)).toBe(6);
+  });
+
+  it('needs nothing when nothing is due', () => {
+    expect(unitsShort(0, 0)).toBe(0);
   });
 });

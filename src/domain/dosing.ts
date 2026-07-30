@@ -78,6 +78,40 @@ export function doseOccurrenceStatus(
 }
 
 /**
+ * Total units this schedule will consume between two dates, both inclusive.
+ *
+ * Counts actual dosing days rather than multiplying an average rate by the
+ * length of the window. The difference is not academic: a week-long course of
+ * paracetamol at 3 tablets twice a day projected as a flat rate over eleven
+ * weeks asks for 434 tablets instead of the 42 it will really use. Start dates,
+ * end dates and the interval all clip the count.
+ */
+export function unitsDueBetween(
+  schedule: DoseScheduleWindow & { doseUnits: number; timesPerDay: number },
+  from: IsoDate,
+  to: IsoDate,
+): number {
+  if (to < from) return 0;
+
+  const perDosingDay = schedule.doseUnits * schedule.timesPerDay;
+  if (perDosingDay <= 0) return 0;
+
+  // Start from the first dosing day at or after `from` and step by the interval
+  // rather than walking every calendar day — a daily schedule over a year is
+  // 365 steps either way, but a monthly one is 12 instead of 365.
+  const interval = Math.max(1, Math.trunc(schedule.intervalDays));
+  let days = 0;
+  for (let date = nextDueDate(schedule, from); date !== null && date <= to; ) {
+    days++;
+    const following = addDays(date, interval);
+    if (schedule.endDate !== null && following > schedule.endDate) break;
+    date = following;
+  }
+
+  return Math.round(perDosingDay * days * 100) / 100;
+}
+
+/**
  * "twice a day", "once a week", "twice every 3 days" — for sentences.
  *
  * The board has room only for the terse form; a warning that has to explain why
