@@ -5,10 +5,10 @@ import { DEFAULT_THRESHOLDS, type ExpiryThresholds } from './expiry';
  * Run-out projection.
  *
  * Unlike expiry, the consumption rate here is NOT inferred from history — it
- * is exact, straight from the dose schedule (doseUnits × timesPerDay). Only
- * products with at least one active schedule get a projection; ad-hoc items
- * (a painkiller taken irregularly) correctly get none, because their usage
- * rate is genuinely unknown.
+ * is exact, straight from the dose schedule (doseUnits × timesPerDay, spread
+ * over intervalDays). Only products with at least one active schedule get a
+ * projection; ad-hoc items (a painkiller taken irregularly) correctly get none,
+ * because their usage rate is genuinely unknown.
  *
  * Deliberately reuses expiry's DEFAULT_THRESHOLDS (60/180 days) rather than
  * inventing new numbers — it is the same "will this survive until the next
@@ -24,9 +24,20 @@ export interface RunOutProjection {
   runOutDate: IsoDate;
 }
 
-/** Units consumed per day by a single schedule. Named so the model has a name. */
-export function scheduleDailyRate(schedule: { doseUnits: number; timesPerDay: number }): number {
-  return schedule.doseUnits * schedule.timesPerDay;
+/**
+ * Units consumed per day by a single schedule. Named so the model has a name.
+ *
+ * An average, once intervalDays is above 1: a weekly tablet is a seventh of a
+ * tablet a day. Fine for "when do I reorder", which is the only question this
+ * feeds — it is not a claim that a seventh of a tablet is taken daily.
+ */
+export function scheduleDailyRate(schedule: {
+  doseUnits: number;
+  timesPerDay: number;
+  intervalDays: number;
+}): number {
+  const interval = Math.max(1, Math.trunc(schedule.intervalDays));
+  return (schedule.doseUnits * schedule.timesPerDay) / interval;
 }
 
 /**

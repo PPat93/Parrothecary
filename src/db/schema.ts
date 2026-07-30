@@ -435,7 +435,24 @@ export const doseSchedules = sqliteTable(
     /** Independent doses per day (morning + evening = 2), not a split of one. */
     timesPerDay: integer('times_per_day').notNull().default(1),
 
-    /** Confirming a dose before this date is not offered. */
+    /**
+     * Days between dosing days. 1 is every day, 7 is weekly, 2 is alternate
+     * days. Combines with timesPerDay: interval 7 and timesPerDay 2 means two
+     * doses, one day a week.
+     *
+     * Deliberately an interval and not a set of weekdays. "Every 3 days" and
+     * "weekly" cover what a household actually needs, and an interval cannot
+     * quietly disagree with itself the way a weekday set plus a start date can.
+     *
+     * Due dates are phased from startDate, so moving startDate moves every
+     * future dose with it — which is why the form does not offer to change it.
+     */
+    intervalDays: integer('interval_days').notNull().default(1),
+
+    /**
+     * Confirming a dose before this date is not offered. Also the anchor every
+     * dosing day is counted from, once intervalDays is above 1.
+     */
     startDate: text('start_date').notNull(),
     /** Null = ongoing. Set for a course of antibiotics or a seasonal supplement. */
     endDate: text('end_date'),

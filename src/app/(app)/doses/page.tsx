@@ -3,7 +3,13 @@ import { ActionButton } from '@/components/action-button';
 import { RunOutBadge } from '@/components/run-out-badge';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { addDays, todayIso } from '@/domain/date';
-import { doseOccurrenceStatus, recentScheduleDates, type DoseStatus } from '@/domain/dosing';
+import {
+  doseOccurrenceStatus,
+  formatDoseCadence,
+  nextDueDate,
+  recentScheduleDates,
+  type DoseStatus,
+} from '@/domain/dosing';
 import { daysPastDate } from '@/domain/expiry';
 import { nextBatchToOpen, totalAvailable } from '@/domain/fefo';
 import { formatQuantity } from '@/domain/quantity';
@@ -90,11 +96,24 @@ export default async function DosesPage() {
 
               <ul className="flex flex-col gap-2">
                 {group.schedules.map((schedule) => {
+                  const window = {
+                    startDate: schedule.startDate,
+                    endDate: schedule.endDate,
+                    intervalDays: schedule.intervalDays,
+                  };
+                  /*
+                   * A three-day window shows nothing at all for a weekly dose on
+                   * four days out of seven, which reads as broken rather than as
+                   * "not today". Widen it past one full interval so the last
+                   * dosing day is always on screen.
+                   */
                   const dates = recentScheduleDates(
-                    { startDate: schedule.startDate, endDate: schedule.endDate },
+                    window,
                     today,
-                    HISTORY_DAYS,
+                    Math.max(HISTORY_DAYS, schedule.intervalDays + 1),
                   );
+                  const dueToday = dates.includes(today);
+                  const nextDue = dueToday ? null : nextDueDate(window, today);
                   const stock = stockByProduct.get(schedule.productId) ?? [];
                   const available = totalAvailable(stock, today);
                   const outOfStock = available <= 0;
@@ -152,9 +171,13 @@ export default async function DosesPage() {
                       <p className="mb-2 flex flex-wrap items-center gap-1.5 text-xs" style={{ color: 'var(--muted)' }}>
                         <span>
                           {formatQuantity(schedule.doseUnits, schedule.unitName)} ·{' '}
-                          {schedule.timesPerDay}×/day
+                          {formatDoseCadence(schedule.timesPerDay, schedule.intervalDays)}
                         </span>
                         <RunOutBadge projection={projection} />
+                        {/* Nothing due today is information, not an empty state. */}
+                        {nextDue !== null ? (
+                          <span className="shrink-0">next {dayLabel(nextDue, today)}</span>
+                        ) : null}
                         {schedule.productArchivedAt !== null ? (
                           <span
                             className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium"
@@ -220,6 +243,8 @@ export default async function DosesPage() {
 function dayLabel(date: string, today: string): string {
   if (date === today) return 'Today';
   if (date === addDays(today, -1)) return 'Yesterday';
+  // Forward-looking now that infrequent schedules say when they are next due.
+  if (date === addDays(today, 1)) return 'tomorrow';
   const [, month, day] = date.split('-');
   return `${day}.${month}`;
 }

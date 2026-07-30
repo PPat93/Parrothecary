@@ -331,7 +331,7 @@ export interface ProductDetail extends ProductRow {
    * Archiving is refused while this is non-empty, because archiving would
    * otherwise stop someone's dose as a side effect of tidying up.
    */
-  activeDoses: { memberName: string; doseUnits: number; timesPerDay: number }[];
+  activeDoses: { memberName: string; doseUnits: number; timesPerDay: number; intervalDays: number }[];
   substances: {
     id: number;
     name: string;
@@ -447,6 +447,7 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
       memberName: householdMembers.name,
       doseUnits: doseSchedules.doseUnits,
       timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
     })
     .from(doseSchedules)
     .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
@@ -767,6 +768,8 @@ export interface MemberScheduleRow {
   unitName: string;
   doseUnits: number;
   timesPerDay: number;
+  /** Days between dosing days; 1 for the everyday case. */
+  intervalDays: number;
   startDate: string;
   endDate: string | null;
   notes: string | null;
@@ -802,6 +805,7 @@ export async function getHouseholdMember(id: number): Promise<HouseholdMemberDet
       unitName: products.unitName,
       doseUnits: doseSchedules.doseUnits,
       timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
       startDate: doseSchedules.startDate,
       endDate: doseSchedules.endDate,
       notes: doseSchedules.notes,
@@ -849,6 +853,8 @@ export interface DoseScheduleBoardRow {
   unitName: string;
   doseUnits: number;
   timesPerDay: number;
+  /** Days between dosing days; 1 for the everyday case. */
+  intervalDays: number;
   startDate: string;
   endDate: string | null;
   /**
@@ -874,6 +880,7 @@ export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> 
       unitName: products.unitName,
       doseUnits: doseSchedules.doseUnits,
       timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
       startDate: doseSchedules.startDate,
       endDate: doseSchedules.endDate,
       productArchivedAt: products.archivedAt,
@@ -901,7 +908,13 @@ export async function getProductDailyRates(): Promise<Map<number, number>> {
   const rows = await db
     .select({
       productId: doseSchedules.productId,
-      rate: sql<number>`sum(${doseSchedules.doseUnits} * ${doseSchedules.timesPerDay})`,
+      /*
+       * The 1.0 is load-bearing. SQLite does integer division, so a weekly
+       * schedule would come out as 1/7 = 0 — rate zero, no projection, and the
+       * run-out badge silently absent for exactly the schedules that most need
+       * planning. Forcing real arithmetic keeps it a fraction.
+       */
+      rate: sql<number>`sum(${doseSchedules.doseUnits} * ${doseSchedules.timesPerDay} * 1.0 / max(1, ${doseSchedules.intervalDays}))`,
     })
     .from(doseSchedules)
     .where(isNull(doseSchedules.archivedAt))

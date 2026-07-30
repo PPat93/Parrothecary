@@ -362,12 +362,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 function describeActiveDoses(doses: ProductDetail['activeDoses']): string {
   const [only] = doses;
   if (doses.length === 1 && only) {
-    return `${only.memberName} takes it ${formatDoseFrequency(only.timesPerDay)}`;
+    return `${only.memberName} takes it ${formatDoseFrequency(only.timesPerDay, only.intervalDays)}`;
   }
   // Two names read fine; more would just be a wall in the middle of a sentence.
   const names = [...new Set(doses.map((d) => d.memberName))];
-  if (names.length <= 2) return `${names.join(' and ')} take it daily`;
-  return `${names.length} people take it daily`;
+  if (names.length <= 2) return `${names.join(' and ')} are on it`;
+  return `${names.length} people are on it`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

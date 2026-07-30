@@ -5,9 +5,32 @@ const TODAY = '2026-07-26';
 
 describe('scheduleDailyRate', () => {
   it('multiplies dose by times per day', () => {
-    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1 })).toBe(1);
-    expect(scheduleDailyRate({ doseUnits: 0.5, timesPerDay: 2 })).toBe(1);
-    expect(scheduleDailyRate({ doseUnits: 5, timesPerDay: 3 })).toBe(15);
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 1 })).toBe(1);
+    expect(scheduleDailyRate({ doseUnits: 0.5, timesPerDay: 2, intervalDays: 1 })).toBe(1);
+    expect(scheduleDailyRate({ doseUnits: 5, timesPerDay: 3, intervalDays: 1 })).toBe(15);
+  });
+
+  it('spreads an infrequent dose across its interval', () => {
+    // A weekly tablet is a seventh of a tablet a day, for reordering purposes.
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 7 })).toBeCloseTo(1 / 7);
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 2 })).toBe(0.5);
+    expect(scheduleDailyRate({ doseUnits: 2, timesPerDay: 2, intervalDays: 4 })).toBe(1);
+  });
+
+  it('never returns zero for a real dose, so the projection does not vanish', () => {
+    // Integer division would give 0 here, which reads as "no schedule at all"
+    // and silently removes the run-out badge from exactly the schedules whose
+    // stock is hardest to eyeball.
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 30 })).toBeGreaterThan(0);
+  });
+
+  it('treats a nonsensical interval as daily rather than dividing by zero', () => {
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 0 })).toBe(1);
+  });
+
+  it('projects a weekly tablet as lasting weeks', () => {
+    const rate = scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 7 });
+    expect(projectRunOut(4, rate, TODAY)).toEqual({ daysRemaining: 28, runOutDate: '2026-08-23' });
   });
 });
 

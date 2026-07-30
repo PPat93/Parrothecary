@@ -991,6 +991,7 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
   const productId = Number(formData.get('productId'));
   const doseUnits = Number(formData.get('doseUnits'));
   const timesPerDay = Number(formData.get('timesPerDay') || 1);
+  const intervalDays = Number(formData.get('intervalDays') || 1);
   const startDate = String(formData.get('startDate') ?? '').trim();
   const endDate = emptyToNull(String(formData.get('endDate') ?? '').trim());
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
@@ -1005,6 +1006,15 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
   if (!Number.isInteger(timesPerDay) || timesPerDay < 1) {
     return fail('Times per day must be a whole number, at least 1.');
   }
+  /*
+   * Capped at a year for the same reason the expiry grace period is: past that
+   * the number is a typo, not an intent. The lower bound matters more — a zero
+   * or negative interval would make the modulo meaningless and could turn a
+   * weekly dose into a daily prompt.
+   */
+  if (!Number.isInteger(intervalDays) || intervalDays < 1 || intervalDays > 365) {
+    return fail('Repeat every how many days? A whole number from 1 (daily) to 365.');
+  }
   if (!startDate) return fail('Pick a start date.');
   if (endDate && endDate < startDate) return fail('The end date is before the start date.');
 
@@ -1013,6 +1023,7 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
     productId,
     doseUnits,
     timesPerDay,
+    intervalDays,
     startDate,
     endDate,
     notes,
