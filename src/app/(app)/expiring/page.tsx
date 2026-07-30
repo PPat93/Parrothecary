@@ -3,7 +3,8 @@ import { ExpiryBadge } from '@/components/expiry-badge';
 import { todayIso } from '@/domain/date';
 import { daysUntilExpiry, expiryStatus, type ExpiryStatus } from '@/domain/expiry';
 import { formatQuantity } from '@/domain/quantity';
-import { getExpiringStock, toExpiryInput, type StockRow } from '@/lib/queries';
+import { formatMoney, money, sumMoney, toEur, unusedValue } from '@/domain/money';
+import { getExpiringStock, getWaste, toExpiryInput, type StockRow } from '@/lib/queries';
 import { setBatchStatus } from '../actions';
 
 const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
@@ -28,7 +29,40 @@ const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
 
 export default async function ExpiringPage() {
   const today = todayIso();
-  const rows = await getExpiringStock();
+  const [rows, waste] = await Promise.all([getExpiringStock(), getWaste()]);
+
+  /*
+   * Two different things, deliberately not added together.
+   *
+   * A sealed box that expired is money thrown away: it was bought, never
+   * touched, and binned. That is the figure worth trying to reduce.
+   *
+   * A box that was opened is not. Half a bottle of liquid plaster left at its
+   * expiry date did its job on the wounds it was opened for, and the leftover
+   * was never avoidable — that size was the smallest one sold. Calling that
+   * "waste" would be arithmetically true and practically a lie, and it would
+   * make the honest number next to it easy to ignore.
+   *
+   * Both are costed on the unused portion only, converted at the rate recorded
+   * when each was bought, and both live on this page rather than in some
+   * statistics view because this is where the bin button is.
+   */
+  const priced = waste.filter((row) => row.priceMinor !== null && row.currency !== null);
+  const valueOf = (rows: typeof priced) =>
+    sumMoney(
+      rows.map((row) =>
+        toEur(
+          unusedValue(money(row.priceMinor!, row.currency!), row.packSize, row.quantityRemaining),
+          row.fxRateToEur,
+        ),
+      ),
+      'EUR',
+    );
+
+  const neverOpened = priced.filter((row) => row.openedAt === null);
+  const opened = priced.filter((row) => row.openedAt !== null);
+  const thrownAway = valueOf(neverOpened);
+  const leftInOpened = valueOf(opened);
 
   const byStatus = new Map<ExpiryStatus, StockRow[]>();
   for (const row of rows) {
@@ -118,6 +152,38 @@ export default async function ExpiringPage() {
           })}
         </div>
       )}
+
+      {priced.length > 0 ? (
+        <div
+          className="mt-6 rounded-2xl border p-4 text-sm"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide">Binned so far</h2>
+
+          {neverOpened.length > 0 ? (
+            <p style={{ color: 'var(--muted)' }}>
+              <span style={{ color: 'var(--color-critical)' }}>
+                {formatMoney(thrownAway, { showCurrency: true })}
+              </span>{' '}
+              in {neverOpened.length} {neverOpened.length === 1 ? 'box' : 'boxes'} never opened —
+              bought and binned without being used. This is the number worth pushing down.
+            </p>
+          ) : (
+            <p style={{ color: 'var(--muted)' }}>
+              Nothing has been binned unopened. That is the figure that would mean money wasted,
+              and it is zero.
+            </p>
+          )}
+
+          {opened.length > 0 ? (
+            <p className="mt-2" style={{ color: 'var(--muted)' }}>
+              A further {formatMoney(leftInOpened, { showCurrency: true })} was left in{' '}
+              {opened.length} opened {opened.length === 1 ? 'pack' : 'packs'}. Not really waste:
+              they were opened because they were needed, and you cannot buy half a bottle.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

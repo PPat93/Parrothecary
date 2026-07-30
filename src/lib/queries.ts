@@ -1329,3 +1329,113 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
     };
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* What things cost                                                    */
+/* ------------------------------------------------------------------ */
+
+export interface PurchaseRow {
+  batchId: number;
+  purchaseDate: string | null;
+  priceMinor: number;
+  currency: 'PLN' | 'EUR';
+  /** Rate recorded at purchase. Null for a euro buy, which needs none. */
+  fxRateToEur: number | null;
+  /** What was bought: one pack of this size. The denominator for unit cost. */
+  packSize: number;
+  packLabel: string | null;
+  /** Set once the box has left stock, so waste can be costed. */
+  status: string;
+  tripLabel: string | null;
+}
+
+/**
+ * Every priced box of a product, newest first.
+ *
+ * At two or three restocks a year most products will only ever have one row
+ * here for a long while, so this is written to be useful with a single
+ * purchase — what it cost, and what that works out at per tablet — rather than
+ * as a trend that needs years of history before it says anything.
+ */
+export async function getProductPurchases(productId: number): Promise<PurchaseRow[]> {
+  return db
+    .select({
+      batchId: batches.id,
+      purchaseDate: batches.purchaseDate,
+      priceMinor: batches.purchasePriceMinor,
+      currency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
+      packSize: variants.packSize,
+      packLabel: variants.packLabel,
+      status: batches.status,
+      tripLabel: trips.label,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .leftJoin(shoppingItems, eq(shoppingItems.receivedBatchId, batches.id))
+    .leftJoin(trips, eq(shoppingItems.tripId, trips.id))
+    .where(
+      and(
+        eq(variants.productId, productId),
+        isNotNull(batches.purchasePriceMinor),
+        isNotNull(batches.purchaseCurrency),
+      ),
+    )
+    .orderBy(sql`${batches.purchaseDate} is null`, sql`${batches.purchaseDate} desc`)
+    .then((rows) =>
+      rows.map((row) => ({
+        ...row,
+        priceMinor: row.priceMinor!,
+        currency: row.currency!,
+      })),
+    );
+}
+
+export interface WasteRow {
+  batchId: number;
+  productName: string;
+  strength: string | null;
+  status: string;
+  quantityRemaining: number;
+  unitName: string;
+  packSize: number;
+  priceMinor: number | null;
+  currency: 'PLN' | 'EUR' | null;
+  fxRateToEur: number | null;
+  expiryDate: string | null;
+  /**
+   * Whether the box was ever opened. The difference between money thrown away
+   * and money spent on something that did its job — see the Expiring page.
+   */
+  openedAt: string | null;
+}
+
+/**
+ * Boxes thrown away, with what they cost.
+ *
+ * Costed on the portion actually wasted, not the whole box: half a bottle
+ * binned is half the money, and charging the full purchase price to waste would
+ * make every figure here an overstatement.
+ */
+export async function getWaste(): Promise<WasteRow[]> {
+  return db
+    .select({
+      batchId: batches.id,
+      productName: products.name,
+      strength: products.strength,
+      status: batches.status,
+      quantityRemaining: batches.quantityRemaining,
+      unitName: products.unitName,
+      packSize: variants.packSize,
+      priceMinor: batches.purchasePriceMinor,
+      currency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
+      expiryDate: batches.expiryDate,
+      openedAt: batches.openedAt,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(inArray(batches.status, ['expired', 'discarded']))
+    .orderBy(byName);
+}
