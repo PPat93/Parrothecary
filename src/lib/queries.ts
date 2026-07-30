@@ -17,6 +17,9 @@ import {
   variantBarcodes,
   variants,
 } from '@/db/schema';
+import type { IsoDate } from '@/domain/date';
+import { todayIso } from '@/domain/date';
+import { isDosable, type ExpiryInput } from '@/domain/expiry';
 import type { FefoBatch } from '@/domain/fefo';
 
 /**
@@ -26,6 +29,24 @@ import type { FefoBatch } from '@/domain/fefo';
  * plain letters; good enough for a cabinet of this size.
  */
 const byName = sql`${products.name} collate nocase`;
+
+/**
+ * A stock row in the shape the expiry rules want. Small enough to inline, but
+ * written once so no screen builds it slightly differently.
+ */
+export function toExpiryInput(row: {
+  expiryDate: string | null;
+  expiryPrecision: 'day' | 'month' | null;
+  hasExpiry: boolean;
+  expiryGraceDays: number;
+}): ExpiryInput {
+  return {
+    expiryDate: row.expiryDate,
+    precision: row.expiryPrecision,
+    hasExpiry: row.hasExpiry,
+    graceDays: row.expiryGraceDays,
+  };
+}
 
 /** One physical box, with everything needed to render it. */
 export interface StockRow {
@@ -46,6 +67,7 @@ export interface StockRow {
   form: string;
   unitName: string;
   hasExpiry: boolean;
+  expiryGraceDays: number;
 }
 
 const stockSelection = {
@@ -66,6 +88,7 @@ const stockSelection = {
   form: products.form,
   unitName: products.unitName,
   hasExpiry: products.hasExpiry,
+  expiryGraceDays: products.expiryGraceDays,
 };
 
 /**
@@ -129,11 +152,19 @@ export interface ProductStock {
   form: string;
   unitName: string;
   hasExpiry: boolean;
+  /**
+   * Units we would actually be willing to take — the number that answers "do I
+   * need to buy this on the next trip". Excludes anything past what its product
+   * tolerates, because counting stock the dose board refuses to touch would
+   * quietly under-order.
+   */
   totalUnits: number;
+  /** Physically here but past its window. Shown separately, never added in. */
+  pastDateUnits: number;
   boxes: StockRow[];
 }
 
-export function groupByProduct(rows: StockRow[]): ProductStock[] {
+export function groupByProduct(rows: StockRow[], today: IsoDate): ProductStock[] {
   const map = new Map<number, ProductStock>();
 
   for (const row of rows) {
@@ -148,12 +179,15 @@ export function groupByProduct(rows: StockRow[]): ProductStock[] {
         unitName: row.unitName,
         hasExpiry: row.hasExpiry,
         totalUnits: 0,
+        pastDateUnits: 0,
         boxes: [],
       };
       map.set(row.productId, entry);
     }
     entry.boxes.push(row);
-    entry.totalUnits = Math.round((entry.totalUnits + row.quantityRemaining) * 100) / 100;
+
+    const key = isDosable(toExpiryInput(row), today) ? 'totalUnits' : 'pastDateUnits';
+    entry[key] = Math.round((entry[key] + row.quantityRemaining) * 100) / 100;
   }
 
   return [...map.values()];
@@ -174,7 +208,10 @@ export interface ProductRow {
   notes: string | null;
   photoPath: string | null;
   variantCount: number;
+  /** Units we would actually take. Excludes anything past its grace window. */
   inStockUnits: number;
+  /** In stock but past its window — counted apart, never folded into the above. */
+  pastDateUnits: number;
 }
 
 /**
@@ -222,7 +259,6 @@ export async function getProducts(includeArchived = false, search?: string): Pro
       notes: products.notes,
       photoPath: products.photoPath,
       variantCount: sql<number>`count(distinct ${variants.id})`,
-      inStockUnits: sql<number>`coalesce(sum(case when ${batches.status} = 'in_stock' then ${batches.quantityRemaining} else 0 end), 0)`,
     })
     .from(products)
     .leftJoin(variants, eq(variants.productId, products.id))
@@ -231,13 +267,71 @@ export async function getProducts(includeArchived = false, search?: string): Pro
     .groupBy(products.id)
     .orderBy(byName);
 
-  return rows;
+  /*
+   * Summed in TypeScript rather than SQL on purpose. A `sum(case when status =
+   * 'in_stock' ...)` cannot ask whether a box is still within its product's
+   * grace window without restating that rule in SQL — and a second copy of the
+   * rule is how this list came to disagree with the stock page in the first
+   * place. Fifteen products; the extra query costs nothing.
+   */
+  const totals = await unitsByProduct(rows.map((r) => r.id));
+
+  return rows.map((row) => ({
+    ...row,
+    inStockUnits: totals.get(row.id)?.usable ?? 0,
+    pastDateUnits: totals.get(row.id)?.pastDate ?? 0,
+  }));
+}
+
+/** Usable and past-date units per product, both decided by `isDosable`. */
+async function unitsByProduct(
+  productIds: number[],
+): Promise<Map<number, { usable: number; pastDate: number }>> {
+  const map = new Map<number, { usable: number; pastDate: number }>();
+  if (productIds.length === 0) return map;
+
+  const rows = await db
+    .select({
+      productId: variants.productId,
+      quantityRemaining: batches.quantityRemaining,
+      expiryDate: batches.expiryDate,
+      expiryPrecision: batches.expiryPrecision,
+      hasExpiry: products.hasExpiry,
+      expiryGraceDays: products.expiryGraceDays,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(and(eq(batches.status, 'in_stock'), inArray(variants.productId, productIds)));
+
+  const today = todayIso();
+  for (const row of rows) {
+    const entry = map.get(row.productId) ?? { usable: 0, pastDate: 0 };
+    const key = isDosable(toExpiryInput(row), today) ? 'usable' : 'pastDate';
+    entry[key] = Math.round((entry[key] + row.quantityRemaining) * 100) / 100;
+    map.set(row.productId, entry);
+  }
+  return map;
 }
 
 export interface ProductDetail extends ProductRow {
   archivedAt: Date | null;
+  /** Days past the printed date this product may still be dosed from. Zero for most. */
+  expiryGraceDays: number;
   /** True when any batch exists, including used-up ones. Blocks permanent delete. */
   hasBatches: boolean;
+  /**
+   * True when a dose schedule (active or archived) references this product.
+   * doseSchedules.productId is a restrict FK, so deleting the product would
+   * otherwise crash — blocks permanent delete the same as hasBatches.
+   */
+  hasDoseSchedules: boolean;
+  /**
+   * Live schedules only, with whose they are. Empty for almost every product.
+   * Archiving is refused while this is non-empty, because archiving would
+   * otherwise stop someone's dose as a side effect of tidying up.
+   */
+  activeDoses: { memberName: string; doseUnits: number; timesPerDay: number; intervalDays: number }[];
   substances: {
     id: number;
     name: string;
@@ -315,9 +409,56 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
         .orderBy(sql`${batches.expiryDate} is null`, asc(batches.expiryDate))
     : [];
 
-  const inStockUnits = batchRows
-    .filter((b) => b.status === 'in_stock')
+  // Split the same way the stock list splits it, so the two pages never
+  // disagree about how much of this we effectively have.
+  const today = todayIso();
+  const inStock = batchRows.filter((b) => b.status === 'in_stock');
+  const usable = (b: (typeof inStock)[number]) =>
+    isDosable(
+      {
+        expiryDate: b.expiryDate,
+        precision: b.expiryPrecision,
+        hasExpiry: product.hasExpiry,
+        graceDays: product.expiryGraceDays,
+      },
+      today,
+    );
+
+  const inStockUnits = inStock.filter(usable).reduce((sum, b) => sum + b.quantityRemaining, 0);
+  const pastDateUnits = inStock
+    .filter((b) => !usable(b))
     .reduce((sum, b) => sum + b.quantityRemaining, 0);
+
+  const scheduleRows = await db
+    .select({ id: doseSchedules.id })
+    .from(doseSchedules)
+    .where(eq(doseSchedules.productId, id))
+    .limit(1);
+
+  /*
+   * Distinct from scheduleRows above: that one counts every schedule ever,
+   * archived included, because the restrict FK blocks a permanent delete
+   * regardless. This one is only the live ones, and it names who takes them —
+   * archiving is refused while someone is still being dosed from this, and a
+   * refusal has to say whose dose it would have stopped.
+   */
+  const activeDoseRows = await db
+    .select({
+      memberName: householdMembers.name,
+      doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
+    })
+    .from(doseSchedules)
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(
+      and(
+        eq(doseSchedules.productId, id),
+        isNull(doseSchedules.archivedAt),
+        isNull(householdMembers.archivedAt),
+      ),
+    )
+    .orderBy(sql`${householdMembers.name} collate nocase`);
 
   return {
     id: product.id,
@@ -329,12 +470,16 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     manufacturer: product.manufacturer,
     isPrescription: product.isPrescription,
     hasExpiry: product.hasExpiry,
+    expiryGraceDays: product.expiryGraceDays,
     notes: product.notes,
     photoPath: product.photoPath,
     archivedAt: product.archivedAt,
     hasBatches: batchRows.length > 0,
+    hasDoseSchedules: scheduleRows.length > 0,
+    activeDoses: activeDoseRows,
     variantCount: variantRows.length,
     inStockUnits: Math.round(inStockUnits * 100) / 100,
+    pastDateUnits: Math.round(pastDateUnits * 100) / 100,
     substances: substanceRows,
     symptoms: symptomRows,
     packs: variantRows.map((variant) => ({
@@ -369,6 +514,8 @@ export interface BatchDetail extends StockRow {
   purchasePriceMinor: number | null;
   purchaseCurrency: 'PLN' | 'EUR' | null;
   packLabelOrSize: string;
+  /** A dose was confirmed straight from this box — deleting it would violate the FK. */
+  hasDoseEvents: boolean;
 }
 
 /** One box, with everything its edit form needs. */
@@ -390,9 +537,16 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
   const row = rows[0];
   if (!row) return null;
 
+  const eventRows = await db
+    .select({ id: doseEvents.id })
+    .from(doseEvents)
+    .where(eq(doseEvents.batchId, id))
+    .limit(1);
+
   return {
     ...row,
     packLabelOrSize: row.packLabel ?? `${row.packSize} ${row.unitName}`,
+    hasDoseEvents: eventRows.length > 0,
   };
 }
 
@@ -614,6 +768,8 @@ export interface MemberScheduleRow {
   unitName: string;
   doseUnits: number;
   timesPerDay: number;
+  /** Days between dosing days; 1 for the everyday case. */
+  intervalDays: number;
   startDate: string;
   endDate: string | null;
   notes: string | null;
@@ -649,6 +805,7 @@ export async function getHouseholdMember(id: number): Promise<HouseholdMemberDet
       unitName: products.unitName,
       doseUnits: doseSchedules.doseUnits,
       timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
       startDate: doseSchedules.startDate,
       endDate: doseSchedules.endDate,
       notes: doseSchedules.notes,
@@ -696,8 +853,18 @@ export interface DoseScheduleBoardRow {
   unitName: string;
   doseUnits: number;
   timesPerDay: number;
+  /** Days between dosing days; 1 for the everyday case. */
+  intervalDays: number;
   startDate: string;
   endDate: string | null;
+  /**
+   * Set when the product behind this live schedule has been archived — a state
+   * `archiveProduct` refuses to create, but that older data and direct database
+   * edits can still be in. The board shows the schedule anyway and marks it:
+   * hiding someone's dose because a row disagrees is the one outcome worse than
+   * the disagreement.
+   */
+  productArchivedAt: Date | null;
 }
 
 /** Every active schedule, for every active member — the "today" board. */
@@ -713,12 +880,15 @@ export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> 
       unitName: products.unitName,
       doseUnits: doseSchedules.doseUnits,
       timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
       startDate: doseSchedules.startDate,
       endDate: doseSchedules.endDate,
+      productArchivedAt: products.archivedAt,
     })
     .from(doseSchedules)
     .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
     .innerJoin(products, eq(doseSchedules.productId, products.id))
+    // Deliberately not filtered on products.archivedAt — see productArchivedAt.
     .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)))
     .orderBy(sql`${householdMembers.name} collate nocase`, sql`${products.name} collate nocase`);
 }
@@ -729,6 +899,30 @@ export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> 
  * against" using the same rules FEFO itself uses, rather than a second,
  * possibly-diverging definition of "in stock".
  */
+/**
+ * Consumption rate per product, summed across every active schedule for it —
+ * two people can share one medication, and the run-out date is a property of
+ * the shared cupboard, not of either person alone.
+ */
+export async function getProductDailyRates(): Promise<Map<number, number>> {
+  const rows = await db
+    .select({
+      productId: doseSchedules.productId,
+      /*
+       * The 1.0 is load-bearing. SQLite does integer division, so a weekly
+       * schedule would come out as 1/7 = 0 — rate zero, no projection, and the
+       * run-out badge silently absent for exactly the schedules that most need
+       * planning. Forcing real arithmetic keeps it a fraction.
+       */
+      rate: sql<number>`sum(${doseSchedules.doseUnits} * ${doseSchedules.timesPerDay} * 1.0 / max(1, ${doseSchedules.intervalDays}))`,
+    })
+    .from(doseSchedules)
+    .where(isNull(doseSchedules.archivedAt))
+    .groupBy(doseSchedules.productId);
+
+  return new Map(rows.map((r) => [r.productId, r.rate]));
+}
+
 export async function getBatchesForProducts(
   productIds: number[],
 ): Promise<Map<number, FefoBatch[]>> {
@@ -744,6 +938,7 @@ export async function getBatchesForProducts(
       openedAt: batches.openedAt,
       status: batches.status,
       hasExpiry: products.hasExpiry,
+      expiryGraceDays: products.expiryGraceDays,
       productId: variants.productId,
     })
     .from(batches)

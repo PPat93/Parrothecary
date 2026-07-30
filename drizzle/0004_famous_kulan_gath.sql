@@ -1,0 +1,1 @@
+ALTER TABLE `dose_schedules` ADD `interval_days` integer DEFAULT 1 NOT NULL;

@@ -5,6 +5,7 @@ import { BackLink } from '@/components/back-link';
 import { ConfirmButton } from '@/components/confirm-button';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { todayIso } from '@/domain/date';
+import { formatDoseCadence } from '@/domain/dosing';
 import { formatQuantity } from '@/domain/quantity';
 import { getHouseholdMember, getProducts } from '@/lib/queries';
 import { archiveMember, deleteMember, removeSchedule, unarchiveMember } from '../../actions';
@@ -77,8 +78,8 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
                       ) : null}
                     </p>
                     <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                      {formatQuantity(s.doseUnits, s.unitName)} · {s.timesPerDay}×/day · from{' '}
-                      {s.startDate}
+                      {formatQuantity(s.doseUnits, s.unitName)} ·{' '}
+                      {formatDoseCadence(s.timesPerDay, s.intervalDays)} · from {s.startDate}
                       {s.endDate ? ` to ${s.endDate}` : ''}
                       {s.notes ? ` · ${s.notes}` : ''}
                     </p>

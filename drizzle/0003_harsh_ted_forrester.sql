@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `expiry_grace_days` integer DEFAULT 0 NOT NULL;

@@ -114,6 +114,19 @@ export const products = sqliteTable(
      */
     hasExpiry: integer('has_expiry', { mode: 'boolean' }).notNull().default(true),
 
+    /**
+     * How many days past the printed date this product is still considered
+     * usable for dosing. Per product, not global, and 0 by default — because
+     * an expiry date means different things for different things. Paracetamol
+     * tablets a month past date are fine; sterile saline, eye drops, an
+     * adrenaline pen or an antibiotic are not, and one shared constant could
+     * not tell them apart.
+     *
+     * Affects only what FEFO is willing to allocate. The expiry view still
+     * reports the box as expired, because it factually is.
+     */
+    expiryGraceDays: integer('expiry_grace_days').notNull().default(0),
+
     /** Photo of the box front, relative to the uploads directory. */
     photoPath: text('photo_path'),
     notes: text('notes'),
@@ -422,7 +435,24 @@ export const doseSchedules = sqliteTable(
     /** Independent doses per day (morning + evening = 2), not a split of one. */
     timesPerDay: integer('times_per_day').notNull().default(1),
 
-    /** Confirming a dose before this date is not offered. */
+    /**
+     * Days between dosing days. 1 is every day, 7 is weekly, 2 is alternate
+     * days. Combines with timesPerDay: interval 7 and timesPerDay 2 means two
+     * doses, one day a week.
+     *
+     * Deliberately an interval and not a set of weekdays. "Every 3 days" and
+     * "weekly" cover what a household actually needs, and an interval cannot
+     * quietly disagree with itself the way a weekday set plus a start date can.
+     *
+     * Due dates are phased from startDate, so moving startDate moves every
+     * future dose with it — which is why the form does not offer to change it.
+     */
+    intervalDays: integer('interval_days').notNull().default(1),
+
+    /**
+     * Confirming a dose before this date is not offered. Also the anchor every
+     * dosing day is counted from, once intervalDays is above 1.
+     */
     startDate: text('start_date').notNull(),
     /** Null = ongoing. Set for a course of antibiotics or a seasonal supplement. */
     endDate: text('end_date'),

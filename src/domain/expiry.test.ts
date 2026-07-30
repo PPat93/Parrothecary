@@ -1,18 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_THRESHOLDS,
+  MAX_GRACE_DAYS,
+  daysPastDate,
   daysUntilExpiry,
   expiryStatus,
   formatExpiry,
+  isDosable,
   isUsableOn,
   normaliseExpiry,
+  parseGraceDays,
   type ExpiryInput,
 } from './expiry';
 
 const TODAY = '2026-07-26';
 
-function box(expiryDate: string | null, precision: 'day' | 'month' | null = 'day'): ExpiryInput {
-  return { expiryDate, precision, hasExpiry: expiryDate !== null };
+function box(
+  expiryDate: string | null,
+  precision: 'day' | 'month' | null = 'day',
+  graceDays = 0,
+): ExpiryInput {
+  return { expiryDate, precision, hasExpiry: expiryDate !== null, graceDays };
 }
 
 describe('normaliseExpiry', () => {
@@ -81,13 +89,28 @@ describe('daysUntilExpiry', () => {
   });
 
   it('returns null for items that never expire', () => {
-    expect(daysUntilExpiry({ expiryDate: null, precision: null, hasExpiry: false }, TODAY)).toBeNull();
+    expect(daysUntilExpiry({ expiryDate: null, precision: null, hasExpiry: false, graceDays: 0 }, TODAY)).toBeNull();
   });
 });
 
 describe('expiryStatus', () => {
-  it('flags anything past its date as expired', () => {
+  it('flags anything past its date as expired when the product allows no grace', () => {
     expect(expiryStatus(box('2026-07-25'), TODAY)).toBe('expired');
+  });
+
+  it('reports a box inside its grace window as in use, not expired', () => {
+    // The dose board is still taking from this, so calling it expired here
+    // would contradict what the app actually does.
+    expect(expiryStatus(box('2026-06-26', 'day', 60), TODAY)).toBe('in_grace');
+  });
+
+  it('goes back to expired once the grace window is used up', () => {
+    expect(expiryStatus(box('2026-05-26', 'day', 30), TODAY)).toBe('expired');
+  });
+
+  it('holds in_grace on the last day of the window and expires the day after', () => {
+    expect(expiryStatus(box('2026-06-26', 'day', 30), TODAY)).toBe('in_grace');
+    expect(expiryStatus(box('2026-06-25', 'day', 30), TODAY)).toBe('expired');
   });
 
   it('treats the expiry day itself as still usable but critical', () => {
@@ -111,14 +134,14 @@ describe('expiryStatus', () => {
   });
 
   it('reports non-expiring items separately rather than as ok', () => {
-    const plasters: ExpiryInput = { expiryDate: null, precision: null, hasExpiry: false };
+    const plasters: ExpiryInput = { expiryDate: null, precision: null, hasExpiry: false, graceDays: 0 };
     expect(expiryStatus(plasters, TODAY)).toBe('none');
   });
 
   it('distinguishes "we never typed the date in" from "it does not expire"', () => {
     // A bandage that does expire but whose date we have not recorded must not
     // be reported as never expiring — that is a claim we cannot make.
-    const bandage: ExpiryInput = { expiryDate: null, precision: null, hasExpiry: true };
+    const bandage: ExpiryInput = { expiryDate: null, precision: null, hasExpiry: true, graceDays: 0 };
     expect(expiryStatus(bandage, TODAY)).toBe('unknown');
   });
 
@@ -150,13 +173,109 @@ describe('formatExpiry', () => {
   });
 
   it('says so when nothing expires', () => {
-    expect(formatExpiry({ expiryDate: null, precision: null, hasExpiry: false })).toBe('no expiry');
+    expect(formatExpiry({ expiryDate: null, precision: null, hasExpiry: false, graceDays: 0 })).toBe('no expiry');
   });
 
   it('admits when the date is simply missing', () => {
-    expect(formatExpiry({ expiryDate: null, precision: null, hasExpiry: true })).toBe(
+    expect(formatExpiry({ expiryDate: null, precision: null, hasExpiry: true, graceDays: 0 })).toBe(
       'date unknown',
     );
+  });
+});
+
+describe('isDosable', () => {
+  it('allows a box still in date', () => {
+    expect(isDosable(box('2026-08-01'), TODAY)).toBe(true);
+  });
+
+  it('allows the printed date itself', () => {
+    expect(isDosable(box(TODAY), TODAY)).toBe(true);
+  });
+
+  it('refuses a box one day past date when no grace is allowed', () => {
+    expect(isDosable(box('2026-07-25'), TODAY)).toBe(false);
+  });
+
+  it('allows a box inside its grace window and refuses one beyond it', () => {
+    expect(isDosable(box('2026-06-26', 'day', 60), TODAY)).toBe(true);
+    expect(isDosable(box('2026-06-26', 'day', 20), TODAY)).toBe(false);
+  });
+
+  it('always allows stock that does not expire', () => {
+    expect(isDosable({ expiryDate: null, precision: null, hasExpiry: false, graceDays: 0 }, TODAY)).toBe(
+      true,
+    );
+  });
+
+  it('allows a box whose date was never recorded rather than blocking doses on it', () => {
+    // A missing date is our gap in the records, not evidence the box is bad —
+    // refusing to dose from it would punish the wrong thing.
+    expect(isDosable({ expiryDate: null, precision: null, hasExpiry: true, graceDays: 0 }, TODAY)).toBe(
+      true,
+    );
+  });
+
+  it('never lets a negative grace pull the deadline earlier than the printed date', () => {
+    expect(isDosable(box(TODAY, 'day', -30), TODAY)).toBe(true);
+  });
+});
+
+describe('daysPastDate', () => {
+  it('counts how far past the date a box is', () => {
+    expect(daysPastDate(box('2026-07-20'), TODAY)).toBe(6);
+  });
+
+  it('is null while the box is still in date', () => {
+    expect(daysPastDate(box('2026-08-05'), TODAY)).toBeNull();
+    expect(daysPastDate(box(TODAY), TODAY)).toBeNull();
+  });
+
+  it('is null for stock that never expires', () => {
+    expect(
+      daysPastDate({ expiryDate: null, precision: null, hasExpiry: false, graceDays: 0 }, TODAY),
+    ).toBeNull();
+  });
+
+  it('reports the real distance regardless of how much grace was allowed', () => {
+    // Grace changes whether we use it, not how old it is.
+    expect(daysPastDate(box('2026-07-20', 'day', 60), TODAY)).toBe(6);
+  });
+});
+
+describe('parseGraceDays', () => {
+  it('reads a plain number of days', () => {
+    expect(parseGraceDays('60')).toEqual({ ok: true, days: 60 });
+  });
+
+  it('treats blank and missing as no grace at all', () => {
+    // Never "unlimited": leaving the field alone must not widen how long
+    // something counts as usable.
+    expect(parseGraceDays(null)).toEqual({ ok: true, days: 0 });
+    expect(parseGraceDays('')).toEqual({ ok: true, days: 0 });
+    expect(parseGraceDays('   ')).toEqual({ ok: true, days: 0 });
+  });
+
+  it('accepts zero explicitly', () => {
+    expect(parseGraceDays('0')).toEqual({ ok: true, days: 0 });
+  });
+
+  it('rejects fractions, negatives and nonsense', () => {
+    expect(parseGraceDays('60.5').ok).toBe(false);
+    expect(parseGraceDays('-30').ok).toBe(false);
+    expect(parseGraceDays('two months').ok).toBe(false);
+  });
+
+  it('rejects a slipped digit rather than silently never expiring', () => {
+    // 600 instead of 60 reads as a plausible number and would quietly mean
+    // "this never goes off" — the one failure mode worth a hard limit.
+    const result = parseGraceDays('600');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('did you mean 60');
+  });
+
+  it('allows the cap itself and refuses one day more', () => {
+    expect(parseGraceDays(String(MAX_GRACE_DAYS))).toEqual({ ok: true, days: MAX_GRACE_DAYS });
+    expect(parseGraceDays(String(MAX_GRACE_DAYS + 1)).ok).toBe(false);
   });
 });
 
@@ -172,8 +291,15 @@ describe('isUsableOn', () => {
   });
 
   it('says non-expiring stock is always usable', () => {
-    expect(isUsableOn({ expiryDate: null, precision: null, hasExpiry: false }, '2099-01-01')).toBe(
+    expect(isUsableOn({ expiryDate: null, precision: null, hasExpiry: false, graceDays: 0 }, '2099-01-01')).toBe(
       true,
     );
+  });
+
+  it('counts the grace window when asking whether stock covers a future trip', () => {
+    // Stock we are willing to dose from is stock that covers us — this must
+    // give the same answer as the dose board would.
+    expect(isUsableOn(box('2027-02-28', 'day', 30), '2027-03-05')).toBe(true);
+    expect(isUsableOn(box('2027-01-28', 'day', 30), '2027-03-05')).toBe(false);
   });
 });

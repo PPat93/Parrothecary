@@ -1,12 +1,22 @@
 import Link from 'next/link';
 import { ActionButton } from '@/components/action-button';
 import { ExpiryBadge } from '@/components/expiry-badge';
+import { RunOutBadge } from '@/components/run-out-badge';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { SearchBox } from '@/components/search-box';
 import { SymptomTags } from '@/components/symptom-tags';
 import { todayIso } from '@/domain/date';
+import { totalAvailable } from '@/domain/fefo';
 import { formatQuantity } from '@/domain/quantity';
-import { getProductSymptoms, getStock, groupByProduct } from '@/lib/queries';
+import { projectRunOut } from '@/domain/runout';
+import {
+  getBatchesForProducts,
+  getProductDailyRates,
+  getProductSymptoms,
+  getStock,
+  groupByProduct,
+  toExpiryInput,
+} from '@/lib/queries';
 import { adjustBatch } from './actions';
 
 export default async function StockPage({
@@ -17,8 +27,18 @@ export default async function StockPage({
   const { q } = await searchParams;
   const search = q ?? '';
   const today = todayIso();
-  const [rows, symptomsByProduct] = await Promise.all([getStock(search), getProductSymptoms()]);
-  const groups = groupByProduct(rows);
+  const [rows, symptomsByProduct, dailyRates] = await Promise.all([
+    getStock(search),
+    getProductSymptoms(),
+    getProductDailyRates(),
+  ]);
+  const groups = groupByProduct(rows, today);
+
+  // Only products with an active dose schedule get projected — a rate we
+  // do not have is not a rate of zero, so this stays a separate lookup rather
+  // than a fallback default.
+  const scheduledProductIds = groups.map((g) => g.productId).filter((id) => dailyRates.has(id));
+  const batchesByProduct = await getBatchesForProducts(scheduledProductIds);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -45,6 +65,15 @@ export default async function StockPage({
             // from.
             const hasSeveralPacks = new Set(group.boxes.map((b) => b.variantId)).size > 1;
 
+            const dailyRate = dailyRates.get(group.productId);
+            const projection = dailyRate
+              ? projectRunOut(
+                  totalAvailable(batchesByProduct.get(group.productId) ?? [], today),
+                  dailyRate,
+                  today,
+                )
+              : null;
+
             return (
             <li
               key={group.productId}
@@ -61,8 +90,16 @@ export default async function StockPage({
                     </span>
                   ) : null}
                 </h2>
-                <span className="shrink-0 text-sm tabular-nums" style={{ color: 'var(--muted)' }}>
+                <span className="shrink-0 text-right text-sm tabular-nums" style={{ color: 'var(--muted)' }}>
                   {formatQuantity(group.totalUnits, group.unitName)}
+                  {/* Past-date stock is real and still in the cupboard, so it is
+                      not hidden — but it is never folded into the number that
+                      drives "do I need to buy more". */}
+                  {group.pastDateUnits > 0 ? (
+                    <span className="block text-xs" style={{ color: 'var(--color-warning)' }}>
+                      +{group.pastDateUnits} past date
+                    </span>
+                  ) : null}
                 </span>
               </div>
 
@@ -73,18 +110,16 @@ export default async function StockPage({
               ) : null}
 
               <SymptomTags names={symptomsByProduct.get(group.productId)} />
+              {projection ? (
+                <p className="mt-1">
+                  <RunOutBadge projection={projection} />
+                </p>
+              ) : null}
 
               <ul className="mt-3 flex flex-col gap-2">
                 {group.boxes.map((box) => (
                   <li key={box.batchId} className="flex flex-wrap items-center gap-2">
-                    <ExpiryBadge
-                      today={today}
-                      input={{
-                        expiryDate: box.expiryDate,
-                        precision: box.expiryPrecision,
-                        hasExpiry: box.hasExpiry,
-                      }}
-                    />
+                    <ExpiryBadge today={today} input={toExpiryInput(box)} />
 
                     <span className="min-w-0 flex-1 text-sm tabular-nums">
                       {formatQuantity(box.quantityRemaining, box.unitName, box.packSize)}

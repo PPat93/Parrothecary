@@ -4,6 +4,40 @@
  * cupboard is full of half-used bottles.
  */
 
+/**
+ * The finest quantity the app actually tracks. Everything stored goes through
+ * two-decimal rounding, so halves and quarters are exact and an eighth of a
+ * tablet is not: subtracting 0.125 repeatedly drifts, and after eight doses of
+ * a single tablet there would still be 0.04 of it showing. Inputs finer than
+ * this are refused rather than silently accumulating error.
+ */
+export const UNIT_PRECISION = 0.01;
+
+/**
+ * Parse a typed quantity, accepting either decimal separator.
+ *
+ * A Polish phone keyboard offers a comma, not a full stop, so "0,5" is what
+ * gets typed for half a tablet — and `Number('0,5')` is NaN. Money already
+ * normalised both separators; quantities did not, which made the same keystroke
+ * work for a price and fail for a dose.
+ *
+ * Null for anything that is not a plain number. Callers apply their own bounds:
+ * this does not know whether zero is allowed.
+ */
+export function parseUnits(input: string): number | null {
+  const cleaned = input.trim().replace(/\s/g, '').replace(',', '.');
+  if (cleaned === '') return null;
+  if (!/^\d*\.?\d+$/.test(cleaned)) return null;
+
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Is this a quantity the app can track exactly, rather than round away? */
+export function isTrackableQuantity(units: number): boolean {
+  return Math.abs(units / UNIT_PRECISION - Math.round(units / UNIT_PRECISION)) < 1e-9;
+}
+
 export interface PackBreakdown {
   fullPacks: number;
   remainderUnits: number;

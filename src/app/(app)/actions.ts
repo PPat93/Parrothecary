@@ -30,7 +30,8 @@ import { todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { deletePhoto, savePhoto } from '@/lib/photos';
 import { findVariantByBarcode } from '@/lib/queries';
-import { normaliseExpiry } from '@/domain/expiry';
+import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
+import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
 import { parseAmount } from '@/domain/money';
 import { endSession } from '@/lib/session';
 
@@ -68,6 +69,19 @@ const productSchema = z.object({
   isPrescription: z.coerce.boolean(),
   hasExpiry: z.coerce.boolean(),
   /*
+   * Blank means zero — no tolerance past the printed date. That has to be the
+   * default: a field left alone must never quietly extend how long something
+   * is treated as safe to take.
+   */
+  expiryGraceDays: optionalText.transform((value, ctx) => {
+    const result = parseGraceDays(value);
+    if (!result.ok) {
+      ctx.addIssue(result.message);
+      return z.NEVER;
+    }
+    return result.days;
+  }),
+  /*
    * Required, not optional. A product with no pack cannot receive a box and
    * cannot be put on a shopping list, so it can only ever be archived — a dead
    * end that was easy to create and easy to miss.
@@ -90,6 +104,7 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
     notes: formData.get('notes'),
     isPrescription: formData.get('isPrescription') === 'on',
     hasExpiry: formData.get('hasExpiry') === 'on',
+    expiryGraceDays: formData.get('expiryGraceDays'),
     packSize: formData.get('packSize'),
     packLabel: formData.get('packLabel'),
     substance: formData.get('substance'),
@@ -108,14 +123,14 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
 
   // Distinguish missing from invalid: telling someone a filled-in field is
   // "required" sends them looking for a blank box that is not there.
-  const packSize = Number(data.packSize ?? '');
+  const packSize = parseUnits(data.packSize ?? '');
   if (data.packSize === null) {
     return {
       error: 'Pack size is required — how many units are in one sealed pack?',
       values: snapshot(formData),
     };
   }
-  if (!Number.isFinite(packSize) || packSize <= 0) {
+  if (packSize === null || packSize <= 0) {
     return {
       error: `"${data.packSize}" is not a valid pack size. Enter a positive number, like 60.`,
       values: snapshot(formData),
@@ -134,6 +149,7 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
       notes: data.notes,
       isPrescription: data.isPrescription,
       hasExpiry: data.hasExpiry,
+      expiryGraceDays: data.expiryGraceDays,
     })
     .returning({ id: products.id });
 
@@ -312,6 +328,7 @@ export async function updateProduct(_prev: FormResult, formData: FormData): Prom
     notes: formData.get('notes'),
     isPrescription: formData.get('isPrescription') === 'on',
     hasExpiry: formData.get('hasExpiry') === 'on',
+    expiryGraceDays: formData.get('expiryGraceDays'),
   });
 
   if (!parsed.success) {
@@ -359,6 +376,16 @@ export async function deleteProduct(formData: FormData): Promise<void> {
 
   if (batchRows.length > 0) return;
 
+  // doseSchedules.productId is restrict, not cascade — a schedule (even an
+  // archived one with zero confirmed doses) still blocks the delete outright.
+  const scheduleRows = await db
+    .select({ id: doseSchedules.id })
+    .from(doseSchedules)
+    .where(eq(doseSchedules.productId, id))
+    .limit(1);
+
+  if (scheduleRows.length > 0) return;
+
   // Variants, substance links and shopping lines cascade from the schema.
   await db.delete(products).where(eq(products.id, id));
   refreshAll();
@@ -373,9 +400,31 @@ export async function unarchiveProduct(formData: FormData): Promise<void> {
   refreshAll();
 }
 
+/**
+ * Archiving is refused while someone is still being dosed from this product.
+ *
+ * The alternative — archive it and quietly drop the schedule off the dose board
+ * — would turn a tidying gesture into a stopped medication, with no missed-dose
+ * marks and nothing to notice. Better to refuse at the moment we can still say
+ * why. Stopping the dose first is one tap away on the household page.
+ */
 export async function archiveProduct(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
+
+  const activeSchedules = await db
+    .select({ id: doseSchedules.id })
+    .from(doseSchedules)
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(
+      and(
+        eq(doseSchedules.productId, id),
+        isNull(doseSchedules.archivedAt),
+        isNull(householdMembers.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (activeSchedules.length > 0) return;
 
   // Soft delete — batch history and past spend depend on this row surviving.
   await db.update(products).set({ archivedAt: new Date() }).where(eq(products.id, id));
@@ -388,11 +437,11 @@ export async function archiveProduct(formData: FormData): Promise<void> {
 
 export async function createVariant(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const productId = Number(formData.get('productId'));
-  const packSize = Number(formData.get('packSize'));
+  const packSize = parseUnits(String(formData.get('packSize') ?? ''));
   const packLabel = emptyToNull(String(formData.get('packLabel') ?? '').trim());
 
   if (!Number.isInteger(productId)) return { error: 'Pick a product.' };
-  if (!Number.isFinite(packSize) || packSize <= 0) {
+  if (packSize === null || packSize <= 0) {
     return { error: 'Pack size must be a positive number.', values: snapshot(formData) };
   }
 
@@ -442,9 +491,9 @@ interface BatchFields {
  * physical thing arriving in the house, so they parse identically.
  */
 function parseBatchFields(formData: FormData): { fields: BatchFields } | { error: string } {
-  const quantity = Number(String(formData.get('quantityRemaining') ?? '').trim());
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    return { error: 'Quantity must be a positive number.' };
+  const quantity = parseUnits(String(formData.get('quantityRemaining') ?? ''));
+  if (quantity === null || quantity <= 0) {
+    return { error: 'Quantity must be a positive number — 30, 32.5 or 32,5 all work.' };
   }
 
   let expiryDate: string | null = null;
@@ -574,9 +623,23 @@ export async function updateBatch(_prev: FormResult, formData: FormData): Promis
  * worth keeping; a typo is not, and leaving it as a zeroed batch would pollute
  * the consumption and waste figures the later phases depend on.
  */
+/**
+ * Guarded: a batch with a confirmed dose against it cannot be deleted — the
+ * FK from dose_events restricts it, and rightly so, since that row is real
+ * consumption history. The edit page hides the button in this case; this is
+ * the backstop for a stale render, so the delete fails quietly rather than
+ * crashing with a raw FOREIGN KEY constraint error.
+ */
 export async function deleteBatch(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
+
+  const eventRows = await db
+    .select({ id: doseEvents.id })
+    .from(doseEvents)
+    .where(eq(doseEvents.batchId, id))
+    .limit(1);
+  if (eventRows.length > 0) return;
 
   await db.delete(batches).where(eq(batches.id, id));
   refreshAll();
@@ -605,11 +668,16 @@ export async function resolveScan(raw: string, format?: string): Promise<ScanRes
     variantId: variant?.id ?? null,
     variantLabel: variant?.productLabel ?? null,
     // Re-formatted the way the expiry field expects it, so it can be dropped
-    // straight into the form.
+    // straight into the form. Grace is irrelevant to how a date is written, but
+    // this goes through formatExpiry rather than slicing the string by hand so
+    // there is only one definition of what an expiry looks like on screen.
     expiry: parsed.expiryDate
-      ? parsed.expiryPrecision === 'month'
-        ? `${parsed.expiryDate.slice(5, 7)}.${parsed.expiryDate.slice(0, 4)}`
-        : `${parsed.expiryDate.slice(8, 10)}.${parsed.expiryDate.slice(5, 7)}.${parsed.expiryDate.slice(0, 4)}`
+      ? formatExpiry({
+          expiryDate: parsed.expiryDate,
+          precision: parsed.expiryPrecision,
+          hasExpiry: true,
+          graceDays: 0,
+        })
       : null,
     lotNumber: parsed.lotNumber,
   };
@@ -922,8 +990,9 @@ export async function deleteMember(formData: FormData): Promise<void> {
 export async function createSchedule(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const memberId = Number(formData.get('memberId'));
   const productId = Number(formData.get('productId'));
-  const doseUnits = Number(formData.get('doseUnits'));
+  const doseUnits = parseUnits(String(formData.get('doseUnits') ?? ''));
   const timesPerDay = Number(formData.get('timesPerDay') || 1);
+  const intervalDays = Number(formData.get('intervalDays') || 1);
   const startDate = String(formData.get('startDate') ?? '').trim();
   const endDate = emptyToNull(String(formData.get('endDate') ?? '').trim());
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
@@ -932,11 +1001,30 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
 
   if (!Number.isInteger(memberId)) return fail('Unknown person.');
   if (!Number.isInteger(productId)) return fail('Pick what is being taken.');
-  if (!Number.isFinite(doseUnits) || doseUnits <= 0) {
-    return fail('Dose per time must be a positive number.');
+  if (doseUnits === null || doseUnits <= 0) {
+    return fail('Dose per time must be a positive number — 1, 0.5 or 0,5 all work.');
+  }
+  /*
+   * Refused rather than rounded. Quantities are stored to two decimals, so an
+   * eighth of a tablet would leave 0.04 of it behind after eight doses — the
+   * kind of quiet arithmetic error that makes someone stop trusting the counts.
+   */
+  if (!isTrackableQuantity(doseUnits)) {
+    return fail(
+      `Doses are tracked to ${UNIT_PRECISION} of a unit. ${doseUnits} is finer than that — round it, or record the dose in a smaller unit.`,
+    );
   }
   if (!Number.isInteger(timesPerDay) || timesPerDay < 1) {
     return fail('Times per day must be a whole number, at least 1.');
+  }
+  /*
+   * Capped at a year for the same reason the expiry grace period is: past that
+   * the number is a typo, not an intent. The lower bound matters more — a zero
+   * or negative interval would make the modulo meaningless and could turn a
+   * weekly dose into a daily prompt.
+   */
+  if (!Number.isInteger(intervalDays) || intervalDays < 1 || intervalDays > 365) {
+    return fail('Repeat every how many days? A whole number from 1 (daily) to 365.');
   }
   if (!startDate) return fail('Pick a start date.');
   if (endDate && endDate < startDate) return fail('The end date is before the start date.');
@@ -946,6 +1034,7 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
     productId,
     doseUnits,
     timesPerDay,
+    intervalDays,
     startDate,
     endDate,
     notes,
@@ -1002,6 +1091,7 @@ export async function confirmDose(formData: FormData): Promise<void> {
       doseUnits: doseSchedules.doseUnits,
       productId: doseSchedules.productId,
       hasExpiry: products.hasExpiry,
+      expiryGraceDays: products.expiryGraceDays,
     })
     .from(doseSchedules)
     .innerJoin(products, eq(doseSchedules.productId, products.id))
@@ -1023,7 +1113,11 @@ export async function confirmDose(formData: FormData): Promise<void> {
     .innerJoin(variants, eq(batches.variantId, variants.id))
     .where(and(eq(variants.productId, schedule.productId), eq(batches.status, 'in_stock')));
 
-  const fefoBatches: FefoBatch[] = batchRows.map((b) => ({ ...b, hasExpiry: schedule.hasExpiry }));
+  const fefoBatches: FefoBatch[] = batchRows.map((b) => ({
+    ...b,
+    hasExpiry: schedule.hasExpiry,
+    expiryGraceDays: schedule.expiryGraceDays,
+  }));
   const { allocations } = allocateFefo(fefoBatches, schedule.doseUnits, todayIso());
   if (allocations.length === 0) return; // nothing in stock to take this from
 

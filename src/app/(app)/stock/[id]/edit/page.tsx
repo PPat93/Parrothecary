@@ -30,21 +30,30 @@ export default async function EditBatchPage({ params }: { params: Promise<{ id: 
       <BatchEditForm box={box} />
 
       <div className="mt-8 flex flex-col items-center gap-2">
-        <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
-          Added this box by mistake? Deleting removes it entirely, rather than recording it as
-          used up or binned — so it never shows in consumption or waste figures.
-        </p>
-        <form action={deleteBatch}>
-          <input type="hidden" name="id" value={box.batchId} />
-          <ConfirmButton
-            label="Delete this box"
-            title="Delete this box?"
-            message={`${box.name} — ${formatQuantity(box.quantityRemaining, box.unitName, box.packSize)} will be erased completely. Use this only for a box entered by mistake; if you actually used or binned it, go back and record that instead.`}
-            confirmLabel="Yes, it was a mistake"
-            tone="critical"
-            className="rounded-lg border px-4 py-2 text-sm font-medium"
-          />
-        </form>
+        {box.hasDoseEvents ? (
+          <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
+            This box cannot be deleted because a dose was confirmed straight from it — that
+            confirmation is real consumption history. Adjust the quantity above instead.
+          </p>
+        ) : (
+          <>
+            <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
+              Added this box by mistake? Deleting removes it entirely, rather than recording it as
+              used up or binned — so it never shows in consumption or waste figures.
+            </p>
+            <form action={deleteBatch}>
+              <input type="hidden" name="id" value={box.batchId} />
+              <ConfirmButton
+                label="Delete this box"
+                title="Delete this box?"
+                message={`${box.name} — ${formatQuantity(box.quantityRemaining, box.unitName, box.packSize)} will be erased completely. Use this only for a box entered by mistake; if you actually used or binned it, go back and record that instead.`}
+                confirmLabel="Yes, it was a mistake"
+                tone="critical"
+                className="rounded-lg border px-4 py-2 text-sm font-medium"
+              />
+            </form>
+          </>
+        )}
       </div>
     </div>
   );

@@ -56,16 +56,29 @@ export function ScheduleForm({
         />
       </Field>
 
-      <Field label="Times per day" hint="Independent doses — morning and evening is 2, not one split dose.">
-        <TextInput
-          name="timesPerDay"
-          inputMode="numeric"
-          defaultValue={prev.timesPerDay ?? '1'}
-        />
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Times per dosing day" hint="Morning and evening is 2, not one split dose.">
+          <TextInput
+            name="timesPerDay"
+            inputMode="numeric"
+            defaultValue={prev.timesPerDay ?? '1'}
+          />
+        </Field>
+
+        <Field label="Every … days" hint="1 for daily, 7 for weekly, 2 for alternate days.">
+          <TextInput
+            name="intervalDays"
+            inputMode="numeric"
+            defaultValue={prev.intervalDays ?? '1'}
+          />
+        </Field>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Start date">
+        <Field
+          label="Start date"
+          hint="Also the day every interval counts from — a weekly dose repeats on this weekday."
+        >
           <TextInput name="startDate" type="date" required defaultValue={prev.startDate ?? today} />
         </Field>
         <Field label="End date" hint="Optional — for a course or a season.">
