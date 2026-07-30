@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { doseOccurrenceStatus, isScheduleActiveOn, recentScheduleDates } from './dosing';
+import {
+  doseOccurrenceStatus,
+  formatDoseFrequency,
+  isScheduleActiveOn,
+  recentScheduleDates,
+} from './dosing';
 
 const TODAY = '2026-07-26';
 
@@ -80,5 +85,17 @@ describe('recentScheduleDates', () => {
   it('returns nothing for a schedule that has not started yet', () => {
     const schedule = { startDate: '2026-08-01', endDate: null };
     expect(recentScheduleDates(schedule, TODAY, 3)).toEqual([]);
+  });
+});
+
+describe('formatDoseFrequency', () => {
+  it('uses words for the two common cases', () => {
+    expect(formatDoseFrequency(1)).toBe('once a day');
+    expect(formatDoseFrequency(2)).toBe('twice a day');
+  });
+
+  it('falls back to a count past that', () => {
+    expect(formatDoseFrequency(3)).toBe('3 times a day');
+    expect(formatDoseFrequency(4)).toBe('4 times a day');
   });
 });

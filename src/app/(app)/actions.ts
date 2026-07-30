@@ -399,9 +399,31 @@ export async function unarchiveProduct(formData: FormData): Promise<void> {
   refreshAll();
 }
 
+/**
+ * Archiving is refused while someone is still being dosed from this product.
+ *
+ * The alternative — archive it and quietly drop the schedule off the dose board
+ * — would turn a tidying gesture into a stopped medication, with no missed-dose
+ * marks and nothing to notice. Better to refuse at the moment we can still say
+ * why. Stopping the dose first is one tap away on the household page.
+ */
 export async function archiveProduct(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
+
+  const activeSchedules = await db
+    .select({ id: doseSchedules.id })
+    .from(doseSchedules)
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(
+      and(
+        eq(doseSchedules.productId, id),
+        isNull(doseSchedules.archivedAt),
+        isNull(householdMembers.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (activeSchedules.length > 0) return;
 
   // Soft delete — batch history and past spend depend on this row surviving.
   await db.update(products).set({ archivedAt: new Date() }).where(eq(products.id, id));

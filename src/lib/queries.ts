@@ -326,6 +326,12 @@ export interface ProductDetail extends ProductRow {
    * otherwise crash — blocks permanent delete the same as hasBatches.
    */
   hasDoseSchedules: boolean;
+  /**
+   * Live schedules only, with whose they are. Empty for almost every product.
+   * Archiving is refused while this is non-empty, because archiving would
+   * otherwise stop someone's dose as a side effect of tidying up.
+   */
+  activeDoses: { memberName: string; doseUnits: number; timesPerDay: number }[];
   substances: {
     id: number;
     name: string;
@@ -429,6 +435,30 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     .where(eq(doseSchedules.productId, id))
     .limit(1);
 
+  /*
+   * Distinct from scheduleRows above: that one counts every schedule ever,
+   * archived included, because the restrict FK blocks a permanent delete
+   * regardless. This one is only the live ones, and it names who takes them —
+   * archiving is refused while someone is still being dosed from this, and a
+   * refusal has to say whose dose it would have stopped.
+   */
+  const activeDoseRows = await db
+    .select({
+      memberName: householdMembers.name,
+      doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+    })
+    .from(doseSchedules)
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(
+      and(
+        eq(doseSchedules.productId, id),
+        isNull(doseSchedules.archivedAt),
+        isNull(householdMembers.archivedAt),
+      ),
+    )
+    .orderBy(sql`${householdMembers.name} collate nocase`);
+
   return {
     id: product.id,
     name: product.name,
@@ -445,6 +475,7 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     archivedAt: product.archivedAt,
     hasBatches: batchRows.length > 0,
     hasDoseSchedules: scheduleRows.length > 0,
+    activeDoses: activeDoseRows,
     variantCount: variantRows.length,
     inStockUnits: Math.round(inStockUnits * 100) / 100,
     pastDateUnits: Math.round(pastDateUnits * 100) / 100,
@@ -820,6 +851,14 @@ export interface DoseScheduleBoardRow {
   timesPerDay: number;
   startDate: string;
   endDate: string | null;
+  /**
+   * Set when the product behind this live schedule has been archived — a state
+   * `archiveProduct` refuses to create, but that older data and direct database
+   * edits can still be in. The board shows the schedule anyway and marks it:
+   * hiding someone's dose because a row disagrees is the one outcome worse than
+   * the disagreement.
+   */
+  productArchivedAt: Date | null;
 }
 
 /** Every active schedule, for every active member — the "today" board. */
@@ -837,10 +876,12 @@ export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> 
       timesPerDay: doseSchedules.timesPerDay,
       startDate: doseSchedules.startDate,
       endDate: doseSchedules.endDate,
+      productArchivedAt: products.archivedAt,
     })
     .from(doseSchedules)
     .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
     .innerJoin(products, eq(doseSchedules.productId, products.id))
+    // Deliberately not filtered on products.archivedAt — see productArchivedAt.
     .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)))
     .orderBy(sql`${householdMembers.name} collate nocase`, sql`${products.name} collate nocase`);
 }

@@ -5,9 +5,10 @@ import { BackLink } from '@/components/back-link';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ExpiryBadge } from '@/components/expiry-badge';
 import { todayIso } from '@/domain/date';
+import { formatDoseFrequency } from '@/domain/dosing';
 import { formatMoney, money } from '@/domain/money';
 import { formatQuantity } from '@/domain/quantity';
-import { getProduct, getSubstanceNames, getSymptomNames } from '@/lib/queries';
+import { getProduct, getSubstanceNames, getSymptomNames, type ProductDetail } from '@/lib/queries';
 import {
   archiveProduct,
   deleteProduct,
@@ -305,17 +306,31 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       </Section>
 
       {!product.archivedAt ? (
-        <form action={archiveProduct} className="mt-6 flex justify-center">
-          <input type="hidden" name="id" value={product.id} />
-          <ConfirmButton
-            label="Archive this product"
-            title="Archive this product?"
-            message={`${product.name} will disappear from the product list and the "add box" picker. Its history and past spend are kept, and you can restore it.`}
-            confirmLabel="Yes, archive"
-            tone="warning"
-            className="rounded-lg border px-4 py-2 text-sm font-medium"
-          />
-        </form>
+        product.activeDoses.length > 0 ? (
+          <p
+            className="mt-6 text-center text-xs"
+            style={{ color: 'var(--muted)' }}
+          >
+            This cannot be archived yet — {describeActiveDoses(product.activeDoses)}. Archiving
+            would take it off the dose board, so stop the dose under{' '}
+            <Link href="/household" className="underline underline-offset-4">
+              Household
+            </Link>{' '}
+            first.
+          </p>
+        ) : (
+          <form action={archiveProduct} className="mt-6 flex justify-center">
+            <input type="hidden" name="id" value={product.id} />
+            <ConfirmButton
+              label="Archive this product"
+              title="Archive this product?"
+              message={`${product.name} will disappear from the product list and the "add box" picker. Its history and past spend are kept, and you can restore it.`}
+              confirmLabel="Yes, archive"
+              tone="warning"
+              className="rounded-lg border px-4 py-2 text-sm font-medium"
+            />
+          </form>
+        )
       ) : (
         <div className="mt-6 flex flex-col items-center gap-2">
           {product.hasBatches || product.hasDoseSchedules ? (
@@ -341,6 +356,18 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       )}
     </div>
   );
+}
+
+/** "Żona takes it twice a day", or "2 people take it" once it is a list. */
+function describeActiveDoses(doses: ProductDetail['activeDoses']): string {
+  const [only] = doses;
+  if (doses.length === 1 && only) {
+    return `${only.memberName} takes it ${formatDoseFrequency(only.timesPerDay)}`;
+  }
+  // Two names read fine; more would just be a wall in the middle of a sentence.
+  const names = [...new Set(doses.map((d) => d.memberName))];
+  if (names.length <= 2) return `${names.join(' and ')} take it daily`;
+  return `${names.length} people take it daily`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

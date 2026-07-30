@@ -44,6 +44,19 @@ export function doseOccurrenceStatus(
 }
 
 /**
+ * "twice a day" rather than "2×/day", for sentences.
+ *
+ * The board has room only for the terse form; a warning that has to explain why
+ * it is refusing something reads better in words. Both come from here so they
+ * cannot describe the same schedule differently.
+ */
+export function formatDoseFrequency(timesPerDay: number): string {
+  if (timesPerDay === 1) return 'once a day';
+  if (timesPerDay === 2) return 'twice a day';
+  return `${timesPerDay} times a day`;
+}
+
+/**
  * The dates worth showing on the "today" board — recent days clipped to when
  * the schedule actually existed, so a course started three days ago does not
  * report the week before it existed as missed.

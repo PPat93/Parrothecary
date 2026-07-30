@@ -155,6 +155,15 @@ export default async function DosesPage() {
                           {schedule.timesPerDay}×/day
                         </span>
                         <RunOutBadge projection={projection} />
+                        {schedule.productArchivedAt !== null ? (
+                          <span
+                            className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                            style={{ background: 'var(--color-warning)', color: 'black' }}
+                            title="This product is archived but the dose is still running. Either restore the product or stop the dose — right now the two disagree."
+                          >
+                            archived product
+                          </span>
+                        ) : null}
                         {pastDateDays !== null ? (
                           <span
                             className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums"
