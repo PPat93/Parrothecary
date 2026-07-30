@@ -1,12 +1,21 @@
 import Link from 'next/link';
 import { ActionButton } from '@/components/action-button';
 import { ExpiryBadge } from '@/components/expiry-badge';
+import { RunOutBadge } from '@/components/run-out-badge';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { SearchBox } from '@/components/search-box';
 import { SymptomTags } from '@/components/symptom-tags';
 import { todayIso } from '@/domain/date';
+import { totalAvailable } from '@/domain/fefo';
 import { formatQuantity } from '@/domain/quantity';
-import { getProductSymptoms, getStock, groupByProduct } from '@/lib/queries';
+import { projectRunOut } from '@/domain/runout';
+import {
+  getBatchesForProducts,
+  getProductDailyRates,
+  getProductSymptoms,
+  getStock,
+  groupByProduct,
+} from '@/lib/queries';
 import { adjustBatch } from './actions';
 
 export default async function StockPage({
@@ -17,8 +26,18 @@ export default async function StockPage({
   const { q } = await searchParams;
   const search = q ?? '';
   const today = todayIso();
-  const [rows, symptomsByProduct] = await Promise.all([getStock(search), getProductSymptoms()]);
+  const [rows, symptomsByProduct, dailyRates] = await Promise.all([
+    getStock(search),
+    getProductSymptoms(),
+    getProductDailyRates(),
+  ]);
   const groups = groupByProduct(rows);
+
+  // Only products with an active dose schedule get projected — a rate we
+  // do not have is not a rate of zero, so this stays a separate lookup rather
+  // than a fallback default.
+  const scheduledProductIds = groups.map((g) => g.productId).filter((id) => dailyRates.has(id));
+  const batchesByProduct = await getBatchesForProducts(scheduledProductIds);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -44,6 +63,15 @@ export default async function StockPage({
             // tablets are indistinguishable without saying which pack each came
             // from.
             const hasSeveralPacks = new Set(group.boxes.map((b) => b.variantId)).size > 1;
+
+            const dailyRate = dailyRates.get(group.productId);
+            const projection = dailyRate
+              ? projectRunOut(
+                  totalAvailable(batchesByProduct.get(group.productId) ?? [], today),
+                  dailyRate,
+                  today,
+                )
+              : null;
 
             return (
             <li
@@ -73,6 +101,11 @@ export default async function StockPage({
               ) : null}
 
               <SymptomTags names={symptomsByProduct.get(group.productId)} />
+              {projection ? (
+                <p className="mt-1">
+                  <RunOutBadge projection={projection} />
+                </p>
+              ) : null}
 
               <ul className="mt-3 flex flex-col gap-2">
                 {group.boxes.map((box) => (

@@ -238,6 +238,12 @@ export interface ProductDetail extends ProductRow {
   archivedAt: Date | null;
   /** True when any batch exists, including used-up ones. Blocks permanent delete. */
   hasBatches: boolean;
+  /**
+   * True when a dose schedule (active or archived) references this product.
+   * doseSchedules.productId is a restrict FK, so deleting the product would
+   * otherwise crash — blocks permanent delete the same as hasBatches.
+   */
+  hasDoseSchedules: boolean;
   substances: {
     id: number;
     name: string;
@@ -319,6 +325,12 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     .filter((b) => b.status === 'in_stock')
     .reduce((sum, b) => sum + b.quantityRemaining, 0);
 
+  const scheduleRows = await db
+    .select({ id: doseSchedules.id })
+    .from(doseSchedules)
+    .where(eq(doseSchedules.productId, id))
+    .limit(1);
+
   return {
     id: product.id,
     name: product.name,
@@ -333,6 +345,7 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     photoPath: product.photoPath,
     archivedAt: product.archivedAt,
     hasBatches: batchRows.length > 0,
+    hasDoseSchedules: scheduleRows.length > 0,
     variantCount: variantRows.length,
     inStockUnits: Math.round(inStockUnits * 100) / 100,
     substances: substanceRows,
@@ -369,6 +382,8 @@ export interface BatchDetail extends StockRow {
   purchasePriceMinor: number | null;
   purchaseCurrency: 'PLN' | 'EUR' | null;
   packLabelOrSize: string;
+  /** A dose was confirmed straight from this box — deleting it would violate the FK. */
+  hasDoseEvents: boolean;
 }
 
 /** One box, with everything its edit form needs. */
@@ -390,9 +405,16 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
   const row = rows[0];
   if (!row) return null;
 
+  const eventRows = await db
+    .select({ id: doseEvents.id })
+    .from(doseEvents)
+    .where(eq(doseEvents.batchId, id))
+    .limit(1);
+
   return {
     ...row,
     packLabelOrSize: row.packLabel ?? `${row.packSize} ${row.unitName}`,
+    hasDoseEvents: eventRows.length > 0,
   };
 }
 
@@ -729,6 +751,24 @@ export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> 
  * against" using the same rules FEFO itself uses, rather than a second,
  * possibly-diverging definition of "in stock".
  */
+/**
+ * Consumption rate per product, summed across every active schedule for it —
+ * two people can share one medication, and the run-out date is a property of
+ * the shared cupboard, not of either person alone.
+ */
+export async function getProductDailyRates(): Promise<Map<number, number>> {
+  const rows = await db
+    .select({
+      productId: doseSchedules.productId,
+      rate: sql<number>`sum(${doseSchedules.doseUnits} * ${doseSchedules.timesPerDay})`,
+    })
+    .from(doseSchedules)
+    .where(isNull(doseSchedules.archivedAt))
+    .groupBy(doseSchedules.productId);
+
+  return new Map(rows.map((r) => [r.productId, r.rate]));
+}
+
 export async function getBatchesForProducts(
   productIds: number[],
 ): Promise<Map<number, FefoBatch[]>> {

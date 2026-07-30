@@ -359,6 +359,16 @@ export async function deleteProduct(formData: FormData): Promise<void> {
 
   if (batchRows.length > 0) return;
 
+  // doseSchedules.productId is restrict, not cascade — a schedule (even an
+  // archived one with zero confirmed doses) still blocks the delete outright.
+  const scheduleRows = await db
+    .select({ id: doseSchedules.id })
+    .from(doseSchedules)
+    .where(eq(doseSchedules.productId, id))
+    .limit(1);
+
+  if (scheduleRows.length > 0) return;
+
   // Variants, substance links and shopping lines cascade from the schema.
   await db.delete(products).where(eq(products.id, id));
   refreshAll();
@@ -574,9 +584,23 @@ export async function updateBatch(_prev: FormResult, formData: FormData): Promis
  * worth keeping; a typo is not, and leaving it as a zeroed batch would pollute
  * the consumption and waste figures the later phases depend on.
  */
+/**
+ * Guarded: a batch with a confirmed dose against it cannot be deleted — the
+ * FK from dose_events restricts it, and rightly so, since that row is real
+ * consumption history. The edit page hides the button in this case; this is
+ * the backstop for a stale render, so the delete fails quietly rather than
+ * crashing with a raw FOREIGN KEY constraint error.
+ */
 export async function deleteBatch(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
+
+  const eventRows = await db
+    .select({ id: doseEvents.id })
+    .from(doseEvents)
+    .where(eq(doseEvents.batchId, id))
+    .limit(1);
+  if (eventRows.length > 0) return;
 
   await db.delete(batches).where(eq(batches.id, id));
   refreshAll();

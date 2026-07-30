@@ -301,10 +301,11 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         </form>
       ) : (
         <div className="mt-6 flex flex-col items-center gap-2">
-          {product.hasBatches ? (
+          {product.hasBatches || product.hasDoseSchedules ? (
             <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
-              This product cannot be deleted because boxes of it exist — including used-up and
-              binned ones. Those records are your consumption and spend history.
+              {product.hasBatches
+                ? 'This product cannot be deleted because boxes of it exist — including used-up and binned ones. Those records are your consumption and spend history.'
+                : 'This product cannot be deleted because a dose schedule still points to it — remove that schedule first.'}
             </p>
           ) : (
             <form action={deleteProduct}>

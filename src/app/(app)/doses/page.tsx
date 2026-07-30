@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { ActionButton } from '@/components/action-button';
+import { RunOutBadge } from '@/components/run-out-badge';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { addDays, todayIso } from '@/domain/date';
 import { doseOccurrenceStatus, recentScheduleDates, type DoseStatus } from '@/domain/dosing';
 import { totalAvailable } from '@/domain/fefo';
 import { formatQuantity } from '@/domain/quantity';
+import { projectRunOut, scheduleDailyRate } from '@/domain/runout';
 import {
   getActiveDoseSchedules,
   getBatchesForProducts,
@@ -35,6 +37,16 @@ export default async function DosesPage() {
     const group = byMember.get(schedule.memberId);
     if (group) group.schedules.push(schedule);
     else byMember.set(schedule.memberId, { name: schedule.memberName, schedules: [schedule] });
+  }
+
+  // Summed per product, not per schedule — two people can share one
+  // medication, and the cupboard runs out for both of them at once.
+  const productDailyRate = new Map<number, number>();
+  for (const schedule of schedules) {
+    productDailyRate.set(
+      schedule.productId,
+      (productDailyRate.get(schedule.productId) ?? 0) + scheduleDailyRate(schedule),
+    );
   }
 
   return (
@@ -82,8 +94,16 @@ export default async function DosesPage() {
                     today,
                     HISTORY_DAYS,
                   );
-                  const outOfStock =
-                    totalAvailable(stockByProduct.get(schedule.productId) ?? [], today) <= 0;
+                  const available = totalAvailable(
+                    stockByProduct.get(schedule.productId) ?? [],
+                    today,
+                  );
+                  const outOfStock = available <= 0;
+                  const projection = projectRunOut(
+                    available,
+                    productDailyRate.get(schedule.productId) ?? scheduleDailyRate(schedule),
+                    today,
+                  );
 
                   return (
                     <li
@@ -100,12 +120,12 @@ export default async function DosesPage() {
                           </span>
                         ) : null}
                       </p>
-                      <p className="mb-2 text-xs" style={{ color: 'var(--muted)' }}>
-                        {formatQuantity(schedule.doseUnits, schedule.unitName)} ·{' '}
-                        {schedule.timesPerDay}×/day
-                        {outOfStock ? (
-                          <span style={{ color: 'var(--color-critical)' }}> · none in stock</span>
-                        ) : null}
+                      <p className="mb-2 flex flex-wrap items-center gap-1.5 text-xs" style={{ color: 'var(--muted)' }}>
+                        <span>
+                          {formatQuantity(schedule.doseUnits, schedule.unitName)} ·{' '}
+                          {schedule.timesPerDay}×/day
+                        </span>
+                        <RunOutBadge projection={projection} />
                       </p>
 
                       <div className="flex flex-col gap-1.5">
