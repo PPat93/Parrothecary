@@ -57,6 +57,29 @@ export function unitsToPacks(units: number, packSize: number): PackBreakdown {
   return { fullPacks, remainderUnits };
 }
 
+/**
+ * Fraction of a pack below which something counts as running low.
+ *
+ * A quarter, and the number has to be relative to the pack: "less than ten
+ * left" means nothing when one product comes in ones and another in nineties.
+ */
+export const LOW_STOCK_FRACTION = 0.25;
+
+/**
+ * Is this worth restocking, judged from the cupboard alone?
+ *
+ * For everything with no dose schedule — plasters, saline, a nasal spray —
+ * there is no rate to project, so the only signal is how much is left relative
+ * to a pack. Deliberately NOT "has no sealed box": a single opened pack of
+ * ashwagandha with 58 of 60 capsules in it is not low, and flagging it would
+ * bury the things that genuinely are.
+ */
+export function isLowStock(usableUnits: number, packSize: number): boolean {
+  if (usableUnits <= 0) return true;
+  if (packSize <= 0) return false;
+  return usableUnits < packSize * LOW_STOCK_FRACTION;
+}
+
 /** Sealed packs to buy in order to obtain at least `units`. Always rounds up. */
 export function packsNeeded(units: number, packSize: number): number {
   if (packSize <= 0) throw new Error(`Pack size must be positive, got ${packSize}`);

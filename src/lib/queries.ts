@@ -11,6 +11,7 @@ import {
   productSymptoms,
   products,
   shoppingItems,
+  TRIP_STATUSES,
   substances,
   symptoms,
   trips,
@@ -981,4 +982,350 @@ export async function getTakenOccurrences(
     else map.set(key, new Set([row.occurrence]));
   }
   return map;
+}
+
+/* ------------------------------------------------------------------ */
+/* Trips                                                              */
+/* ------------------------------------------------------------------ */
+
+export interface TripRow {
+  id: number;
+  label: string;
+  collectionDate: string;
+  orderByDate: string | null;
+  status: (typeof TRIP_STATUSES)[number];
+  notes: string | null;
+  /** Shopping lines assigned to this trip, whatever their status. */
+  itemCount: number;
+}
+
+export async function getTrips(): Promise<TripRow[]> {
+  const rows = await db
+    .select({
+      id: trips.id,
+      label: trips.label,
+      collectionDate: trips.collectionDate,
+      orderByDate: trips.orderByDate,
+      status: trips.status,
+      notes: trips.notes,
+      itemCount: sql<number>`count(${shoppingItems.id})`,
+    })
+    .from(trips)
+    .leftJoin(shoppingItems, eq(shoppingItems.tripId, trips.id))
+    .groupBy(trips.id)
+    // Soonest collection first: the next trip is the one you act on.
+    .orderBy(asc(trips.collectionDate));
+
+  return rows;
+}
+
+/**
+ * The collection date of the trip before this one — what the order-by default
+ * is halved from. Excludes the trip being edited, so re-saving a trip does not
+ * measure it against itself.
+ */
+export async function getPreviousCollectionDate(
+  collectionDate: string,
+  excludeTripId?: number,
+): Promise<string | null> {
+  const rows = await db
+    .select({ collectionDate: trips.collectionDate })
+    .from(trips)
+    .where(
+      excludeTripId === undefined
+        ? sql`${trips.collectionDate} < ${collectionDate}`
+        : and(
+            sql`${trips.collectionDate} < ${collectionDate}`,
+            sql`${trips.id} <> ${excludeTripId}`,
+          ),
+    )
+    .orderBy(sql`${trips.collectionDate} desc`)
+    .limit(1);
+
+  return rows[0]?.collectionDate ?? null;
+}
+
+export interface TripDetail extends TripRow {
+  items: ShoppingRow[];
+}
+
+export async function getTrip(id: number): Promise<TripDetail | null> {
+  const rows = await db.select().from(trips).where(eq(trips.id, id)).limit(1);
+  const trip = rows[0];
+  if (!trip) return null;
+
+  const items = await db
+    .select(shoppingSelection)
+    .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .leftJoin(trips, eq(shoppingItems.tripId, trips.id))
+    .where(eq(shoppingItems.tripId, id))
+    .orderBy(byName);
+
+  return {
+    id: trip.id,
+    label: trip.label,
+    collectionDate: trip.collectionDate,
+    orderByDate: trip.orderByDate,
+    status: trip.status,
+    notes: trip.notes,
+    itemCount: items.length,
+    items,
+  };
+}
+
+export interface ScheduledProduct {
+  productId: number;
+  name: string;
+  strength: string | null;
+  unitName: string;
+  /**
+   * Every live schedule for this product, kept individually rather than summed
+   * into a rate. Planning has to know that one of them ends next week.
+   */
+  schedules: {
+    doseUnits: number;
+    timesPerDay: number;
+    intervalDays: number;
+    startDate: string;
+    endDate: string | null;
+  }[];
+}
+
+/**
+ * Every product someone is actually on, with the schedules behind it.
+ *
+ * Deliberately not filtered by stock: a product with nothing left is the most
+ * important row in a "what do we need to order" list, and a query built from
+ * the stock table would silently drop it.
+ */
+export async function getScheduledProducts(): Promise<ScheduledProduct[]> {
+  const rows = await db
+    .select({
+      productId: products.id,
+      name: products.name,
+      strength: products.strength,
+      unitName: products.unitName,
+      doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
+      startDate: doseSchedules.startDate,
+      endDate: doseSchedules.endDate,
+    })
+    .from(doseSchedules)
+    .innerJoin(products, eq(doseSchedules.productId, products.id))
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)))
+    .orderBy(byName);
+
+  const map = new Map<number, ScheduledProduct>();
+  for (const row of rows) {
+    let entry = map.get(row.productId);
+    if (!entry) {
+      entry = {
+        productId: row.productId,
+        name: row.name,
+        strength: row.strength,
+        unitName: row.unitName,
+        schedules: [],
+      };
+      map.set(row.productId, entry);
+    }
+    entry.schedules.push({
+      doseUnits: row.doseUnits,
+      timesPerDay: row.timesPerDay,
+      intervalDays: row.intervalDays,
+      startDate: row.startDate,
+      endDate: row.endDate,
+    });
+  }
+  return [...map.values()];
+}
+
+export interface TripOption {
+  id: number;
+  label: string;
+  collectionDate: string;
+}
+
+/**
+ * Trips a new purchase could belong to — planned ones only, soonest first.
+ *
+ * The first entry is the sensible default for anything added today: with two or
+ * three restocks a year, almost everything you put on the list is for the next
+ * one. Completed trips are excluded because assigning a purchase to a trip that
+ * already happened is nearly always a mistake; the trip page can still be
+ * edited if it genuinely was one.
+ */
+export async function getTripOptions(): Promise<TripOption[]> {
+  return db
+    .select({ id: trips.id, label: trips.label, collectionDate: trips.collectionDate })
+    .from(trips)
+    .where(eq(trips.status, 'planned'))
+    .orderBy(asc(trips.collectionDate));
+}
+
+/**
+ * Lines not yet attached to any trip, and still in play.
+ *
+ * Terminal lines are excluded: something already in the cupboard or recorded as
+ * never-arrived has no business being reassigned to a future trip.
+ */
+export async function getUnassignedShoppingItems(): Promise<ShoppingRow[]> {
+  return db
+    .select(shoppingSelection)
+    .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .leftJoin(trips, eq(shoppingItems.tripId, trips.id))
+    .where(
+      and(
+        isNull(shoppingItems.tripId),
+        inArray(shoppingItems.status, ['to_buy', 'ordered', 'arrived']),
+      ),
+    )
+    .orderBy(byName);
+}
+
+/* ------------------------------------------------------------------ */
+/* Trip audit worksheet                                               */
+/* ------------------------------------------------------------------ */
+
+export interface AuditRow {
+  productId: number;
+  name: string;
+  strength: string | null;
+  unitName: string;
+  /** Every pack this comes in. More than one means the worksheet has to ask. */
+  variants: { id: number; packSize: number; packLabel: string | null }[];
+  /** Units we would actually take, past-date stock excluded. */
+  usableUnits: number;
+  /** Boxes in stock, and how many of those are already open. */
+  boxCount: number;
+  openedBoxCount: number;
+  /** Live schedules, for working out what this trip has to cover. */
+  schedules: {
+    doseUnits: number;
+    timesPerDay: number;
+    intervalDays: number;
+    startDate: string;
+    endDate: string | null;
+  }[];
+  /** Packs already on this trip's list. Null when it is not on it. */
+  onListPacks: number | null;
+}
+
+/**
+ * Everything the twice-yearly audit needs, in one shape.
+ *
+ * Every active product appears — including the ones nobody is on a schedule
+ * for, which is most of them. A worksheet built only from projections would
+ * cover four items out of fifteen and stay quiet about the plasters, which is
+ * exactly the silence the audit exists to break.
+ */
+export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
+  const today = todayIso();
+
+  const productRows = await db
+    .select({
+      productId: products.id,
+      name: products.name,
+      strength: products.strength,
+      unitName: products.unitName,
+      hasExpiry: products.hasExpiry,
+      expiryGraceDays: products.expiryGraceDays,
+    })
+    .from(products)
+    .where(isNull(products.archivedAt))
+    .orderBy(byName);
+
+  const productIds = productRows.map((p) => p.productId);
+  if (productIds.length === 0) return [];
+
+  const variantRows = await db
+    .select({
+      id: variants.id,
+      productId: variants.productId,
+      packSize: variants.packSize,
+      packLabel: variants.packLabel,
+    })
+    .from(variants)
+    .where(inArray(variants.productId, productIds))
+    .orderBy(asc(variants.packSize));
+
+  const batchRows = await db
+    .select({
+      productId: variants.productId,
+      quantityRemaining: batches.quantityRemaining,
+      expiryDate: batches.expiryDate,
+      expiryPrecision: batches.expiryPrecision,
+      openedAt: batches.openedAt,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .where(and(eq(batches.status, 'in_stock'), inArray(variants.productId, productIds)));
+
+  const scheduleRows = await db
+    .select({
+      productId: doseSchedules.productId,
+      doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
+      startDate: doseSchedules.startDate,
+      endDate: doseSchedules.endDate,
+    })
+    .from(doseSchedules)
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)));
+
+  // Only lines still in play: something already received for this trip should
+  // not read as "still to buy" on the worksheet.
+  const listRows = await db
+    .select({ productId: variants.productId, quantityPacks: shoppingItems.quantityPacks })
+    .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .where(
+      and(
+        eq(shoppingItems.tripId, tripId),
+        inArray(shoppingItems.status, ['to_buy', 'ordered', 'arrived']),
+      ),
+    );
+
+  const onList = new Map<number, number>();
+  for (const row of listRows) {
+    onList.set(row.productId, (onList.get(row.productId) ?? 0) + row.quantityPacks);
+  }
+
+  return productRows.map((product) => {
+    const boxes = batchRows.filter((b) => b.productId === product.productId);
+    const usable = boxes.filter((b) =>
+      isDosable(
+        {
+          expiryDate: b.expiryDate,
+          precision: b.expiryPrecision,
+          hasExpiry: product.hasExpiry,
+          graceDays: product.expiryGraceDays,
+        },
+        today,
+      ),
+    );
+
+    return {
+      productId: product.productId,
+      name: product.name,
+      strength: product.strength,
+      unitName: product.unitName,
+      variants: variantRows
+        .filter((v) => v.productId === product.productId)
+        .map((v) => ({ id: v.id, packSize: v.packSize, packLabel: v.packLabel })),
+      usableUnits: Math.round(usable.reduce((sum, b) => sum + b.quantityRemaining, 0) * 100) / 100,
+      boxCount: usable.length,
+      openedBoxCount: usable.filter((b) => b.openedAt !== null).length,
+      schedules: scheduleRows
+        .filter((s) => s.productId === product.productId)
+        .map(({ productId: _productId, ...schedule }) => schedule),
+      onListPacks: onList.get(product.productId) ?? null,
+    };
+  });
 }

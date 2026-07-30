@@ -11,6 +11,8 @@ import {
   CURRENCIES,
   DOSE_FORMS,
   SHOPPING_STATUSES,
+  TERMINAL_SHOPPING_STATUSES,
+  TRIP_STATUSES,
   UNIT_NAMES,
   batches,
   doseEvents,
@@ -22,6 +24,7 @@ import {
   productSymptoms,
   substances,
   symptoms,
+  trips,
   variantBarcodes,
   variants,
 } from '@/db/schema';
@@ -29,7 +32,8 @@ import { isValidEan13, parseScan } from '@/domain/barcode';
 import { todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { deletePhoto, savePhoto } from '@/lib/photos';
-import { findVariantByBarcode } from '@/lib/queries';
+import { findVariantByBarcode, getPreviousCollectionDate } from '@/lib/queries';
+import { defaultOrderByDate } from '@/domain/trip';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
 import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
 import { parseAmount } from '@/domain/money';
@@ -563,11 +567,34 @@ export async function receiveShoppingItem(
   formData: FormData,
 ): Promise<FormResult> {
   const itemId = Number(formData.get('itemId'));
-  const variantId = Number(formData.get('variantId'));
   const fail = (error: string): FormResult => ({ error, values: snapshot(formData) });
 
-  if (!Number.isInteger(itemId) || !Number.isInteger(variantId)) {
+  if (!Number.isInteger(itemId)) {
     return fail('That shopping item no longer exists.');
+  }
+
+  /*
+   * Re-read the line rather than trusting the form, and refuse one that has
+   * already been received. Without this, resubmitting the page — a back button,
+   * a bookmark, a double tap before the redirect lands — created a second box
+   * in the cupboard and left the first one orphaned from its shopping line.
+   *
+   * The variant comes from the line too. It decides which product the new box
+   * belongs to, and that is not something a stale form should get to choose.
+   */
+  const itemRows = await db
+    .select({ variantId: shoppingItems.variantId, status: shoppingItems.status })
+    .from(shoppingItems)
+    .where(eq(shoppingItems.id, itemId))
+    .limit(1);
+
+  const item = itemRows[0];
+  if (!item) return fail('That shopping item no longer exists.');
+  if (item.status === 'in_stock') {
+    return fail('This one is already in the cupboard — it was received before.');
+  }
+  if (item.status === 'not_received') {
+    return fail('This line is marked as never arrived. Move it back into the flow first.');
   }
 
   const parsed = parseBatchFields(formData);
@@ -575,7 +602,7 @@ export async function receiveShoppingItem(
 
   const inserted = await db
     .insert(batches)
-    .values({ variantId, ...parsed.fields })
+    .values({ variantId: item.variantId, ...parsed.fields })
     .returning({ id: batches.id });
 
   const batchId = inserted[0]?.id;
@@ -861,6 +888,7 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
   const variantId = Number(formData.get('variantId'));
   const quantityPacks = Number(formData.get('quantityPacks') ?? 1);
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
+  const tripId = await parseTripId(formData.get('tripId'));
 
   if (!Number.isInteger(variantId)) {
     return { error: 'Pick which pack to buy.', values: snapshot(formData) };
@@ -872,9 +900,43 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
     };
   }
 
-  await db.insert(shoppingItems).values({ variantId, quantityPacks, notes });
+  await db.insert(shoppingItems).values({ variantId, quantityPacks, notes, tripId });
   refreshAll();
   return { error: null, ok: true };
+}
+
+/**
+ * Empty means "no trip", which is a real answer rather than a missing one —
+ * the Solgar was bought locally in Ireland, outside any restock trip.
+ *
+ * The trip is checked to still exist, not merely to be a number. Two phones
+ * share this app: one can delete a trip while the other has the shopping form
+ * open, and `trip_id` is a real foreign key, so writing a stale id throws
+ * SQLITE_CONSTRAINT_FOREIGNKEY and the form dies with a crash page. Falling
+ * back to "no trip" loses only the association, which the trip page can restore
+ * in one tap.
+ */
+async function parseTripId(raw: FormDataEntryValue | null): Promise<number | null> {
+  const value = String(raw ?? '').trim();
+  if (value === '') return null;
+
+  const id = Number(value);
+  if (!Number.isInteger(id)) return null;
+
+  const rows = await db.select({ id: trips.id }).from(trips).where(eq(trips.id, id)).limit(1);
+  return rows[0]?.id ?? null;
+}
+
+/** Move a line to another trip, or off trips entirely. */
+export async function setShoppingTrip(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  await db
+    .update(shoppingItems)
+    .set({ tripId: await parseTripId(formData.get('tripId')), updatedAt: new Date() })
+    .where(eq(shoppingItems.id, id));
+  refreshAll();
 }
 
 export async function setShoppingStatus(formData: FormData): Promise<void> {
@@ -882,6 +944,23 @@ export async function setShoppingStatus(formData: FormData): Promise<void> {
   const status = String(formData.get('status'));
   if (!Number.isInteger(id)) return;
   if (!SHOPPING_STATUSES.some((s) => s === status)) return;
+
+  /*
+   * Settled lines do not move. The list already stops offering the arrows once
+   * something is in the cupboard or recorded as never-arrived, and the server
+   * has to agree: dragging an in_stock line back to "to buy" would leave a real
+   * box in the cupboard attached to a line pretending it was never bought.
+   * Clearing the line is the way out, not walking it backwards.
+   */
+  const rows = await db
+    .select({ status: shoppingItems.status })
+    .from(shoppingItems)
+    .where(eq(shoppingItems.id, id))
+    .limit(1);
+
+  const current = rows[0]?.status;
+  if (current === undefined) return;
+  if (TERMINAL_SHOPPING_STATUSES.some((s) => s === current)) return;
 
   await db
     .update(shoppingItems)
@@ -1219,4 +1298,161 @@ function snapshot(formData: FormData): Record<string, string> {
 
 function emptyToNull(value: string | undefined): string | null {
   return value === undefined || value === '' ? null : value;
+}
+
+/* ------------------------------------------------------------------ */
+/* Trips                                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Shared by create and edit. The order-by date is optional in the form: left
+ * blank it is derived, because the midpoint rule is what you want nine times
+ * out of ten and typing it out by hand invites arithmetic mistakes.
+ */
+async function parseTripFields(
+  formData: FormData,
+  excludeTripId?: number,
+): Promise<{ fields: { label: string; collectionDate: string; orderByDate: string; notes: string | null } } | { error: string }> {
+  const label = String(formData.get('label') ?? '').trim();
+  const collectionDate = String(formData.get('collectionDate') ?? '').trim();
+  const orderByRaw = String(formData.get('orderByDate') ?? '').trim();
+  const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
+
+  if (!label) return { error: 'Give the trip a name — "October 2026" is enough.' };
+  if (!collectionDate) return { error: 'When is everything being collected?' };
+
+  const previous = await getPreviousCollectionDate(collectionDate, excludeTripId);
+  const orderByDate = orderByRaw || defaultOrderByDate(collectionDate, previous);
+
+  if (orderByDate > collectionDate) {
+    return { error: 'The order deadline is after the collection date — orders would arrive too late.' };
+  }
+
+  return { fields: { label, collectionDate, orderByDate, notes } };
+}
+
+export async function createTrip(_prev: FormResult, formData: FormData): Promise<FormResult> {
+  const parsed = await parseTripFields(formData);
+  if ('error' in parsed) return { error: parsed.error, values: snapshot(formData) };
+
+  const inserted = await db.insert(trips).values(parsed.fields).returning({ id: trips.id });
+  const id = inserted[0]?.id;
+  if (id === undefined) return { error: 'Could not save the trip.', values: snapshot(formData) };
+
+  refreshAll();
+  redirect(`/trips/${id}`);
+}
+
+export async function updateTrip(_prev: FormResult, formData: FormData): Promise<FormResult> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return { error: 'Unknown trip.' };
+
+  const parsed = await parseTripFields(formData, id);
+  if ('error' in parsed) return { error: parsed.error, values: snapshot(formData) };
+
+  await db
+    .update(trips)
+    .set({ ...parsed.fields, updatedAt: new Date() })
+    .where(eq(trips.id, id));
+
+  refreshAll();
+  redirect(`/trips/${id}`);
+}
+
+export async function setTripStatus(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  const status = String(formData.get('status'));
+  if (!Number.isInteger(id)) return;
+  if (!TRIP_STATUSES.some((s) => s === status)) return;
+
+  await db
+    .update(trips)
+    .set({ status: status as (typeof TRIP_STATUSES)[number], updatedAt: new Date() })
+    .where(eq(trips.id, id));
+
+  refreshAll();
+  redirect(`/trips/${id}`);
+}
+
+/**
+ * No archive step and no guard, unlike products and people. A trip carries no
+ * history of its own — the boxes bought on it keep their own purchase dates and
+ * prices, and shopping lines are only unassigned (the FK is `set null`), never
+ * deleted. So a mistyped trip can simply go.
+ */
+export async function deleteTrip(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  await db.delete(trips).where(eq(trips.id, id));
+  refreshAll();
+  redirect('/trips');
+}
+
+/**
+ * Add everything ticked on the trip audit worksheet to that trip's list.
+ *
+ * One submit for the whole cabinet, because the audit is a single sitting twice
+ * a year, not fifteen separate decisions spread over a week.
+ *
+ * Idempotent by product: a line already on this trip is skipped rather than
+ * duplicated. The worksheet shows those as "on the list" instead of a tick box,
+ * but two phones can be looking at the same screen, so the check is repeated
+ * here where it actually counts.
+ */
+export async function addAuditSelection(formData: FormData): Promise<void> {
+  const tripId = Number(formData.get('tripId'));
+  if (!Number.isInteger(tripId)) return;
+
+  const picked = formData.getAll('pick').map(String);
+  if (picked.length === 0) redirect(`/trips/${tripId}`);
+
+  // Already-listed is judged per product, not per pack: having the sixties on
+  // the list already means this product is handled, whichever size it was.
+  const existing = await db
+    .select({ productId: variants.productId })
+    .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .where(
+      and(
+        eq(shoppingItems.tripId, tripId),
+        inArray(shoppingItems.status, ['to_buy', 'ordered', 'arrived']),
+      ),
+    );
+  const alreadyOn = new Set(existing.map((row) => row.productId));
+
+  for (const key of picked) {
+    const productId = Number(key);
+    if (!Number.isInteger(productId) || alreadyOn.has(productId)) continue;
+
+    // Each row carries its own pack choice and quantity, both keyed by product
+    // — the chosen pack can change while the form is open, so it cannot be the
+    // key itself.
+    const variantId = Number(formData.get(`variant-${key}`) ?? 0);
+    const packs = Number(formData.get(`packs-${key}`) ?? 0);
+    if (!Number.isInteger(variantId) || !Number.isInteger(packs) || packs < 1) continue;
+
+    /*
+     * The pack has to belong to the product that was ticked. Nothing in the UI
+     * can produce a mismatch, but this writes a shopping line from ids in a
+     * submitted form, and a line pointing at another product's pack would be
+     * silently wrong rather than loudly broken.
+     */
+    const owned = await db
+      .select({ id: variants.id })
+      .from(variants)
+      .where(and(eq(variants.id, variantId), eq(variants.productId, productId)))
+      .limit(1);
+    if (owned.length === 0) continue;
+
+    await db.insert(shoppingItems).values({
+      tripId,
+      variantId,
+      quantityPacks: packs,
+      notes: 'From the trip audit.',
+    });
+  }
+
+  refreshAll();
+  redirect(`/trips/${tripId}`);
 }

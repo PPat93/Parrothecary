@@ -41,13 +41,26 @@ const ICONS = {
       <path d="M9 14.5l2 2 4-4.5" />
     </>
   ),
+  // A suitcase. Reads at 22px in a way the paper plane it replaced did not.
+  trips: (
+    <>
+      <rect x="3" y="7.5" width="18" height="12.5" rx="2" />
+      <path d="M9 7.5V5.5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5.5v2" />
+    </>
+  ),
 } as const;
 
+/*
+ * Keep this list and the grid-cols count below in step. They were once out of
+ * sync (five tabs in a four-column grid), which shows up as a hydration error
+ * rather than as a visibly wrong layout.
+ */
 const TABS = [
   { href: '/', label: 'Stock', icon: 'stock' },
   { href: '/doses', label: 'Doses', icon: 'doses' },
   { href: '/expiring', label: 'Expiring', icon: 'expiring' },
   { href: '/shopping', label: 'Shopping', icon: 'shopping' },
+  { href: '/trips', label: 'Trips', icon: 'trips' },
   { href: '/products', label: 'Products', icon: 'products' },
 ] as const;
 
@@ -56,7 +69,7 @@ export function Nav() {
 
   return (
     <nav
-      className="sticky bottom-0 z-10 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)]"
+      className="sticky bottom-0 z-10 grid grid-cols-6 border-t pb-[env(safe-area-inset-bottom)]"
       style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
     >
       {TABS.map((tab) => {

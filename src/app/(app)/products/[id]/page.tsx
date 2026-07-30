@@ -8,6 +8,7 @@ import { todayIso } from '@/domain/date';
 import { formatDoseFrequency } from '@/domain/dosing';
 import { formatMoney, money } from '@/domain/money';
 import { formatQuantity } from '@/domain/quantity';
+import { batchStatusLabel } from '@/lib/labels';
 import { getProduct, getSubstanceNames, getSymptomNames, type ProductDetail } from '@/lib/queries';
 import {
   archiveProduct,
@@ -20,13 +21,6 @@ import {
 } from '../../actions';
 import { AddBarcodeForm, AddPackForm, AddSubstanceForm, AddSymptomForm } from './add-forms';
 import { PhotoForm } from './photo-form';
-
-const STATUS_LABELS: Record<string, string> = {
-  in_stock: 'in stock',
-  consumed: 'used up',
-  expired: 'binned, expired',
-  discarded: 'discarded',
-};
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -274,7 +268,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                         </span>
                         <span className="text-xs" style={{ color: 'var(--muted)' }}>
                           {[
-                            STATUS_LABELS[box.status] ?? box.status,
+                            batchStatusLabel(box.status),
                             box.openedAt ? 'opened' : null,
                             box.location,
                             box.lotNumber ? `lot ${box.lotNumber}` : null,

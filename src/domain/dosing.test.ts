@@ -6,6 +6,7 @@ import {
   isScheduleActiveOn,
   nextDueDate,
   recentScheduleDates,
+  unitsDueBetween,
 } from './dosing';
 
 const TODAY = '2026-07-26';
@@ -187,5 +188,54 @@ describe('formatDoseCadence', () => {
     expect(formatDoseCadence(2, 1)).toBe('2×/day');
     expect(formatDoseCadence(1, 7)).toBe('1×/week');
     expect(formatDoseCadence(1, 3)).toBe('1×/3 days');
+  });
+});
+
+describe('unitsDueBetween', () => {
+  const daily = { startDate: '2020-01-01', endDate: null, intervalDays: 1 };
+
+  it('counts both ends of the window', () => {
+    expect(unitsDueBetween({ ...daily, doseUnits: 1, timesPerDay: 1 }, TODAY, TODAY)).toBe(1);
+    expect(unitsDueBetween({ ...daily, doseUnits: 1, timesPerDay: 1 }, TODAY, '2026-07-28')).toBe(3);
+  });
+
+  it('multiplies by doses per day', () => {
+    expect(unitsDueBetween({ ...daily, doseUnits: 3, timesPerDay: 2 }, TODAY, '2026-07-28')).toBe(18);
+  });
+
+  it('stops at the end date instead of projecting a finished course', () => {
+    // The bug this exists for: a week-long course extrapolated across eleven
+    // weeks asked for 434 tablets instead of 42.
+    const course = { startDate: '2026-07-27', endDate: '2026-08-03', intervalDays: 1 };
+    expect(unitsDueBetween({ ...course, doseUnits: 3, timesPerDay: 2 }, '2026-07-27', '2026-10-14')).toBe(48);
+  });
+
+  it('ignores days before the schedule starts', () => {
+    const future = { startDate: '2026-08-01', endDate: null, intervalDays: 1 };
+    expect(unitsDueBetween({ ...future, doseUnits: 1, timesPerDay: 1 }, TODAY, '2026-08-03')).toBe(3);
+  });
+
+  it('counts only the dosing days of an interval schedule', () => {
+    // Weekly, anchored on a Tuesday: four Tuesdays in this four-week window.
+    const weekly = { startDate: '2026-07-07', endDate: null, intervalDays: 7 };
+    expect(unitsDueBetween({ ...weekly, doseUnits: 1, timesPerDay: 1 }, '2026-07-07', '2026-07-28')).toBe(4);
+  });
+
+  it('handles alternate days', () => {
+    const alternate = { startDate: '2026-07-26', endDate: null, intervalDays: 2 };
+    expect(unitsDueBetween({ ...alternate, doseUnits: 3, timesPerDay: 1 }, TODAY, '2026-08-01')).toBe(12);
+  });
+
+  it('is zero for a window entirely after the schedule ended', () => {
+    const ended = { startDate: '2026-01-01', endDate: '2026-06-30', intervalDays: 1 };
+    expect(unitsDueBetween({ ...ended, doseUnits: 1, timesPerDay: 1 }, TODAY, '2026-08-01')).toBe(0);
+  });
+
+  it('is zero for a backwards window', () => {
+    expect(unitsDueBetween({ ...daily, doseUnits: 1, timesPerDay: 1 }, '2026-08-01', TODAY)).toBe(0);
+  });
+
+  it('handles fractional doses without drift', () => {
+    expect(unitsDueBetween({ ...daily, doseUnits: 0.5, timesPerDay: 1 }, TODAY, '2026-08-04')).toBe(5);
   });
 });
