@@ -382,8 +382,14 @@ export const shoppingItems = sqliteTable(
     quantityPacks: integer('quantity_packs').notNull().default(1),
     status: text('status', { enum: SHOPPING_STATUSES }).notNull().default('to_buy'),
 
-    estimatedPriceMinor: integer('estimated_price_minor'),
-    estimatedCurrency: text('estimated_currency', { enum: CURRENCIES }).default('PLN'),
+    /*
+     * There was an estimated_price_minor / estimated_currency pair here. Never
+     * written by anything, and the trip page answers the same question better
+     * by deriving an estimate from what each thing was last actually paid for —
+     * no typing, and it improves on its own as purchases accumulate. A column
+     * nobody fills in is a promise the app does not keep, so it is gone rather
+     * than left waiting for a form that was never going to be built.
+     */
 
     /** Set when status moves to in_stock, so we can trace a box back to its order. */
     receivedBatchId: integer('received_batch_id').references(() => batches.id, {

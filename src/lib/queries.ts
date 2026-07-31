@@ -101,29 +101,12 @@ export async function getStock(search?: string): Promise<StockRow[]> {
   const query = search?.trim();
   const pattern = query ? `%${query}%` : null;
 
+  // Same predicate as the products list, rather than a second copy of it: the
+  // two searches used to be written out separately and had already drifted —
+  // this one could not find a barcode while the other could not either, and
+  // fixing one would have left the other behind.
   const filter = pattern
-    ? and(
-        eq(batches.status, 'in_stock'),
-        or(
-          like(products.name, pattern),
-          like(products.nameAlt, pattern),
-          like(products.manufacturer, pattern),
-          sql`exists (
-            select 1 from product_substances ps
-            join substances s on s.id = ps.substance_id
-            where ps.product_id = ${products.id}
-              and (s.name like ${pattern} or s.name_pl like ${pattern})
-          )`,
-          // "what do we have for a sore throat" — the question you actually ask
-          // at 2am, when you cannot remember what the box is called.
-          sql`exists (
-            select 1 from product_symptoms psy
-            join symptoms sy on sy.id = psy.symptom_id
-            where psy.product_id = ${products.id}
-              and (sy.name_en like ${pattern} or sy.name_pl like ${pattern})
-          )`,
-        ),
-      )
+    ? and(eq(batches.status, 'in_stock'), matchesSearch(pattern))
     : eq(batches.status, 'in_stock');
 
   return db
@@ -216,9 +199,13 @@ export interface ProductRow {
 }
 
 /**
- * `search` matches the same fields as the stock list — name, alternate name,
- * manufacturer, active substance and symptom tag — so the two searches behave
- * identically and you do not have to remember which page understands what.
+ * The one definition of what searching means, shared by the stock list and the
+ * products list so neither can understand something the other does not.
+ *
+ * Matches either name, the manufacturer, an active substance, a symptom tag, or
+ * a barcode. The barcode case is for the times the scanner will not read a worn
+ * label and the digits get typed in by hand — the app could already scan a code
+ * but could not find one, which is a gap you only discover holding the box.
  */
 function matchesSearch(pattern: string) {
   return or(
@@ -231,11 +218,18 @@ function matchesSearch(pattern: string) {
       where ps.product_id = ${products.id}
         and (s.name like ${pattern} or s.name_pl like ${pattern})
     )`,
+    // "what do we have for a sore throat" — the question you actually ask at
+    // 2am, when you cannot remember what the box is called.
     sql`exists (
       select 1 from product_symptoms psy
       join symptoms sy on sy.id = psy.symptom_id
       where psy.product_id = ${products.id}
         and (sy.name_en like ${pattern} or sy.name_pl like ${pattern})
+    )`,
+    sql`exists (
+      select 1 from variant_barcodes vb
+      join variants vv on vv.id = vb.variant_id
+      where vv.product_id = ${products.id} and vb.code like ${pattern}
     )`,
   );
 }
