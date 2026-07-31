@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { logout } from '@/app/(app)/actions';
 
 /**
@@ -24,11 +25,11 @@ export function AppHeader() {
         <span className="text-sm font-semibold tracking-tight">Parrothecary</span>
       </span>
 
-      <form action={logout}>
-        <button
-          type="submit"
-          aria-label="Lock Parrothecary"
-          title="Lock Parrothecary"
+      <span className="flex items-center gap-1">
+        <Link
+          href="/about"
+          aria-label="About Parrothecary"
+          title="About Parrothecary"
           className="flex h-9 w-9 items-center justify-center rounded-lg"
           style={{ color: 'var(--muted)' }}
         >
@@ -43,11 +44,37 @@ export function AppHeader() {
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
-            <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v5" />
+            <path d="M12 7.75v.5" />
           </svg>
-        </button>
-      </form>
+        </Link>
+
+        <form action={logout}>
+          <button
+            type="submit"
+            aria-label="Lock Parrothecary"
+            title="Lock Parrothecary"
+            className="flex h-9 w-9 items-center justify-center rounded-lg"
+            style={{ color: 'var(--muted)' }}
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+              <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+            </svg>
+          </button>
+        </form>
+      </span>
     </header>
   );
 }

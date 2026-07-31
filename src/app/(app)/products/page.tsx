@@ -69,7 +69,7 @@ export default async function ProductsPage({
                 className="flex items-center gap-3 rounded-xl border p-3"
                 style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
               >
-                {/* Recognising a box by sight beats reading a Polish name. */}
+                {/* Recognising a box by sight beats reading a foreign name. */}
                 {row.photoPath ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img

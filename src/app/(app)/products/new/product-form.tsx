@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import {
   Checkbox,
   Datalist,
@@ -31,6 +31,10 @@ export function ProductForm({
   const prev = state.values ?? {};
   const submitted = state.error !== null;
 
+  // Almost everything expires, so this starts on unless the user says otherwise
+  // — or unless a rejected submission says they had already unticked it.
+  const [hasExpiry, setHasExpiry] = useState(submitted ? prev.hasExpiry === 'on' : true);
+
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <Field label="Name" hint="Exactly as printed on the box, whatever language that is.">
@@ -43,7 +47,7 @@ export function ProductForm({
         />
       </Field>
 
-      <Field label="Other name" hint="Optional — the Polish or Irish equivalent. Search matches both.">
+      <Field label="Other name" hint="Optional — what it is called in the other language. Search matches both.">
         <TextInput name="nameAlt" placeholder="Nurofen" defaultValue={prev.nameAlt ?? ''} />
       </Field>
 
@@ -99,21 +103,30 @@ export function ProductForm({
       <Checkbox
         name="hasExpiry"
         label="This expires (uncheck for plasters, thermometers…)"
-        // Almost everything expires, so this is on unless the user says otherwise.
-        defaultChecked={submitted ? prev.hasExpiry === 'on' : true}
+        checked={hasExpiry}
+        onChange={setHasExpiry}
       />
 
-      <Field
-        label="Still usable past its date (days)"
-        hint="Leave blank for none. 60 suits paracetamol tablets; keep it at zero for eye drops, sprays, sterile dressings and antibiotics. Only affects what doses are taken from — the expiry list still calls the box expired."
-      >
-        <TextInput
-          name="expiryGraceDays"
-          inputMode="numeric"
-          placeholder="0"
-          defaultValue={prev.expiryGraceDays ?? ''}
-        />
-      </Field>
+      {/*
+        Only asked about things that expire. A grace period on a product with no
+        expiry date is inert — nothing reads it — so the question was a
+        contradiction on screen: how long past a date it has not got.
+        Unchecking also drops the field from the submission, which the server
+        reads as zero, so the stored value cannot disagree with the box.
+      */}
+      {hasExpiry ? (
+        <Field
+          label="Still usable past its date (days)"
+          hint="Leave blank for none. 60 suits paracetamol tablets; keep it at zero for eye drops, sprays, sterile dressings and antibiotics. Only affects what doses are taken from — the expiry list still calls the box expired."
+        >
+          <TextInput
+            name="expiryGraceDays"
+            inputMode="numeric"
+            placeholder="0"
+            defaultValue={prev.expiryGraceDays ?? ''}
+          />
+        </Field>
+      ) : null}
 
       <fieldset
         className="flex flex-col gap-3 rounded-xl border p-3"

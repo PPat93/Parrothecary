@@ -15,17 +15,24 @@ export default async function LoginPage() {
           vanish, so it sits in its own dark disc either way — which also keeps
           the glow reading as glow rather than as a blurry edge.
         */}
+        {/*
+          The 512 asset, clipped to a circle rather than sat inside a separate
+          disc: the artwork already carries its own near-black background, so
+          the crop becomes the disc and there is no seam between the two dark
+          tones. It is also the only source big enough to stay sharp at this
+          size on a 3x phone screen.
+        */}
         <div
-          className="mb-5 flex h-32 w-32 items-center justify-center rounded-full"
+          className="mb-5 h-44 w-44 overflow-hidden rounded-full"
           style={{ background: 'oklch(0.06 0.004 260)' }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/parrot-256.png"
+            src="/icons/icon-512.png"
             alt=""
-            width={112}
-            height={112}
-            className="h-28 w-28 object-contain"
+            width={176}
+            height={176}
+            className="h-full w-full scale-110 object-cover"
           />
         </div>
 

@@ -7,13 +7,13 @@ import { removeShoppingItem, setShoppingStatus } from '../actions';
 import { AddShoppingForm } from './add-form';
 
 /**
- * Most stock is ordered online to family in Poland and collected on the trip,
- * so an item moves through several states rather than being simply ticked off.
+ * Most stock is ordered online ahead of a trip and collected on arrival, so an
+ * item moves through several states rather than being simply ticked off.
  * The last two are settled: they only get cleared, never moved back.
  */
 const STAGES: { status: (typeof SHOPPING_STATUSES)[number]; title: string; blurb: string }[] = [
   { status: 'to_buy', title: 'To buy', blurb: 'Not ordered yet.' },
-  { status: 'ordered', title: 'Ordered', blurb: 'Placed online, on its way to Poland.' },
+  { status: 'ordered', title: 'Ordered', blurb: 'Placed online, on its way.' },
   { status: 'arrived', title: 'Arrived', blurb: 'Waiting at family — collect on the trip.' },
   {
     status: 'in_stock',

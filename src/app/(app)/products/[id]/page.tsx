@@ -103,7 +103,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         ) : (
           <p className="text-sm" style={{ color: 'var(--muted)' }}>
             No photo. A picture of the box is often quicker to recognise than the name,
-            especially on Polish packaging.
+            especially on foreign-language packaging.
           </p>
         )}
         <PhotoForm productId={product.id} hasPhoto={product.photoPath !== null} />

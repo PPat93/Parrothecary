@@ -4,10 +4,10 @@ import { addDays, differenceInDays, midpoint, type IsoDate } from './date';
  * Trips.
  *
  * Two of these a year, and the date that actually constrains us is NOT the day
- * we fly. Most stock is ordered online and shipped to family in Poland ahead of
- * the visit, so the deadline is the order-by date; collection is just when it
- * gets picked up. Everything time-critical — the cabinet audit, the shopping
- * list — hangs off orderByDate for that reason.
+ * we fly. Most stock is ordered online and shipped ahead of the visit, so the
+ * deadline is the order-by date; collection is just when it gets picked up.
+ * Everything time-critical — the cabinet audit, the shopping list — hangs off
+ * orderByDate for that reason.
  */
 
 /** Lead time assumed for the very first trip, when there is no previous one to halve. */

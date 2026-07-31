@@ -41,8 +41,8 @@ describe('differenceInDays', () => {
   });
 
   it('is unaffected by the spring clock change', () => {
-    // Europe/Dublin and Europe/Warsaw both jump forward on 2027-03-28.
-    // A local-time implementation returns 1 here, which is the classic bug.
+    // European clocks jump forward on 2027-03-28. A local-time implementation
+    // returns 1 across that boundary, which is the classic bug.
     expect(differenceInDays('2027-03-27', '2027-03-29')).toBe(2);
   });
 
