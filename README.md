@@ -122,9 +122,25 @@ camera access, passkeys and home-screen install, all of which browsers block on 
 
 ## Roadmap
 
-- **Phase 2** — PWA install, HTTPS, barcode scanning (EAN-13 plus GS1 DataMatrix, which carries
-  expiry and batch on EU prescription packs), seeded medicines catalog, photos, symptom search.
-- **Phase 3** — household members, dose schedules with one-tap daily confirmation, run-out
-  projection, Trips with an `order_by` deadline, auto-generated shopping list, price history.
-- **Phase 4** — push notifications, statistics, waste tracking, xlsx export, passkeys.
-- **Phase 5** — duplicate-substance warnings, audit log, PL/EN toggle, deployment and backups.
+- **Phase 2 — done.** PWA install, HTTPS, barcode scanning (EAN-13 plus GS1 DataMatrix, which
+  carries expiry and batch on EU prescription packs), seeded medicines catalog, photos, and one
+  search covering both names, manufacturer, active substance, symptom tag and barcode.
+- **Phase 3 — done.** Household members, dose schedules with one-tap confirmation (daily or every
+  N days), run-out projection, per-product expiry grace, Trips with an `order_by` deadline, the
+  cabinet audit worksheet, and price history per product with trip and cupboard totals.
+
+  The shopping list is *assisted*, not auto-generated: only four of fifteen products are on a dose
+  schedule, so a list built purely from projections would speak for a quarter of the cabinet and
+  stay silent about the plasters. The worksheet computes what it can and leaves the rest to a human
+  once every six months, which is what the audit was always for.
+
+  Waste tracking arrived here rather than in Phase 4, since the prices it needed were already
+  present. It reports binned-unopened separately from what was left in opened packs — the first is
+  money wasted, the second is the cost of having something available, and adding them together
+  would flatter one and slander the other.
+- **Phase 4** — push notifications, statistics, xlsx export, passkeys.
+- **Phase 5** — duplicate-substance warnings, alternatives between products, audit log, deployment
+  and backups.
+
+Not planned: a PL/EN interface toggle (dropped 2026-07-27 — the UI stays English, while product
+*data* is bilingual through name/nameAlt and the Polish symptom tags), and anything paediatric.
