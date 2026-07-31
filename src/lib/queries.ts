@@ -997,6 +997,8 @@ export interface TripRow {
   notes: string | null;
   /** Shopping lines assigned to this trip, whatever their status. */
   itemCount: number;
+  /** Euro actually spent: boxes received against this trip. */
+  spentMinorEur: number;
 }
 
 export async function getTrips(): Promise<TripRow[]> {
@@ -1008,10 +1010,25 @@ export async function getTrips(): Promise<TripRow[]> {
       orderByDate: trips.orderByDate,
       status: trips.status,
       notes: trips.notes,
-      itemCount: sql<number>`count(${shoppingItems.id})`,
+      itemCount: sql<number>`count(distinct ${shoppingItems.id})`,
+      /*
+       * Summed in SQL here rather than through the shared helper, because the
+       * list needs one figure per trip and doing it per row would be a query
+       * each. The conversion rule is the same: whatever rate was recorded on
+       * the box, euro passed through untouched.
+       */
+      spentMinorEur: sql<number>`coalesce(sum(
+        case
+          when ${batches.purchasePriceMinor} is null then 0
+          when ${batches.purchaseCurrency} = 'EUR' then ${batches.purchasePriceMinor}
+          when ${batches.fxRateToEur} is null then 0
+          else round(${batches.purchasePriceMinor} * ${batches.fxRateToEur})
+        end
+      ), 0)`,
     })
     .from(trips)
     .leftJoin(shoppingItems, eq(shoppingItems.tripId, trips.id))
+    .leftJoin(batches, eq(shoppingItems.receivedBatchId, batches.id))
     .groupBy(trips.id)
     // Soonest collection first: the next trip is the one you act on.
     .orderBy(asc(trips.collectionDate));
@@ -1045,7 +1062,12 @@ export async function getPreviousCollectionDate(
   return rows[0]?.collectionDate ?? null;
 }
 
-export interface TripDetail extends TripRow {
+/**
+ * Omits the list's `spentMinorEur`: the detail page asks `getTripMoney` for a
+ * fuller picture — spent, still-to-buy, and lines with no price to go on — and
+ * carrying a second, cruder total here would be a spare copy of the same sum.
+ */
+export interface TripDetail extends Omit<TripRow, 'spentMinorEur'> {
   items: ShoppingRow[];
 }
 
@@ -1328,4 +1350,248 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
       onListPacks: onList.get(product.productId) ?? null,
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* What things cost                                                    */
+/* ------------------------------------------------------------------ */
+
+export interface PurchaseRow {
+  batchId: number;
+  purchaseDate: string | null;
+  priceMinor: number;
+  currency: 'PLN' | 'EUR';
+  /** Rate recorded at purchase. Null for a euro buy, which needs none. */
+  fxRateToEur: number | null;
+  /** What was bought: one pack of this size. The denominator for unit cost. */
+  packSize: number;
+  packLabel: string | null;
+  /** Set once the box has left stock, so waste can be costed. */
+  status: string;
+  tripLabel: string | null;
+}
+
+/**
+ * Every priced box of a product, newest first.
+ *
+ * At two or three restocks a year most products will only ever have one row
+ * here for a long while, so this is written to be useful with a single
+ * purchase — what it cost, and what that works out at per tablet — rather than
+ * as a trend that needs years of history before it says anything.
+ */
+export async function getProductPurchases(productId: number): Promise<PurchaseRow[]> {
+  return db
+    .select({
+      batchId: batches.id,
+      purchaseDate: batches.purchaseDate,
+      priceMinor: batches.purchasePriceMinor,
+      currency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
+      packSize: variants.packSize,
+      packLabel: variants.packLabel,
+      status: batches.status,
+      tripLabel: trips.label,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .leftJoin(shoppingItems, eq(shoppingItems.receivedBatchId, batches.id))
+    .leftJoin(trips, eq(shoppingItems.tripId, trips.id))
+    .where(
+      and(
+        eq(variants.productId, productId),
+        isNotNull(batches.purchasePriceMinor),
+        isNotNull(batches.purchaseCurrency),
+      ),
+    )
+    .orderBy(sql`${batches.purchaseDate} is null`, sql`${batches.purchaseDate} desc`)
+    .then((rows) =>
+      rows.map((row) => ({
+        ...row,
+        priceMinor: row.priceMinor!,
+        currency: row.currency!,
+      })),
+    );
+}
+
+export interface WasteRow {
+  batchId: number;
+  productName: string;
+  strength: string | null;
+  status: string;
+  quantityRemaining: number;
+  unitName: string;
+  packSize: number;
+  priceMinor: number | null;
+  currency: 'PLN' | 'EUR' | null;
+  fxRateToEur: number | null;
+  expiryDate: string | null;
+  /**
+   * Whether the box was ever opened. The difference between money thrown away
+   * and money spent on something that did its job — see the Expiring page.
+   */
+  openedAt: string | null;
+}
+
+/**
+ * Boxes thrown away, with what they cost.
+ *
+ * Costed on the portion actually wasted, not the whole box: half a bottle
+ * binned is half the money, and charging the full purchase price to waste would
+ * make every figure here an overstatement.
+ */
+export async function getWaste(): Promise<WasteRow[]> {
+  return db
+    .select({
+      batchId: batches.id,
+      productName: products.name,
+      strength: products.strength,
+      status: batches.status,
+      quantityRemaining: batches.quantityRemaining,
+      unitName: products.unitName,
+      packSize: variants.packSize,
+      priceMinor: batches.purchasePriceMinor,
+      currency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
+      expiryDate: batches.expiryDate,
+      openedAt: batches.openedAt,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(inArray(batches.status, ['expired', 'discarded']))
+    .orderBy(byName);
+}
+
+export interface TripMoney {
+  /** Actually spent: boxes received against this trip's lines. */
+  spentMinorEur: number;
+  spentBoxes: number;
+  /** Expected for what is still outstanding, from the last price paid. */
+  estimatedMinorEur: number;
+  estimatedLines: number;
+  /** Outstanding lines with no price to go on. Counted, never guessed at. */
+  unpricedLines: number;
+}
+
+/**
+ * What a trip has cost, and what the rest of its list is likely to cost.
+ *
+ * Everything is in euro at the rate recorded on each purchase, the same rule
+ * the rest of the app uses — including for estimates, which are built from what
+ * was last actually paid rather than from a notion of today's rate. It makes an
+ * estimate a few percent stale at worst, and keeps one rule instead of two.
+ *
+ * Lines with no price history are reported separately rather than treated as
+ * free. A total that silently omits them would read as complete and be wrong.
+ */
+export async function getTripMoney(tripId: number): Promise<TripMoney> {
+  const receivedRows = await db
+    .select({
+      priceMinor: batches.purchasePriceMinor,
+      currency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
+    })
+    .from(shoppingItems)
+    .innerJoin(batches, eq(shoppingItems.receivedBatchId, batches.id))
+    .where(and(eq(shoppingItems.tripId, tripId), isNotNull(batches.purchasePriceMinor)));
+
+  const spentMinorEur = receivedRows.reduce(
+    (sum, row) => sum + inEur(row.priceMinor!, row.currency, row.fxRateToEur),
+    0,
+  );
+
+  // Still to buy: everything on the trip that has not produced a box yet.
+  const outstanding = await db
+    .select({ variantId: shoppingItems.variantId, quantityPacks: shoppingItems.quantityPacks })
+    .from(shoppingItems)
+    .where(
+      and(
+        eq(shoppingItems.tripId, tripId),
+        inArray(shoppingItems.status, ['to_buy', 'ordered', 'arrived']),
+      ),
+    );
+
+  let estimatedMinorEur = 0;
+  let estimatedLines = 0;
+  let unpricedLines = 0;
+
+  for (const line of outstanding) {
+    const lastPaid = await db
+      .select({
+        priceMinor: batches.purchasePriceMinor,
+        currency: batches.purchaseCurrency,
+        fxRateToEur: batches.fxRateToEur,
+      })
+      .from(batches)
+      .where(and(eq(batches.variantId, line.variantId), isNotNull(batches.purchasePriceMinor)))
+      .orderBy(sql`${batches.purchaseDate} is null`, sql`${batches.purchaseDate} desc`)
+      .limit(1);
+
+    const price = lastPaid[0];
+    if (!price) {
+      unpricedLines++;
+      continue;
+    }
+
+    estimatedMinorEur +=
+      inEur(price.priceMinor!, price.currency, price.fxRateToEur) * line.quantityPacks;
+    estimatedLines++;
+  }
+
+  return {
+    spentMinorEur,
+    spentBoxes: receivedRows.length,
+    estimatedMinorEur,
+    estimatedLines,
+    unpricedLines,
+  };
+}
+
+/** Minor units in euro, using the rate stored alongside the amount. */
+function inEur(minor: number, currency: 'PLN' | 'EUR' | null, fxRateToEur: number | null): number {
+  if (currency === 'EUR') return minor;
+  if (fxRateToEur === null || fxRateToEur <= 0) return 0;
+  return Math.round(minor * fxRateToEur);
+}
+
+export interface StockValue {
+  /** What the usable stock on the shelf originally cost, prorated by what is left. */
+  minorEur: number;
+  /** Boxes in stock whose price was never recorded, so they are not in the total. */
+  unpricedBoxes: number;
+}
+
+/**
+ * What is in the cupboard, valued at what it cost.
+ *
+ * Prorated: half a bottle is half the money it was bought for. Not a market
+ * valuation — nothing here is for sale — but it answers "how much is sitting
+ * in those drawers", which is the number that makes over-buying visible.
+ */
+export async function getStockValue(): Promise<StockValue> {
+  const rows = await db
+    .select({
+      priceMinor: batches.purchasePriceMinor,
+      currency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
+      quantityRemaining: batches.quantityRemaining,
+      packSize: variants.packSize,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .where(eq(batches.status, 'in_stock'));
+
+  let minorEur = 0;
+  let unpricedBoxes = 0;
+
+  for (const row of rows) {
+    if (row.priceMinor === null || row.currency === null) {
+      unpricedBoxes++;
+      continue;
+    }
+    const fraction = row.packSize > 0 ? Math.min(1, row.quantityRemaining / row.packSize) : 0;
+    minorEur += Math.round(inEur(row.priceMinor, row.currency, row.fxRateToEur) * fraction);
+  }
+
+  return { minorEur, unpricedBoxes };
 }

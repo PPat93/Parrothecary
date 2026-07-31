@@ -6,10 +6,17 @@ import { ConfirmButton } from '@/components/confirm-button';
 import { ExpiryBadge } from '@/components/expiry-badge';
 import { todayIso } from '@/domain/date';
 import { formatDoseFrequency } from '@/domain/dosing';
-import { formatMoney, money } from '@/domain/money';
+import { formatMoney, formatPricePerUnit, money, pricePerUnit, toEur } from '@/domain/money';
 import { formatQuantity } from '@/domain/quantity';
 import { batchStatusLabel } from '@/lib/labels';
-import { getProduct, getSubstanceNames, getSymptomNames, type ProductDetail } from '@/lib/queries';
+import {
+  getProduct,
+  getProductPurchases,
+  getSubstanceNames,
+  getSymptomNames,
+  type ProductDetail,
+  type PurchaseRow,
+} from '@/lib/queries';
 import {
   archiveProduct,
   deleteProduct,
@@ -24,10 +31,11 @@ import { PhotoForm } from './photo-form';
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [product, substanceNames, symptomNames] = await Promise.all([
+  const [product, substanceNames, symptomNames, purchases] = await Promise.all([
     getProduct(Number(id)),
     getSubstanceNames(),
     getSymptomNames(),
+    getProductPurchases(Number(id)),
   ]);
   if (!product) notFound();
 
@@ -125,6 +133,10 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           }
         />
         {product.notes ? <Row label="Notes" value={product.notes} /> : null}
+      </Section>
+
+      <Section title="What it costs">
+        <PurchaseHistory purchases={purchases} unitName={product.unitName} />
       </Section>
 
       <Section title="Active substances">
@@ -384,5 +396,91 @@ function Row({ label, value }: { label: string; value: string }) {
       </span>
       <span className="text-right break-words">{value}</span>
     </div>
+  );
+}
+
+/**
+ * What each box cost, and what that works out at per tablet.
+ *
+ * Per-unit is the number that actually decides anything: it is the only way to
+ * compare a 20-pack against a 50-pack, or a złoty price against a euro one.
+ * Everything is also shown in euro, converted at the rate recorded on the day
+ * of purchase rather than today's — otherwise last year's spend would change
+ * every time the exchange rate moved.
+ */
+function PurchaseHistory({
+  purchases,
+  unitName,
+}: {
+  purchases: PurchaseRow[];
+  unitName: string;
+}) {
+  if (purchases.length === 0) {
+    return (
+      <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        No prices recorded. Add one when you receive a box and this starts being able to answer
+        “is the big pack actually cheaper”.
+      </p>
+    );
+  }
+
+  const priced = purchases.map((purchase) => {
+    const paid = money(purchase.priceMinor, purchase.currency);
+    const eur = toEur(paid, purchase.fxRateToEur);
+    return {
+      ...purchase,
+      paid,
+      eur,
+      // Per unit in euro, so rows in different currencies are comparable.
+      perUnitEur: pricePerUnit(eur, purchase.packSize),
+    };
+  });
+
+  const cheapest = Math.min(...priced.map((p) => p.perUnitEur));
+
+  return (
+    <ul className="flex flex-col gap-2">
+      {priced.map((purchase) => (
+        <li
+          key={purchase.batchId}
+          className="flex flex-wrap items-baseline justify-between gap-2 border-b pb-2 last:border-0 last:pb-0"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <div className="min-w-0">
+            <p className="text-sm tabular-nums">
+              {formatMoney(purchase.paid, { showCurrency: true })}
+              {purchase.currency !== 'EUR' ? (
+                <span style={{ color: 'var(--muted)' }}>
+                  {' '}
+                  ≈ {formatMoney(purchase.eur, { showCurrency: true })}
+                </span>
+              ) : null}
+            </p>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              {purchase.purchaseDate ?? 'date unknown'}
+              {purchase.tripLabel ? ` · ${purchase.tripLabel}` : ''} ·{' '}
+              {purchase.packLabel ?? `${purchase.packSize} ${unitName}`}
+              {purchase.status !== 'in_stock' ? ` · ${batchStatusLabel(purchase.status)}` : ''}
+            </p>
+          </div>
+
+          <span
+            className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium tabular-nums"
+            style={
+              // Only worth colouring when there is something to compare against.
+              priced.length > 1 && purchase.perUnitEur === cheapest
+                ? {
+                    background: 'color-mix(in oklch, var(--color-ok) 18%, transparent)',
+                    color: 'var(--color-ok)',
+                  }
+                : { color: 'var(--muted)' }
+            }
+            title={`Per ${unitName}, converted at the rate recorded when it was bought`}
+          >
+            {formatPricePerUnit(purchase.perUnitEur, 'EUR')} / {unitName}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

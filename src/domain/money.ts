@@ -100,6 +100,23 @@ export function formatPricePerUnit(minorPerUnit: number, currency: Currency): st
   return currency === 'PLN' ? `${rounded} gr` : `${rounded}c`;
 }
 
+/**
+ * What the unused part of a pack was worth.
+ *
+ * Binning a bottle with a third left in it wastes a third of the money, not all
+ * of it. Charging the whole purchase price to waste would overstate every
+ * figure, and the number this feeds is meant to be the honest cost of throwing
+ * things away — inflating it would make it easy to dismiss.
+ *
+ * Rounded to whole minor units: it is money, and fractions of a grosz are not.
+ */
+export function unusedValue(total: Money, packSize: number, unitsRemaining: number): Money {
+  if (packSize <= 0) return money(0, total.currency);
+
+  const fraction = Math.min(1, Math.max(0, unitsRemaining / packSize));
+  return money(Math.round(total.amountMinor * fraction), total.currency);
+}
+
 export function sumMoney(values: Money[], currency: Currency): Money {
   let total = 0;
   for (const value of values) {
