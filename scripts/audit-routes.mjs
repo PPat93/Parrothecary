@@ -11,6 +11,11 @@ const cases = [
   ['/shopping', 'page', 'protect'],
   ['/shopping/1/receive', 'page', 'protect'],
   ['/stock/new', 'page', 'protect'],
+  ['/doses', 'page', 'protect'],
+  ['/household', 'page', 'protect'],
+  ['/household/1', 'page', 'protect'],
+  ['/household/1/edit', 'page', 'protect'],
+  ['/household/new', 'page', 'protect'],
   ['/login', 'page', 'allow'],
   ['/parrot-64.png', 'asset', 'allow'],
   ['/parrot-256.png', 'asset', 'allow'],
@@ -25,6 +30,15 @@ const cases = [
   ['/nonexistent', 'page', 'protect'],
   ['/sw.js', 'asset', 'allow'],
   ['/products.png', 'asset', 'allow'],
+  // PWA assets. Android fetches these without the page's cookies, so any of
+  // them being redirected to /login makes the app silently uninstallable.
+  ['/offline.html', 'asset', 'allow'],
+  ['/icons/icon-192.png', 'asset', 'allow'],
+  ['/icons/icon-512.png', 'asset', 'allow'],
+  ['/icons/maskable-512.png', 'asset', 'allow'],
+  // Box photos are NOT public like the PWA icons — the extensionless path keeps
+  // them under the proxy, and the route re-checks the session itself.
+  ['/photo/00000000-0000-0000-0000-000000000000', 'page', 'protect'],
 ];
 
 let failures = 0;

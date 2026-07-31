@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import {
   Checkbox,
   Datalist,
@@ -33,6 +33,8 @@ export function EditProductForm({
   const checked = (key: string, stored: boolean) =>
     rejected ? prev[key] === 'on' : stored;
 
+  const [hasExpiry, setHasExpiry] = useState(checked('hasExpiry', product.hasExpiry));
+
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={product.id} />
@@ -41,7 +43,7 @@ export function EditProductForm({
         <TextInput name="name" required defaultValue={value('name', product.name)} />
       </Field>
 
-      <Field label="Other name" hint="Optional — the Polish or Irish equivalent.">
+      <Field label="Other name" hint="Optional — what it is called in the other language.">
         <TextInput name="nameAlt" defaultValue={value('nameAlt', product.nameAlt)} />
       </Field>
 
@@ -95,8 +97,28 @@ export function EditProductForm({
       <Checkbox
         name="hasExpiry"
         label="This expires (uncheck for plasters, thermometers…)"
-        defaultChecked={checked('hasExpiry', product.hasExpiry)}
+        checked={hasExpiry}
+        onChange={setHasExpiry}
       />
+
+      {/*
+        Hidden for things that do not expire — see the create form. Unticking
+        also clears any grace already stored, which is right: it cannot apply to
+        a product with no date to be past.
+      */}
+      {hasExpiry ? (
+        <Field
+          label="Still usable past its date (days)"
+          hint="Leave blank for none. 60 suits paracetamol tablets; keep it at zero for eye drops, sprays, sterile dressings and antibiotics. Only affects what doses are taken from — the expiry list still calls the box expired."
+        >
+          <TextInput
+            name="expiryGraceDays"
+            inputMode="numeric"
+            placeholder="0"
+            defaultValue={value('expiryGraceDays', String(product.expiryGraceDays))}
+          />
+        </Field>
+      ) : null}
 
       <ErrorText>{state.error}</ErrorText>
       <SubmitButton pending={pending}>Save changes</SubmitButton>

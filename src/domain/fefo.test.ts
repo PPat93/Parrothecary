@@ -17,6 +17,7 @@ function batch(overrides: Partial<FefoBatch> & { id: number }): FefoBatch {
     hasExpiry: true,
     openedAt: null,
     status: 'in_stock',
+    expiryGraceDays: 0,
     ...overrides,
   };
 }
@@ -74,6 +75,47 @@ describe('sortByFefo', () => {
   it('can include expired stock when explicitly asked', () => {
     const expired = batch({ id: 1, expiryDate: '2026-07-25' });
     expect(sortByFefo([expired], TODAY, { allowExpired: true }).map((b) => b.id)).toEqual([1]);
+  });
+
+  it('keeps a box usable while it is inside its grace window', () => {
+    // A month past date, on a product that tolerates two months.
+    const stale = batch({ id: 1, expiryDate: '2026-06-26', expiryGraceDays: 60 });
+    expect(sortByFefo([stale], TODAY).map((b) => b.id)).toEqual([1]);
+  });
+
+  it('excludes a box once it is past its grace window', () => {
+    const tooFarGone = batch({ id: 1, expiryDate: '2026-05-26', expiryGraceDays: 30 });
+    expect(sortByFefo([tooFarGone], TODAY)).toEqual([]);
+  });
+
+  it('treats the last day of grace as usable and the next day as not', () => {
+    const lastDay = batch({ id: 1, expiryDate: '2026-06-26', expiryGraceDays: 30 });
+    const dayAfter = batch({ id: 2, expiryDate: '2026-06-25', expiryGraceDays: 30 });
+    expect(sortByFefo([lastDay], TODAY).map((b) => b.id)).toEqual([1]);
+    expect(sortByFefo([dayAfter], TODAY)).toEqual([]);
+  });
+
+  it('still uses the in-grace box before fresher stock', () => {
+    // Grace widens what is usable; it does not change the order of use.
+    const inGrace = batch({ id: 1, expiryDate: '2026-07-20', expiryGraceDays: 60 });
+    const fresh = batch({ id: 2, expiryDate: '2028-01-31', expiryGraceDays: 60 });
+    expect(sortByFefo([fresh, inGrace], TODAY).map((b) => b.id)).toEqual([1, 2]);
+  });
+
+  it('ignores grace on stock that has no expiry at all', () => {
+    const plasters = batch({
+      id: 1,
+      expiryDate: null,
+      expiryPrecision: null,
+      hasExpiry: false,
+      expiryGraceDays: 60,
+    });
+    expect(sortByFefo([plasters], TODAY).map((b) => b.id)).toEqual([1]);
+  });
+
+  it('does not let a negative grace pull the deadline forward', () => {
+    const expiringToday = batch({ id: 1, expiryDate: TODAY, expiryGraceDays: -30 });
+    expect(sortByFefo([expiringToday], TODAY).map((b) => b.id)).toEqual([1]);
   });
 
   it('does not mutate the input array', () => {
@@ -160,6 +202,14 @@ describe('totalAvailable', () => {
       batch({ id: 4, quantityRemaining: 60, status: 'discarded' }),
     ];
     expect(totalAvailable(batches, TODAY)).toBe(74);
+  });
+
+  it('counts stock that is past its date but inside its grace window', () => {
+    const batches = [
+      batch({ id: 1, quantityRemaining: 20, expiryDate: '2026-06-26', expiryGraceDays: 60 }),
+      batch({ id: 2, quantityRemaining: 20, expiryDate: '2026-04-26', expiryGraceDays: 60 }),
+    ];
+    expect(totalAvailable(batches, TODAY)).toBe(20);
   });
 
   it('is zero when the cupboard is empty', () => {

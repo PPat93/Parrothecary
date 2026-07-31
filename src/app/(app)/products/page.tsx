@@ -1,21 +1,31 @@
 import Link from 'next/link';
+import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { formatQuantity } from '@/domain/quantity';
-import { getProducts } from '@/lib/queries';
+import { SearchBox } from '@/components/search-box';
+import { SymptomTags } from '@/components/symptom-tags';
+import { getProducts, getProductSymptoms } from '@/lib/queries';
 
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<{ archived?: string; q?: string }>;
 }) {
-  const { archived } = await searchParams;
+  const { archived, q } = await searchParams;
   const showArchived = archived === '1';
-  const rows = await getProducts(showArchived);
+  const search = q ?? '';
+  const [rows, symptomsByProduct] = await Promise.all([
+    getProducts(showArchived, search),
+    getProductSymptoms(),
+  ]);
+
+  // Switching tabs keeps whatever you were searching for.
+  const tabQuery = search ? `&q=${encodeURIComponent(search)}` : '';
 
   return (
     <div className="mx-auto w-full max-w-2xl">
       <header className="mb-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Products</h1>
-        <Link href="/products/new" className="text-sm font-medium underline underline-offset-4">
+        <Link href="/products/new" className={LINK_BUTTON} style={toneStyle('accent')}>
           New product
         </Link>
       </header>
@@ -24,16 +34,31 @@ export default async function ProductsPage({
         className="mb-4 grid grid-cols-2 gap-1 rounded-xl border p-1 text-center text-sm"
         style={{ borderColor: 'var(--border)' }}
       >
-        <Tab href="/products" label="Active" active={!showArchived} />
-        <Tab href="/products?archived=1" label="Archived" active={showArchived} />
+        <Tab
+          href={`/products${search ? `?q=${encodeURIComponent(search)}` : ''}`}
+          label="Active"
+          active={!showArchived}
+        />
+        <Tab href={`/products?archived=1${tabQuery}`} label="Archived" active={showArchived} />
       </div>
+
+      <SearchBox
+        action="/products"
+        value={search}
+        placeholder="Name, brand, substance or symptom…"
+        hidden={showArchived ? { archived: '1' } : undefined}
+      />
 
       {rows.length === 0 ? (
         <div
           className="rounded-2xl border border-dashed p-8 text-center text-sm"
           style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
         >
-          {showArchived ? 'Nothing archived.' : 'The product database is empty.'}
+          {search
+            ? `No ${showArchived ? 'archived ' : ''}products match “${search}”.`
+            : showArchived
+              ? 'Nothing archived.'
+              : 'The product database is empty.'}
         </div>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -44,6 +69,17 @@ export default async function ProductsPage({
                 className="flex items-center gap-3 rounded-xl border p-3"
                 style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
               >
+                {/* Recognising a box by sight beats reading a foreign name. */}
+                {row.photoPath ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/photo/${row.photoPath}-thumb`}
+                    alt=""
+                    className="h-11 w-11 shrink-0 rounded-lg border object-cover"
+                    style={{ borderColor: 'var(--border)' }}
+                  />
+                ) : null}
+
                 <div className="min-w-0 flex-1">
                   <p className="font-medium break-words">
                     {row.name}
@@ -66,13 +102,19 @@ export default async function ProductsPage({
                       .filter(Boolean)
                       .join(' · ')}
                   </p>
+                  <SymptomTags names={symptomsByProduct.get(row.id)} />
                 </div>
 
                 <span
-                  className="shrink-0 text-sm tabular-nums"
+                  className="shrink-0 text-right text-sm tabular-nums"
                   style={{ color: 'var(--muted)' }}
                 >
                   {formatQuantity(row.inStockUnits, row.unitName)}
+                  {row.pastDateUnits > 0 ? (
+                    <span className="block text-xs" style={{ color: 'var(--color-warning)' }}>
+                      +{row.pastDateUnits} past date
+                    </span>
+                  ) : null}
                 </span>
 
                 <span aria-hidden style={{ color: 'var(--muted)' }}>

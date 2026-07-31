@@ -1,18 +1,19 @@
 import Link from 'next/link';
+import { ActionButton, type Tone } from '@/components/action-button';
 import { ConfirmButton } from '@/components/confirm-button';
 import { SHOPPING_STATUSES, TERMINAL_SHOPPING_STATUSES } from '@/db/schema';
-import { getShoppingList, getVariantOptions, type ShoppingRow } from '@/lib/queries';
+import { getShoppingList, getTripOptions, getVariantOptions, type ShoppingRow } from '@/lib/queries';
 import { removeShoppingItem, setShoppingStatus } from '../actions';
 import { AddShoppingForm } from './add-form';
 
 /**
- * Most stock is ordered online to family in Poland and collected on the trip,
- * so an item moves through several states rather than being simply ticked off.
+ * Most stock is ordered online ahead of a trip and collected on arrival, so an
+ * item moves through several states rather than being simply ticked off.
  * The last two are settled: they only get cleared, never moved back.
  */
 const STAGES: { status: (typeof SHOPPING_STATUSES)[number]; title: string; blurb: string }[] = [
   { status: 'to_buy', title: 'To buy', blurb: 'Not ordered yet.' },
-  { status: 'ordered', title: 'Ordered', blurb: 'Placed online, on its way to Poland.' },
+  { status: 'ordered', title: 'Ordered', blurb: 'Placed online, on its way.' },
   { status: 'arrived', title: 'Arrived', blurb: 'Waiting at family — collect on the trip.' },
   {
     status: 'in_stock',
@@ -30,7 +31,11 @@ const STAGES: { status: (typeof SHOPPING_STATUSES)[number]; title: string; blurb
 const ACTIVE_STAGES = STAGES.filter((s) => !TERMINAL_SHOPPING_STATUSES.some((t) => t === s.status));
 
 export default async function ShoppingPage() {
-  const [items, variants] = await Promise.all([getShoppingList(), getVariantOptions()]);
+  const [items, variants, trips] = await Promise.all([
+    getShoppingList(),
+    getVariantOptions(),
+    getTripOptions(),
+  ]);
 
   const byStatus = new Map<string, ShoppingRow[]>();
   for (const item of items) {
@@ -59,7 +64,7 @@ export default async function ShoppingPage() {
         >
           <summary className="cursor-pointer text-sm font-medium">Add an item</summary>
           <div className="mt-3">
-            <AddShoppingForm variants={variants} />
+            <AddShoppingForm variants={variants} trips={trips} />
           </div>
         </details>
       )}
@@ -109,6 +114,21 @@ export default async function ShoppingPage() {
                       </p>
                       <p className="text-xs" style={{ color: 'var(--muted)' }}>
                         {item.packLabel ?? `${item.packSize} ${item.unitName}`}
+                        {/* Which restock this belongs to. Absent means bought
+                            locally, which is a real answer, so it says so. */}
+                        {item.tripLabel ? (
+                          <>
+                            {' · '}
+                            <Link
+                              href={`/trips/${item.tripId}`}
+                              className="underline underline-offset-2"
+                            >
+                              {item.tripLabel}
+                            </Link>
+                          </>
+                        ) : (
+                          ' · no trip'
+                        )}
                       </p>
                       {/* Own line, wrapping: notes are free text and get long. */}
                       {item.notes ? (
@@ -128,6 +148,7 @@ export default async function ShoppingPage() {
                           status={previous.status}
                           label="←"
                           title={`Back to ${previous.title}`}
+                          tone="neutral"
                         />
                       ) : null}
 
@@ -140,8 +161,7 @@ export default async function ShoppingPage() {
                             title="Mark as not received?"
                             message={`${item.quantityPacks} × ${item.name} will be filed under "Didn't arrive" — damaged, lost or cancelled. Nothing is added to stock.`}
                             confirmLabel="Yes, it didn't arrive"
-                            className="rounded-lg border px-3 py-1.5 text-xs"
-                            style={{ borderColor: 'var(--border)' }}
+                            tone="critical"
                           />
                         </form>
                       ) : null}
@@ -186,8 +206,7 @@ export default async function ShoppingPage() {
                                 : `${item.quantityPacks} × ${item.name} will be removed from the shopping list.`
                             }
                             confirmLabel="Yes, clear it"
-                            className="rounded-lg border px-3 py-1.5 text-xs"
-                            style={{ borderColor: 'var(--border)' }}
+                            tone="critical"
                           />
                         </form>
                       )}
@@ -217,24 +236,21 @@ function StatusButton({
   status,
   label,
   title,
+  tone = 'accent',
 }: {
   id: number;
   status: string;
   label: string;
   title: string;
+  tone?: Tone;
 }) {
   return (
     <form action={setShoppingStatus}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="status" value={status} />
-      <button
-        type="submit"
-        title={title}
-        className="rounded-lg border px-3 py-1.5 text-xs"
-        style={{ borderColor: 'var(--border)' }}
-      >
+      <ActionButton tone={tone} title={title}>
         {label}
-      </button>
+      </ActionButton>
     </form>
   );
 }

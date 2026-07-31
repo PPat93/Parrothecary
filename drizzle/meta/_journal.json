@@ -8,6 +8,41 @@
       "when": 1785082964016,
       "tag": "0000_lean_thor_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785332059085,
+      "tag": "0001_good_lilandra",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785351630525,
+      "tag": "0002_previous_carnage",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785405372204,
+      "tag": "0003_harsh_ted_forrester",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785417639854,
+      "tag": "0004_famous_kulan_gath",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785491637747,
+      "tag": "0005_nosy_sentry",
+      "breakpoints": true
     }
   ]
 }

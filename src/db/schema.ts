@@ -92,9 +92,9 @@ export const products = sqliteTable(
 
     /**
      * The name as printed on the box, whatever language that happens to be.
-     * Most stock is Polish, but Solgar, NeilMed and Mollelast have no Polish
-     * name at all — a brand is a brand, and language belongs to the packaging
-     * rather than to the product.
+     * Some brands carry the same name everywhere and have no second form at
+     * all — a brand is a brand, and language belongs to the packaging rather
+     * than to the product.
      */
     name: text('name').notNull(),
     /** The other-language or local-equivalent name, where one exists. Search matches both. */
@@ -113,6 +113,19 @@ export const products = sqliteTable(
      * never appears in the expiry view and its batches may have a null expiry.
      */
     hasExpiry: integer('has_expiry', { mode: 'boolean' }).notNull().default(true),
+
+    /**
+     * How many days past the printed date this product is still considered
+     * usable for dosing. Per product, not global, and 0 by default — because
+     * an expiry date means different things for different things. Paracetamol
+     * tablets a month past date are fine; sterile saline, eye drops, an
+     * adrenaline pen or an antibiotic are not, and one shared constant could
+     * not tell them apart.
+     *
+     * Affects only what FEFO is willing to allocate. The expiry view still
+     * reports the box as expired, because it factually is.
+     */
+    expiryGraceDays: integer('expiry_grace_days').notNull().default(0),
 
     /** Photo of the box front, relative to the uploads directory. */
     photoPath: text('photo_path'),
@@ -150,7 +163,7 @@ export const productSubstances = sqliteTable(
 export const ALTERNATIVE_RELATIONS = [
   /** Identical active substance and strength. */
   'same_substance',
-  /** What you can buy in an Irish pharmacy instead. */
+  /** What a pharmacy here sells instead of the one bought abroad. */
   'local_equivalent',
   /** Different molecule, comparable effect. */
   'substitute',
@@ -183,7 +196,12 @@ export const symptoms = sqliteTable(
   'symptoms',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    namePl: text('name_pl').notNull(),
+    /**
+     * Optional. The interface is English-only, so requiring a Polish name for
+     * every tag would be friction — but keeping the column means searching
+     * "gardło" can still find the sore-throat shelf.
+     */
+    namePl: text('name_pl'),
     nameEn: text('name_en').notNull(),
     ...timestamps,
   },
@@ -321,8 +339,8 @@ export const batches = sqliteTable(
 export const TRIP_STATUSES = ['planned', 'completed'] as const;
 
 /**
- * Most stock is ordered online and shipped to family in Poland ahead of the
- * visit, so the date that actually constrains us is orderByDate, not the
+ * Most stock is ordered online and shipped ahead of the visit to be picked up
+ * on arrival, so the date that actually constrains us is orderByDate, not the
  * collection date. Audits and shopping-list reminders hang off orderByDate.
  */
 export const trips = sqliteTable('trips', {
@@ -364,8 +382,14 @@ export const shoppingItems = sqliteTable(
     quantityPacks: integer('quantity_packs').notNull().default(1),
     status: text('status', { enum: SHOPPING_STATUSES }).notNull().default('to_buy'),
 
-    estimatedPriceMinor: integer('estimated_price_minor'),
-    estimatedCurrency: text('estimated_currency', { enum: CURRENCIES }).default('PLN'),
+    /*
+     * There was an estimated_price_minor / estimated_currency pair here. Never
+     * written by anything, and the trip page answers the same question better
+     * by deriving an estimate from what each thing was last actually paid for —
+     * no typing, and it improves on its own as purchases accumulate. A column
+     * nobody fills in is a promise the app does not keep, so it is gone rather
+     * than left waiting for a form that was never going to be built.
+     */
 
     /** Set when status moves to in_stock, so we can trace a box back to its order. */
     receivedBatchId: integer('received_batch_id').references(() => batches.id, {
@@ -378,6 +402,108 @@ export const shoppingItems = sqliteTable(
   (t) => [
     index('shopping_items_trip_idx').on(t.tripId),
     index('shopping_items_status_idx').on(t.status),
+  ],
+);
+
+/* ------------------------------------------------------------------ */
+/* Household members and dosing                                       */
+/* ------------------------------------------------------------------ */
+
+export const householdMembers = sqliteTable(
+  'household_members',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    notes: text('notes'),
+    archivedAt: integer('archived_at', { mode: 'timestamp' }),
+    ...timestamps,
+  },
+  (t) => [index('household_members_archived_idx').on(t.archivedAt)],
+);
+
+/**
+ * "Piotr: 1 Euthyrox tablet daily." Tied to a Product, not a Variant — dosing
+ * does not care which pack size is open, only what is being taken.
+ */
+export const doseSchedules = sqliteTable(
+  'dose_schedules',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => householdMembers.id, { onDelete: 'cascade' }),
+    productId: integer('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'restrict' }),
+
+    /** Units per single dose, in the product's own base unit. */
+    doseUnits: real('dose_units').notNull(),
+    /** Independent doses per day (morning + evening = 2), not a split of one. */
+    timesPerDay: integer('times_per_day').notNull().default(1),
+
+    /**
+     * Days between dosing days. 1 is every day, 7 is weekly, 2 is alternate
+     * days. Combines with timesPerDay: interval 7 and timesPerDay 2 means two
+     * doses, one day a week.
+     *
+     * Deliberately an interval and not a set of weekdays. "Every 3 days" and
+     * "weekly" cover what a household actually needs, and an interval cannot
+     * quietly disagree with itself the way a weekday set plus a start date can.
+     *
+     * Due dates are phased from startDate, so moving startDate moves every
+     * future dose with it — which is why the form does not offer to change it.
+     */
+    intervalDays: integer('interval_days').notNull().default(1),
+
+    /**
+     * Confirming a dose before this date is not offered. Also the anchor every
+     * dosing day is counted from, once intervalDays is above 1.
+     */
+    startDate: text('start_date').notNull(),
+    /** Null = ongoing. Set for a course of antibiotics or a seasonal supplement. */
+    endDate: text('end_date'),
+
+    notes: text('notes'),
+    archivedAt: integer('archived_at', { mode: 'timestamp' }),
+    ...timestamps,
+  },
+  (t) => [
+    index('dose_schedules_member_idx').on(t.memberId),
+    index('dose_schedules_product_idx').on(t.productId),
+  ],
+);
+
+/**
+ * A confirmed dose. Rows are only ever created by tapping "taken" — there is
+ * no row for a missed dose, because "missed" is derived (see domain/dosing.ts),
+ * not stored. batchId + quantity record exactly what was decremented, so
+ * un-confirming can put it back precisely rather than guessing.
+ *
+ * One dose can produce more than one row: if it emptied one batch and spilled
+ * into the next (FEFO), each batch touched gets its own row.
+ */
+export const doseEvents = sqliteTable(
+  'dose_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    scheduleId: integer('schedule_id')
+      .notNull()
+      .references(() => doseSchedules.id, { onDelete: 'cascade' }),
+    /** Calendar day this dose belongs to — not when it was actually tapped. */
+    date: text('date').notNull(),
+    /** 1-based: which of the day's timesPerDay occurrences this is. */
+    occurrence: integer('occurrence').notNull(),
+    batchId: integer('batch_id')
+      .notNull()
+      .references(() => batches.id, { onDelete: 'restrict' }),
+    quantity: real('quantity').notNull(),
+    confirmedAt: integer('confirmed_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [
+    index('dose_events_schedule_date_idx').on(t.scheduleId, t.date),
+    index('dose_events_batch_idx').on(t.batchId),
   ],
 );
 

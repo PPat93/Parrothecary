@@ -15,9 +15,16 @@ export type ExpiryStatus =
   | 'ok'
   /** Amber: use it soon. */
   | 'warning'
-  /** Red: about to go, or already gone within the grace window. */
+  /** Red: about to go. */
   | 'critical'
-  /** Past its date. */
+  /**
+   * Past its printed date, but inside the window this product tolerates — so
+   * doses still come out of it. Deliberately distinct from 'expired': the app
+   * is actively using this box, and a screen that called it expired while the
+   * dose board took from it would read as a bug rather than a decision.
+   */
+  | 'in_grace'
+  /** Past its date and past whatever tolerance the product had. Bin it. */
   | 'expired';
 
 export interface ExpiryThresholds {
@@ -44,6 +51,12 @@ export interface ExpiryInput {
   precision: ExpiryPrecision | null;
   /** From the product: false for items with no expiry at all. */
   hasExpiry: boolean;
+  /**
+   * From the product: days past the printed date this thing may still be used.
+   * Zero for most, and required rather than optional so no caller can quietly
+   * omit it and get a different answer than the dose board does.
+   */
+  graceDays: number;
 }
 
 /**
@@ -105,27 +118,95 @@ export function expiryStatus(
 
   const days = daysUntilExpiry(input, today);
   if (days === null) return 'none';
-  if (days < 0) return 'expired';
+  if (days < 0) return isDosable(input, today) ? 'in_grace' : 'expired';
   if (days <= thresholds.criticalDays) return 'critical';
   if (days <= thresholds.warningDays) return 'warning';
   return 'ok';
 }
 
-/** How it should read on screen: "11/2027" for month precision, "15.11.2027" for day. */
+/**
+ * The one place that answers "may this box still be used?".
+ *
+ * Everything else — the badges, the stock totals, FEFO allocation, the dose
+ * board — routes through here rather than comparing dates itself. Three
+ * slightly different answers to this question was exactly the bug waiting to
+ * happen: stock counting a box the dose board refused to touch.
+ *
+ * A negative grace value cannot pull the deadline forward; the printed date is
+ * the earliest this ever returns false.
+ */
+export function isDosable(input: ExpiryInput, today: IsoDate): boolean {
+  if (!input.hasExpiry || input.expiryDate === null) return true;
+  return differenceInDays(today, input.expiryDate) >= -Math.max(0, input.graceDays);
+}
+
+/**
+ * Upper bound on a product's grace window. Not a medical judgement — just the
+ * point past which the number is far more likely to be a slipped digit than a
+ * decision. Real values are weeks, or a couple of months.
+ */
+export const MAX_GRACE_DAYS = 365;
+
+/**
+ * Validate what someone typed into the grace field.
+ *
+ * Blank means zero, never "unlimited" — a field left alone must not widen how
+ * long something counts as usable. Lives here rather than in the form so the
+ * rule is tested and so both the create and edit paths cannot drift apart.
+ */
+export function parseGraceDays(
+  value: string | null,
+): { ok: true; days: number } | { ok: false; message: string } {
+  if (value === null || value.trim() === '') return { ok: true, days: 0 };
+
+  const days = Number(value);
+  if (!Number.isInteger(days) || days < 0) {
+    return {
+      ok: false,
+      message: `"${value}" is not a valid grace period. Enter whole days, like 60, or leave it blank.`,
+    };
+  }
+  if (days > MAX_GRACE_DAYS) {
+    return {
+      ok: false,
+      message: `${days} days is too long to keep using something past its date. ${MAX_GRACE_DAYS} is the most allowed — did you mean ${Math.floor(days / 10)}?`,
+    };
+  }
+  return { ok: true, days };
+}
+
+/** Days past the printed date, or null when it is not past it (or never expires). */
+export function daysPastDate(input: ExpiryInput, today: IsoDate): number | null {
+  const days = daysUntilExpiry(input, today);
+  if (days === null || days >= 0) return null;
+  return Math.abs(days);
+}
+
+/**
+ * "11.2027" for month precision, "15.11.2027" for day.
+ *
+ * Both use the same separator on purpose. A slash for one and dots for the
+ * other made a stock list look inconsistent rather than precise. The month form
+ * still omits the day — we never invent one — but it now reads as the same kind
+ * of date, just shorter.
+ */
 export function formatExpiry(input: ExpiryInput): string {
   if (!input.hasExpiry) return 'no expiry';
   if (input.expiryDate === null) return 'date unknown';
 
   const [year, month, day] = input.expiryDate.split('-');
-  if (input.precision === 'month') return `${month}/${year}`;
+  if (input.precision === 'month') return `${month}.${year}`;
   return `${day}.${month}.${year}`;
 }
 
 /**
- * Will this box still be in date on the given day? Used to decide whether
- * stock we already own actually covers us until the next restock.
+ * Will this box still be usable on the given day? Used to decide whether stock
+ * we already own actually covers us until the next restock.
+ *
+ * Same rule as `isDosable`, asked about a future date instead of today — the
+ * grace window counts here too, because stock we are willing to take doses
+ * from is stock that covers us.
  */
 export function isUsableOn(input: ExpiryInput, date: IsoDate): boolean {
-  if (!input.hasExpiry || input.expiryDate === null) return true;
-  return differenceInDays(date, input.expiryDate) >= 0;
+  return isDosable(input, date);
 }

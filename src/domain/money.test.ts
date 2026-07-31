@@ -7,6 +7,7 @@ import {
   pricePerUnit,
   sumMoney,
   toEur,
+  unusedValue,
 } from './money';
 
 describe('money', () => {
@@ -119,5 +120,41 @@ describe('sumMoney', () => {
 
   it('refuses to silently add mixed currencies', () => {
     expect(() => sumMoney([money(1299, 'PLN'), money(500, 'EUR')], 'PLN')).toThrow();
+  });
+});
+
+describe('unusedValue', () => {
+  const pack = money(1299, 'PLN'); // a 50-pack of APAP
+
+  it('is the whole price when nothing was used', () => {
+    expect(unusedValue(pack, 50, 50)).toEqual(money(1299, 'PLN'));
+  });
+
+  it('is nothing when the pack was finished', () => {
+    expect(unusedValue(pack, 50, 0)).toEqual(money(0, 'PLN'));
+  });
+
+  it('charges only the part actually thrown away', () => {
+    // Binning a half-used box wastes half the money, not all of it.
+    expect(unusedValue(pack, 50, 25)).toEqual(money(650, 'PLN'));
+    expect(unusedValue(money(6000, 'PLN'), 60, 20)).toEqual(money(2000, 'PLN'));
+  });
+
+  it('keeps the currency it was bought in', () => {
+    expect(unusedValue(money(2199, 'EUR'), 60, 30)).toEqual(money(1100, 'EUR'));
+  });
+
+  it('does not exceed the price when more is left than a pack holds', () => {
+    // Two boxes merged into one row, a mistyped quantity — either way, waste
+    // cannot cost more than the thing cost.
+    expect(unusedValue(pack, 50, 80)).toEqual(money(1299, 'PLN'));
+  });
+
+  it('treats a negative remainder as nothing left', () => {
+    expect(unusedValue(pack, 50, -5)).toEqual(money(0, 'PLN'));
+  });
+
+  it('does not divide by a missing pack size', () => {
+    expect(unusedValue(pack, 0, 10)).toEqual(money(0, 'PLN'));
   });
 });

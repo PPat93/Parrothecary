@@ -52,3 +52,6 @@ Thumbs.db
 npm-debug.log*
 .vscode/
 .idea/
+
+# git-bash / msys crash dumps — land in the repo root when a shell dies
+*.stackdump

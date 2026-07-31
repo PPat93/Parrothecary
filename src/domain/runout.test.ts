@@ -1,0 +1,130 @@
+import { describe, expect, it } from 'vitest';
+import { projectRunOut, runOutSeverity, scheduleDailyRate, unitsShort } from './runout';
+
+const TODAY = '2026-07-26';
+
+describe('scheduleDailyRate', () => {
+  it('multiplies dose by times per day', () => {
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 1 })).toBe(1);
+    expect(scheduleDailyRate({ doseUnits: 0.5, timesPerDay: 2, intervalDays: 1 })).toBe(1);
+    expect(scheduleDailyRate({ doseUnits: 5, timesPerDay: 3, intervalDays: 1 })).toBe(15);
+  });
+
+  it('spreads an infrequent dose across its interval', () => {
+    // A weekly tablet is a seventh of a tablet a day, for reordering purposes.
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 7 })).toBeCloseTo(1 / 7);
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 2 })).toBe(0.5);
+    expect(scheduleDailyRate({ doseUnits: 2, timesPerDay: 2, intervalDays: 4 })).toBe(1);
+  });
+
+  it('never returns zero for a real dose, so the projection does not vanish', () => {
+    // Integer division would give 0 here, which reads as "no schedule at all"
+    // and silently removes the run-out badge from exactly the schedules whose
+    // stock is hardest to eyeball.
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 30 })).toBeGreaterThan(0);
+  });
+
+  it('treats a nonsensical interval as daily rather than dividing by zero', () => {
+    expect(scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 0 })).toBe(1);
+  });
+
+  it('projects a weekly tablet as lasting weeks', () => {
+    const rate = scheduleDailyRate({ doseUnits: 1, timesPerDay: 1, intervalDays: 7 });
+    expect(projectRunOut(4, rate, TODAY)).toEqual({ daysRemaining: 28, runOutDate: '2026-08-23' });
+  });
+});
+
+describe('projectRunOut', () => {
+  it('is null with no consumption rate — nothing to project, not zero days', () => {
+    expect(projectRunOut(100, 0, TODAY)).toBeNull();
+  });
+
+  it('reports zero days left when stock is already empty, rather than nothing', () => {
+    expect(projectRunOut(0, 1, TODAY)).toEqual({ daysRemaining: 0, runOutDate: TODAY });
+  });
+
+  it('floors a partial day — a fraction of a dose does not count as another day', () => {
+    // 32.5 ml at 5 ml/day: six full days, not six and a half.
+    expect(projectRunOut(32.5, 5, TODAY)).toEqual({ daysRemaining: 6, runOutDate: '2026-08-01' });
+  });
+
+  it('projects an exact multiple correctly', () => {
+    expect(projectRunOut(100, 1, TODAY)).toEqual({ daysRemaining: 100, runOutDate: '2026-11-03' });
+  });
+
+  it('never goes negative on a rounding edge', () => {
+    expect(projectRunOut(0.4, 1, TODAY)).toEqual({ daysRemaining: 0, runOutDate: TODAY });
+  });
+});
+
+describe('runOutSeverity', () => {
+  it('is none without a projection — not tracked, not "fine"', () => {
+    expect(runOutSeverity(null)).toBe('none');
+  });
+
+  it('is critical at and under the threshold, including already out', () => {
+    expect(runOutSeverity({ daysRemaining: 0, runOutDate: TODAY })).toBe('critical');
+    expect(runOutSeverity({ daysRemaining: 60, runOutDate: TODAY })).toBe('critical');
+  });
+
+  it('is warning between the two thresholds', () => {
+    expect(runOutSeverity({ daysRemaining: 61, runOutDate: TODAY })).toBe('warning');
+    expect(runOutSeverity({ daysRemaining: 180, runOutDate: TODAY })).toBe('warning');
+  });
+
+  it('is ok beyond the warning window', () => {
+    expect(runOutSeverity({ daysRemaining: 181, runOutDate: TODAY })).toBe('ok');
+  });
+
+  it('honours custom thresholds', () => {
+    const tight = { criticalDays: 7, warningDays: 14 };
+    expect(runOutSeverity({ daysRemaining: 10, runOutDate: TODAY }, tight)).toBe('warning');
+    expect(runOutSeverity({ daysRemaining: 5, runOutDate: TODAY }, tight)).toBe('critical');
+  });
+});
+
+describe('projectRunOut — fractional rates', () => {
+  it('does not lose a day to float error on a fractional rate', () => {
+    // Three quarter-tablets a week: 2.25 / (2.25/7) is 6.999999999999999 in
+    // floating point, which floored to 6 before this was snapped.
+    const rate = scheduleDailyRate({ doseUnits: 0.75, timesPerDay: 3, intervalDays: 7 });
+    expect(projectRunOut(2.25, rate, TODAY)?.daysRemaining).toBe(7);
+    expect(projectRunOut(4.5, rate, TODAY)?.daysRemaining).toBe(14);
+    expect(projectRunOut(9, rate, TODAY)?.daysRemaining).toBe(28);
+  });
+
+  it('still floors a genuinely partial day', () => {
+    // Snapping must not become rounding: 6.5 days of supply is 6 whole days.
+    expect(projectRunOut(3.25, 0.5, TODAY)?.daysRemaining).toBe(6);
+    expect(projectRunOut(9.9, 1, TODAY)?.daysRemaining).toBe(9);
+  });
+
+  it('handles a half-tablet daily dose', () => {
+    const rate = scheduleDailyRate({ doseUnits: 0.5, timesPerDay: 1, intervalDays: 1 });
+    expect(projectRunOut(30, rate, TODAY)?.daysRemaining).toBe(60);
+  });
+});
+
+describe('unitsShort', () => {
+  it('is zero when stock covers what is due', () => {
+    expect(unitsShort(10, 10)).toBe(0);
+    expect(unitsShort(10, 500)).toBe(0);
+  });
+
+  it('subtracts what is already in the cupboard', () => {
+    expect(unitsShort(10, 4)).toBe(6);
+  });
+
+  it('rounds up, because you cannot buy part of a tablet', () => {
+    expect(unitsShort(5, 2.4)).toBe(3);
+  });
+
+  it('does not turn a float artefact into an extra unit', () => {
+    // 0.1 * 3 is 0.30000000000000004; short by exactly 6 must not become 7.
+    expect(unitsShort(6 + (0.1 * 3 - 0.3), 0)).toBe(6);
+  });
+
+  it('needs nothing when nothing is due', () => {
+    expect(unitsShort(0, 0)).toBe(0);
+  });
+});
