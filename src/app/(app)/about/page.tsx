@@ -13,17 +13,18 @@ export default function AboutPage() {
       <BackLink href="/" label="Stock" />
 
       <div className="flex flex-col items-center pt-2 pb-6 text-center">
+        {/* Clipped to a circle, same as the login screen — see the note there. */}
         <span
-          className="flex h-28 w-28 items-center justify-center rounded-full"
+          className="block h-40 w-40 overflow-hidden rounded-full"
           style={{ background: 'oklch(0.06 0.004 260)' }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/parrot-256.png"
+            src="/icons/icon-512.png"
             alt="The Parrothecary parrot"
-            width={96}
-            height={96}
-            className="h-24 w-24 object-contain"
+            width={160}
+            height={160}
+            className="h-full w-full scale-110 object-cover"
           />
         </span>
 
