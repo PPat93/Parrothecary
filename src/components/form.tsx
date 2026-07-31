@@ -47,21 +47,33 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   );
 }
 
+/**
+ * Uncontrolled by default, which is what almost every form here wants.
+ * Pass `checked` and `onChange` when the answer has to steer the rest of the
+ * form — a product that does not expire, for instance, should not go on being
+ * asked how long past its date it stays usable.
+ */
 export function Checkbox({
   name,
   label,
   defaultChecked,
+  checked,
+  onChange,
 }: {
   name: string;
   label: string;
   defaultChecked?: boolean;
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
 }) {
   return (
     <label className="flex items-center gap-3">
       <input
+        {...(checked === undefined
+          ? { defaultChecked }
+          : { checked, onChange: (event) => onChange?.(event.target.checked) })}
         type="checkbox"
         name={name}
-        defaultChecked={defaultChecked}
         className="h-5 w-5 shrink-0"
       />
       <span className="text-sm">{label}</span>

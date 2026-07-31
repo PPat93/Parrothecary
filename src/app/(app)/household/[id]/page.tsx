@@ -66,8 +66,16 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
                 className="rounded-xl border p-3"
                 style={{ borderColor: 'var(--border)' }}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
+                {/*
+                  flex-1 on the text, and no wrapping. Without it the row was
+                  laid out by content length: a short schedule kept Remove
+                  inline on the right, while one long enough to wrap pushed the
+                  button onto its own line, where justify-between then pinned it
+                  left. Same row, two different layouts. Letting the text absorb
+                  the slack keeps the button in one place always.
+                */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium break-words">
                       {s.productName}
                       {s.productStrength ? (

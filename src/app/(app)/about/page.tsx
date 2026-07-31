@@ -1,0 +1,88 @@
+import { BackLink } from '@/components/back-link';
+
+/**
+ * Reached from the bar at the top of every screen.
+ *
+ * Deliberately plain: what this is, who it is for, and who made it. Version
+ * numbers and dependency lists belong in the repository, not in front of
+ * someone standing at a cupboard.
+ */
+export default function AboutPage() {
+  return (
+    <div className="mx-auto w-full max-w-lg">
+      <BackLink href="/" label="Stock" />
+
+      <div className="flex flex-col items-center pt-2 pb-6 text-center">
+        <span
+          className="flex h-28 w-28 items-center justify-center rounded-full"
+          style={{ background: 'oklch(0.06 0.004 260)' }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/parrot-256.png"
+            alt="The Parrothecary parrot"
+            width={96}
+            height={96}
+            className="h-24 w-24 object-contain"
+          />
+        </span>
+
+        <h1 className="mt-4 text-3xl font-semibold tracking-tight">Parrothecary</h1>
+        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+          Domowa apteczka
+        </p>
+      </div>
+
+      <Section>
+        <p>
+          A medicine cabinet that knows what is in it. Every box, what is left in it, when it goes
+          off, and who takes what — so the answer to “do we still have any” does not depend on
+          somebody remembering.
+        </p>
+      </Section>
+
+      <Section title="Why it exists">
+        <p>
+          Stock gets restocked abroad two or three times a year, mostly ordered online and shipped
+          ahead to be collected on arrival. That makes the useful question not “what do we have”
+          but <em>will it last until the next trip, and what has to be ordered before the
+          deadline</em>.
+        </p>
+        <p className="mt-3">
+          So it plans rather than counts: doses come out of the box that expires first, run-out
+          dates are worked out from the schedules, and the cabinet audit falls halfway between
+          trips — when there is still time to act on it.
+        </p>
+      </Section>
+
+      <Section title="Where it lives">
+        <p>
+          On the home network and nowhere else. No cloud service, no account, no telemetry, and
+          nothing leaves the house. The database is a single file that can be copied to a memory
+          stick.
+        </p>
+      </Section>
+
+      <footer className="mt-8 pb-4 text-center">
+        <p className="text-sm font-medium tracking-tight">ParroT woRKs by Piotr Paterek</p>
+        <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+          Built alone, for one household.
+        </p>
+      </footer>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <section
+      className="mb-4 rounded-2xl border p-4 text-sm leading-relaxed"
+      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+    >
+      {title ? (
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide">{title}</h2>
+      ) : null}
+      <div style={{ color: 'var(--muted)' }}>{children}</div>
+    </section>
+  );
+}

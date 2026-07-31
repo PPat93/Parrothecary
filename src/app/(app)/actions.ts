@@ -907,7 +907,7 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
 
 /**
  * Empty means "no trip", which is a real answer rather than a missing one —
- * the Solgar was bought locally in Ireland, outside any restock trip.
+ * plenty gets bought locally, outside any restock trip.
  *
  * The trip is checked to still exist, not merely to be a number. Two phones
  * share this app: one can delete a trip while the other has the shopping form

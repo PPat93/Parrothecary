@@ -25,7 +25,7 @@ export default async function TripsPage() {
 
       <p className="mb-5 text-sm" style={{ color: 'var(--muted)' }}>
         Two or three restocks a year. What matters is the order deadline, not the flight — most of
-        it is bought online and shipped to family in Poland before the visit.
+        it is bought online and shipped ahead, to be collected on arrival.
       </p>
 
       {trips.length === 0 ? (

@@ -37,7 +37,7 @@ export function TripForm({ trip }: { trip?: TripDetail }) {
         />
       </Field>
 
-      <Field label="Collection date" hint="When it all gets picked up in Poland.">
+      <Field label="Collection date" hint="When it all gets picked up.">
         <TextInput
           name="collectionDate"
           type="date"

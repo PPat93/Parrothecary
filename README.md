@@ -2,10 +2,10 @@
 
 Domowa apteczka — a LAN-only home medicine and supplement inventory for one household.
 
-Stock is bought in Poland two, sometimes three times a year, mostly ordered online and shipped
-to family ahead of the visit. So this is less an inventory app than a **supply-planning** one:
-the hard question is not "what do we have" but "will it last until the next trip, and what do
-we need to order before the deadline".
+Stock is restocked abroad two, sometimes three times a year, mostly ordered online and shipped
+ahead of the visit. So this is less an inventory app than a **supply-planning** one: the hard
+question is not "what do we have" but "will it last until the next trip, and what do we need to
+order before the deadline".
 
 ## Status
 

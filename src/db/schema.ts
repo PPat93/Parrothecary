@@ -92,9 +92,9 @@ export const products = sqliteTable(
 
     /**
      * The name as printed on the box, whatever language that happens to be.
-     * Most stock is Polish, but Solgar, NeilMed and Mollelast have no Polish
-     * name at all — a brand is a brand, and language belongs to the packaging
-     * rather than to the product.
+     * Some brands carry the same name everywhere and have no second form at
+     * all — a brand is a brand, and language belongs to the packaging rather
+     * than to the product.
      */
     name: text('name').notNull(),
     /** The other-language or local-equivalent name, where one exists. Search matches both. */
@@ -163,7 +163,7 @@ export const productSubstances = sqliteTable(
 export const ALTERNATIVE_RELATIONS = [
   /** Identical active substance and strength. */
   'same_substance',
-  /** What you can buy in an Irish pharmacy instead. */
+  /** What a pharmacy here sells instead of the one bought abroad. */
   'local_equivalent',
   /** Different molecule, comparable effect. */
   'substitute',
@@ -339,8 +339,8 @@ export const batches = sqliteTable(
 export const TRIP_STATUSES = ['planned', 'completed'] as const;
 
 /**
- * Most stock is ordered online and shipped to family in Poland ahead of the
- * visit, so the date that actually constrains us is orderByDate, not the
+ * Most stock is ordered online and shipped ahead of the visit to be picked up
+ * on arrival, so the date that actually constrains us is orderByDate, not the
  * collection date. Audits and shopping-list reminders hang off orderByDate.
  */
 export const trips = sqliteTable('trips', {
