@@ -1,6 +1,7 @@
 import {test, expect} from "@playwright/test";
 import {TEXTS} from "../shared/shared";
 import {LoginPage, loginPageTexts} from "../pages/loginPage";
+import {log} from "next/dist/server/typescript/utils";
 
 test.describe(`Login Page displayment`, async () => {
 
@@ -10,7 +11,7 @@ test.describe(`Login Page displayment`, async () => {
         const loginPage = new LoginPage(page);
 
         //  Act
-        await page.goto(`/login`);
+        await loginPage.goToLoginPage();
 
         //  Asserts
         await expect(page).toHaveTitle(TEXTS.appName);
@@ -30,14 +31,11 @@ test.describe(`Main page displayments`, async () => {
         const loginPage = new LoginPage(page);
 
         //  Act
-        await page.goto(`/login`);
+        await loginPage.goToLoginPage();
+        await loginPage.userLogin()
 
         //  Asserts
-        await expect(page).toHaveTitle(TEXTS.appName);
-        await expect(loginPage.pageTitle).toHaveText(TEXTS.appName);
-        await expect(loginPage.pageSubTitle).toHaveText(TEXTS.subtitle);
-        await expect(loginPage.logo).toBeVisible();
-        await expect(loginPage.passwordField).toBeVisible();
-        await expect(loginPage.submitBtn).toHaveText(loginPageTexts.SUBMIT_BTN_TXT);
+        // await expect(loginPage.submitBtn).toHaveText(`Checking...`)
+        // await expect(`body > div.flex.min-h-dvh.flex-col > main > div > header`).toMatch(`Stock`);
     })
 })

@@ -16,7 +16,7 @@ export class LoginPage {
 
     constructor(page: Page) {
         this.page = page;
-        this.logo = page.locator(`[src="/parrot-256.png"]`);
+        this.logo = page.locator(`[src="/icons/icon-512.png"]`);
         this.pageTitle = page.locator(`[test-data="title"]`);
         this.pageSubTitle = page.locator(`[test-data="sub-title"]`);
         this.passwordField = page.locator(`#password`);
@@ -24,5 +24,14 @@ export class LoginPage {
 
     }
 
+    async goToLoginPage() {
+        await this.page.goto(`/login`)
+    }
+
+    async userLogin() {
+        await this.passwordField.fill(process.env.LOCAL_PASS as string);
+        await this.submitBtn.click();
+
+    }
 }
 
