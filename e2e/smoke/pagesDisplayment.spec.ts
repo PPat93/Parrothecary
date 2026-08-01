@@ -1,19 +1,15 @@
-import {test, expect} from "@playwright/test";
+import {test, expect} from "../fixtures/fixtures";
 import {TEXTS} from "../shared/shared";
-import {LoginPage, loginPageTexts} from "../pages/loginPage";
-import {log} from "next/dist/server/typescript/utils";
+import {loginPageTexts} from "../pages/loginPage";
 
 test.describe(`Login Page displayment`, async () => {
 
-    test(`Login page is displayed`, async ({page}) => {
+    test(`Login page is displayed`, async ({loginPage, page}) => {
 
-        //  Arrange
-        const loginPage = new LoginPage(page);
-
-        //  Act
+        //  Arrange & Act
         await loginPage.goToLoginPage();
 
-        //  Asserts
+        //  Assert
         await expect(page).toHaveTitle(TEXTS.appName);
         await expect(loginPage.pageTitle).toHaveText(TEXTS.appName);
         await expect(loginPage.pageSubTitle).toHaveText(TEXTS.subtitle);
@@ -25,17 +21,13 @@ test.describe(`Login Page displayment`, async () => {
 
 test.describe(`Main page displayments`, async () => {
 
-    test(`Stock page is displayed`, async ({page}) => {
+    test(`Stock page is displayed`, async ({loginPage, stockPage, page}) => {
 
-        //  Arrange
-        const loginPage = new LoginPage(page);
-
-        //  Act
+        //  Arrange & Act
         await loginPage.goToLoginPage();
         await loginPage.userLogin()
 
-        //  Asserts
-        // await expect(loginPage.submitBtn).toHaveText(`Checking...`)
-        // await expect(`body > div.flex.min-h-dvh.flex-col > main > div > header`).toMatch(`Stock`);
+        //  Assert
+        await expect(stockPage.pageTitle).toHaveText(`Stock`);
     })
 })

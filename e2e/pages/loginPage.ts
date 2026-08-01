@@ -2,8 +2,7 @@ import {Page, Locator} from '@playwright/test'
 
 export const loginPageTexts = {
     SUBMIT_BTN_TXT: `Unlock`
-}
-
+} as const;
 
 export class LoginPage {
     readonly page: Page;
@@ -28,10 +27,10 @@ export class LoginPage {
         await this.page.goto(`/login`)
     }
 
-    async userLogin() {
-        await this.passwordField.fill(process.env.LOCAL_PASS as string);
+    async userLogin(pass?: string) {
+        if (!pass) pass = process.env.LOCAL_PASS
+        await this.passwordField.fill(pass as string);
         await this.submitBtn.click();
-
     }
 }
 
