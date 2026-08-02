@@ -1,9 +1,9 @@
 import {test as base} from '@playwright/test';
-import {LoginPage} from '../pages/loginPage';
-import {StockPage} from '../pages/stockPage';
+import {LoginPage} from '../pages/mainPages/loginPage';
+import {StockPage} from '../pages/mainPages/stockPage';
 import {Shared} from "../shared/shared";
-import {DosesPage} from "../pages/dosesPage";
-import {ExpiringPage} from "../pages/expiringPage";
+import {DosesPage} from "../pages/mainPages/dosesPage";
+import {ExpiringPage} from "../pages/mainPages/expiringPage";
 
 type MainFixtures = {
     loginPage: LoginPage;
