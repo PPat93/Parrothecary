@@ -24,14 +24,15 @@ export default async function ProductsPage({
   return (
     <div className="mx-auto w-full max-w-2xl">
       <header className="mb-4 flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Products</h1>
-        <Link href="/products/new" className={LINK_BUTTON} style={toneStyle('accent')}>
+        <h1 className="text-2xl font-semibold tracking-tight" test-data="products-title">Products</h1>
+        <Link href="/products/new" className={LINK_BUTTON} test-data="add-product-btn" style={toneStyle('accent')}>
           New product
         </Link>
       </header>
 
       <div
         className="mb-4 grid grid-cols-2 gap-1 rounded-xl border p-1 text-center text-sm"
+        test-data="product-status-list-switch"
         style={{ borderColor: 'var(--border)' }}
       >
         <Tab
@@ -61,7 +62,7 @@ export default async function ProductsPage({
               : 'The product database is empty.'}
         </div>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2" test-data="main-products-list">
           {rows.map((row) => (
             <li key={row.id}>
               <Link

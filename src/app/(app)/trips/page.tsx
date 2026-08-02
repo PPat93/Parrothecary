@@ -17,8 +17,8 @@ export default async function TripsPage() {
   return (
     <div className="mx-auto w-full max-w-2xl">
       <header className="mb-1 flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Trips</h1>
-        <Link href="/trips/new" className={LINK_BUTTON} style={toneStyle('accent')}>
+        <h1 className="text-2xl font-semibold tracking-tight" test-data="trips-title">Trips</h1>
+        <Link href="/trips/new" className={LINK_BUTTON} test-data="new-trip-btn" style={toneStyle('accent')}>
           New trip
         </Link>
       </header>
@@ -39,7 +39,7 @@ export default async function TripsPage() {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6" test-data="main-trips-groups">
           {planned.length > 0 ? (
             <Section title="Planned" trips={planned} today={today} />
           ) : null}
@@ -62,7 +62,7 @@ function Section({
   today: string;
 }) {
   return (
-    <section>
+    <section test-data={title.toLowerCase()}>
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide">{title}</h2>
       <ul className="flex flex-col gap-2">
         {trips.map((trip) => (
