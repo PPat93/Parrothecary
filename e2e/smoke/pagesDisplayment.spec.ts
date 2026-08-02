@@ -1,5 +1,5 @@
 import {test, expect} from "../fixtures/fixtures";
-import {TEXTS, GENERAL_AUTH_PATH} from "../shared/shared";
+import {TEXTS} from "../shared/shared";
 import {loginPageTexts} from "../pages/loginPage";
 
 test.describe(`Login Page displayment`, async () => {
