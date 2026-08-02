@@ -1,13 +1,15 @@
 import {test, expect} from "../fixtures/fixtures";
-import {TEXTS} from "../shared/shared";
+import {TEXTS, GENERAL_AUTH_PATH} from "../shared/shared";
 import {loginPageTexts} from "../pages/loginPage";
 
 test.describe(`Login Page displayment`, async () => {
 
+    test.use({storageState: {cookies: [], origins: []}});
+
     test(`Login page is displayed`, async ({loginPage, page}) => {
 
         //  Arrange & Act
-        await loginPage.goToLoginPage();
+        await loginPage.goToPage();
 
         //  Assert
         await expect(page).toHaveTitle(TEXTS.appName);
@@ -19,13 +21,11 @@ test.describe(`Login Page displayment`, async () => {
     })
 })
 
-test.describe(`Main page displayments`, async () => {
-
-    test(`Stock page is displayed`, async ({loginPage, stockPage, page}) => {
+test.describe(`Stock page displayments`, async () => {
+    test(`Stock page is displayed`, async ({stockPage}) => {
 
         //  Arrange & Act
-        await loginPage.goToLoginPage();
-        await loginPage.userLogin()
+        await stockPage.goToPage();
 
         //  Assert
         await expect(stockPage.pageTitle).toHaveText(`Stock`);

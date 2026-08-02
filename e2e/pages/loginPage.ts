@@ -23,7 +23,7 @@ export class LoginPage {
 
     }
 
-    async goToLoginPage() {
+    async goToPage() {
         await this.page.goto(`/login`)
     }
 
