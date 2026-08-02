@@ -6,7 +6,7 @@ export const TEXTS = {
     subtitle: `Domowa apteczka`
 }
 
-enum MenuOption {
+enum MenuOptions {
     Stock = "stock",
     Doses = "doses",
     Expiring = "expiring",
@@ -37,15 +37,15 @@ export class Shared {
         this.aboutBtn = page.getByTitle(`About Parrothecary`);
         this.lockBtn = page.getByTitle(`Lock Parrothecary`);
 
-        this.stockMenuBtn = page.getByTestId(`menu-${MenuOption.Stock}`);
-        this.dosesMenuBtn = page.getByTestId(`menu-${MenuOption.Doses}`);
-        this.expiringMenuBtn = page.getByTestId(`menu-${MenuOption.Expiring}`);
-        this.shoppingMenuBtn = page.getByTestId(`menu-${MenuOption.Shopping}`);
-        this.tripsMenuBtn = page.getByTestId(`menu-${MenuOption.Trips}`);
-        this.productsMenuBtn = page.getByTestId(`menu-${MenuOption.Products}`);
+        this.stockMenuBtn = page.getByTestId(`menu-${MenuOptions.Stock}`);
+        this.dosesMenuBtn = page.getByTestId(`menu-${MenuOptions.Doses}`);
+        this.expiringMenuBtn = page.getByTestId(`menu-${MenuOptions.Expiring}`);
+        this.shoppingMenuBtn = page.getByTestId(`menu-${MenuOptions.Shopping}`);
+        this.tripsMenuBtn = page.getByTestId(`menu-${MenuOptions.Trips}`);
+        this.productsMenuBtn = page.getByTestId(`menu-${MenuOptions.Products}`);
     }
 
-    async clickStockMenuBtn(salesMenuBtn: MenuOption, page: Page): Promise<void> {
+    async clickStockMenuBtn(salesMenuBtn: MenuOptions, page: Page): Promise<void> {
         await page.getByTestId(`menu-${salesMenuBtn}`).click();
     }
 

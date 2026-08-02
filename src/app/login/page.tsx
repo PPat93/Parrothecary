@@ -29,7 +29,7 @@ export default async function LoginPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/icons/icon-512.png"
-            alt=""
+            alt="Big Parrothecary parrot"
             width={176}
             height={176}
             className="h-full w-full scale-110 object-cover"
