@@ -35,6 +35,7 @@ export function LoginForm() {
         type="submit"
         disabled={pending}
         className="w-full rounded-xl px-4 py-3 font-medium disabled:opacity-50"
+        test-data="submit-btn"
         style={{
           background: 'var(--color-accent)',
           color: 'var(--accent-ink)',

@@ -1,0 +1,56 @@
+name: Playwright Tests
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_PATH: ./data/ci.db
+      # Throwaway credential for CI only. Tests that log in read the plaintext
+      # from here; the hash is generated below and never committed.
+      TEST_MASTER_PASSWORD: ci-only-not-a-real-secret
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      # The app refuses to start without a password hash, and .env.local is
+      # gitignored, so CI has to mint its own.
+      - name: Generate master password hash
+        run: |
+          HASH=$(npm run --silent auth:hash -- "$TEST_MASTER_PASSWORD" --raw)
+          echo "MASTER_PASSWORD_HASH=$HASH" >> "$GITHUB_ENV"
+
+      # `next start` serves a build; without this it exits immediately and every
+      # test fails on connection refused rather than on anything meaningful.
+      - name: Create database and build
+        run: |
+          npm run db:migrate
+          npm run build
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run Playwright tests
+        run: npx playwright test
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
