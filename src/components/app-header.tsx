@@ -20,7 +20,7 @@ export function AppHeader() {
           {/* Pre-sized asset with a plain img: the logo never changes, so
               runtime optimisation buys nothing. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/parrot-64.png" alt="" width={24} height={24} className="h-6 w-6 object-contain" />
+          <img src="/parrot-64.png" alt="Mini parrot logo" width={24} height={24} className="h-6 w-6 object-contain" />
         </span>
         <span className="text-sm font-semibold tracking-tight">Parrothecary</span>
       </span>

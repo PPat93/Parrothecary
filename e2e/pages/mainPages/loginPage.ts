@@ -15,12 +15,11 @@ export class LoginPage {
 
     constructor(page: Page) {
         this.page = page;
-        this.logo = page.locator(`[src="/icons/icon-512.png"]`);
-        this.pageTitle = page.locator(`[test-data="title"]`);
-        this.pageSubTitle = page.locator(`[test-data="sub-title"]`);
-        this.passwordField = page.locator(`#password`);
-        this.submitBtn = page.locator(`[test-data="submit-btn"]`);
-
+        this.logo = page.getByAltText(`Big Parrothecary parrot`);
+        this.pageTitle = page.getByTestId(`title`);
+        this.pageSubTitle = page.getByTestId(`sub-title`);
+        this.passwordField = page.getByLabel(`Master password`);
+        this.submitBtn = page.getByTestId(`submit-btn`);
     }
 
     async goToPage() {

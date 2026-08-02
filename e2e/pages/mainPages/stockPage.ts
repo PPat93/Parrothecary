@@ -14,15 +14,13 @@ export class StockPage {
 
     constructor(page: Page) {
         this.page = page;
-        this.pageTitle = page.locator(`[test-data="stock-title"]`);
-        this.addNewBoxBtn = page.locator(`[test-data="add-box-btn"]`);
-        this.mainSearchField = page.getByPlaceholder(`Name, brand, `, {exact: false});
-        this.stockList = page.locator(`[test-data="main-box-list"]`);
-
+        this.pageTitle = page.getByTestId(`stock-title`);
+        this.addNewBoxBtn = page.getByTestId(`add-box-btn`);
+        this.mainSearchField = page.getByPlaceholder(`Name, brand, substance or symptom…`);
+        this.stockList = page.getByTestId(`main-box-list`);
     }
 
     async goToPage() {
         await this.page.goto(`/`);
     }
-
 }
