@@ -6,6 +6,7 @@ import {DosesPage} from "../pages/mainPages/dosesPage";
 import {ExpiringPage} from "../pages/mainPages/expiringPage";
 import {ShoppingPage} from "../pages/mainPages/shoppingPage";
 import {TripsPage} from "../pages/mainPages/tripsPage";
+import {ProductsPage} from "../pages/mainPages/productsPage";
 
 type MainFixtures = {
     loginPage: LoginPage;
@@ -14,6 +15,7 @@ type MainFixtures = {
     expiringPage: ExpiringPage;
     shoppingPage: ShoppingPage;
     tripsPage: TripsPage;
+    productsPage: ProductsPage;
     shared: Shared;
 }
 
@@ -40,6 +42,10 @@ export const test = base.extend<MainFixtures>({
 
     tripsPage: async ({page}, use) => {
         await use(new TripsPage(page));
+    },
+
+    productsPage: async ({page}, use) => {
+        await use(new ProductsPage(page));
     },
 
     shared: async ({page}, use) => {

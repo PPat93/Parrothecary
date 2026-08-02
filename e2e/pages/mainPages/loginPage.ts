@@ -11,6 +11,7 @@ export class LoginPage {
     readonly pageSubTitle: Locator;
     readonly passwordField: Locator;
     readonly submitBtn: Locator;
+    readonly errorMessage: Locator;
 
 
     constructor(page: Page) {
@@ -20,6 +21,7 @@ export class LoginPage {
         this.pageSubTitle = page.getByTestId(`sub-title`);
         this.passwordField = page.getByLabel(`Master password`);
         this.submitBtn = page.getByTestId(`submit-btn`);
+        this.errorMessage = page.getByTestId(`error-message`);
     }
 
     async goToPage() {
