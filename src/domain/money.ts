@@ -24,9 +24,13 @@ export function money(amountMinor: number, currency: Currency): Money {
 }
 
 /**
- * Parse what someone typed. Accepts both separators, because a Polish receipt
- * says "12,50" and an Irish one says "12.50", and thousands separators from
- * either convention.
+ * Parse what someone typed. Accepts both separators, because one receipt says
+ * "12,50" and another says "12.50", and thousands separators from either
+ * convention.
+ *
+ * Negatives are refused. Every amount this parses is a price paid, and a
+ * stray minus — easy on a phone keypad, where it sits beside the digits —
+ * silently pulled the cupboard's value down instead of pushing it up.
  */
 export function parseAmount(input: string, currency: Currency): Money {
   const cleaned = input.trim().replace(/[\s ]/g, '');
@@ -48,7 +52,7 @@ export function parseAmount(input: string, currency: Currency): Money {
     normalised = fracPart.length === 3 ? `${intPart}${fracPart}` : `${intPart}.${fracPart}`;
   }
 
-  if (!/^-?\d+(\.\d+)?$/.test(normalised)) {
+  if (!/^\d+(\.\d+)?$/.test(normalised)) {
     throw new Error(`Unrecognised amount: ${input}`);
   }
 
@@ -76,13 +80,55 @@ export function formatMoney(value: Money, options: { showCurrency?: boolean } = 
  * Convert to euro for comparison and totals, using the rate recorded at the
  * time of purchase rather than today's — otherwise last year's spend changes
  * every time the exchange rate moves.
+ *
+ * Null when a złoty amount has no rate stored against it. That is an ordinary
+ * state, not a broken one: a price can be entered without a rate, and a box
+ * bought locally in złoty may never get one. Callers say "not comparable" and
+ * count it separately. Throwing here instead took down whichever page happened
+ * to render the box, and inventing a rate would quietly falsify the total.
  */
-export function toEur(value: Money, fxRateToEur: number | null): Money {
+export function toEurOrNull(value: Money, fxRateToEur: number | null): Money | null {
   if (value.currency === 'EUR') return value;
-  if (fxRateToEur === null || fxRateToEur <= 0) {
-    throw new Error('A PLN amount needs an exchange rate before it can be converted');
-  }
+  if (fxRateToEur === null || fxRateToEur <= 0) return null;
   return money(Math.round(value.amountMinor * fxRateToEur), 'EUR');
+}
+
+/**
+ * The rate as typed on the day of purchase. Blank is allowed and means "not
+ * recorded", which is different from wrong: the price is still kept, it just
+ * stays in its own currency until someone fills this in.
+ *
+ * A rate of 1 or more is refused, because it can only be the inverse. "4,35
+ * złoty to the euro" is the number people actually know and read off a bank
+ * app; this field wants the other direction. One złoty has never been worth a
+ * whole euro, so nothing legitimate is lost by refusing — and accepting 4,35
+ * would multiply every euro figure in the app by nineteen while still looking
+ * like a plausible number in the box.
+ */
+export function parseFxRate(
+  input: string,
+): { ok: true; rate: number | null } | { ok: false; message: string } {
+  const cleaned = input.trim().replace(',', '.');
+  if (cleaned === '') return { ok: true, rate: null };
+
+  const rate = Number(cleaned);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return {
+      ok: false,
+      message: `Could not read "${input}" as an exchange rate. It is euro per złoty — about 0,23.`,
+    };
+  }
+
+  if (rate >= 1) {
+    // Their own number, turned round, so the correction needs no arithmetic.
+    const inverted = (Math.round((1 / rate) * 10000) / 10000).toString().replace('.', ',');
+    return {
+      ok: false,
+      message: `"${input}" is złoty per euro. This wants it the other way round — did you mean ${inverted}?`,
+    };
+  }
+
+  return { ok: true, rate };
 }
 
 /**

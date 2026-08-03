@@ -96,7 +96,10 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
       </Section>
 
       <Section title="What it cost">
-        {spend.spentBoxes === 0 && spend.estimatedLines === 0 && spend.unpricedLines === 0 ? (
+        {spend.spentBoxes === 0 &&
+        spend.uncostedBoxes === 0 &&
+        spend.estimatedLines === 0 &&
+        spend.uncostedLines === 0 ? (
           <p className="text-sm" style={{ color: 'var(--muted)' }}>
             Nothing bought or listed for this trip yet.
           </p>
@@ -118,11 +121,22 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
 
             {/* Never folded into the estimate — a total that quietly leaves
                 lines out reads as complete and is not. */}
-            {spend.unpricedLines > 0 ? (
+            {spend.uncostedLines > 0 ? (
               <p className="pt-1 text-xs" style={{ color: 'var(--muted)' }}>
-                {spend.unpricedLines} more {spend.unpricedLines === 1 ? 'line has' : 'lines have'} no
-                price on record, so {spend.unpricedLines === 1 ? 'it is' : 'they are'} not in that
+                {spend.uncostedLines} more {spend.uncostedLines === 1 ? 'line has' : 'lines have'} no
+                price this can use, so {spend.uncostedLines === 1 ? 'it is' : 'they are'} not in that
                 estimate.
+              </p>
+            ) : null}
+
+            {/* Same rule for what was actually paid: a złoty box with no rate
+                against it cannot join a euro total, so it is named rather than
+                counted as nothing. */}
+            {spend.uncostedBoxes > 0 ? (
+              <p className="pt-1 text-xs" style={{ color: 'var(--muted)' }}>
+                {spend.uncostedBoxes} received {spend.uncostedBoxes === 1 ? 'box was' : 'boxes were'}{' '}
+                paid for in złoty with no exchange rate recorded, so{' '}
+                {spend.uncostedBoxes === 1 ? 'it is' : 'they are'} not in the spend above.
               </p>
             ) : null}
 

@@ -185,8 +185,8 @@ export default async function StockPage({
                 <p className="mt-6 text-center text-xs" style={{color: 'var(--muted)'}}>
                     In the cupboard: {formatMoney(money(value.minorEur, 'EUR'), {showCurrency: true})} of
                     stock at what it cost
-                    {value.unpricedBoxes > 0
-                        ? `, plus ${value.unpricedBoxes} ${value.unpricedBoxes === 1 ? 'box' : 'boxes'} with no price recorded`
+                    {value.uncostedBoxes > 0
+                        ? `, plus ${value.uncostedBoxes} ${value.uncostedBoxes === 1 ? 'box' : 'boxes'} with no price it can use`
                         : ''}
                     .
                 </p>

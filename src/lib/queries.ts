@@ -22,6 +22,7 @@ import type { IsoDate } from '@/domain/date';
 import { todayIso } from '@/domain/date';
 import { isDosable, type ExpiryInput } from '@/domain/expiry';
 import type { FefoBatch } from '@/domain/fefo';
+import { money, toEurOrNull } from '@/domain/money';
 
 /**
  * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
@@ -508,6 +509,7 @@ export interface BatchDetail extends StockRow {
   purchaseDate: string | null;
   purchasePriceMinor: number | null;
   purchaseCurrency: 'PLN' | 'EUR' | null;
+  fxRateToEur: number | null;
   packLabelOrSize: string;
   /** A dose was confirmed straight from this box — deleting it would violate the FK. */
   hasDoseEvents: boolean;
@@ -522,6 +524,7 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
       purchaseDate: batches.purchaseDate,
       purchasePriceMinor: batches.purchasePriceMinor,
       purchaseCurrency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
     })
     .from(batches)
     .innerJoin(variants, eq(batches.variantId, variants.id))
@@ -993,6 +996,8 @@ export interface TripRow {
   itemCount: number;
   /** Euro actually spent: boxes received against this trip. */
   spentMinorEur: number;
+  /** Boxes that figure had to leave out — złoty with no rate recorded. */
+  uncostedBoxes: number;
 }
 
 export async function getTrips(): Promise<TripRow[]> {
@@ -1017,6 +1022,18 @@ export async function getTrips(): Promise<TripRow[]> {
           when ${batches.purchaseCurrency} = 'EUR' then ${batches.purchasePriceMinor}
           when ${batches.fxRateToEur} is null then 0
           else round(${batches.purchasePriceMinor} * ${batches.fxRateToEur})
+        end
+      ), 0)`,
+      /*
+       * The zeroes above are boxes this figure cannot account for. Counting
+       * them lets the row admit it is a floor rather than a total.
+       */
+      uncostedBoxes: sql<number>`coalesce(sum(
+        case
+          when ${batches.purchasePriceMinor} is null then 0
+          when ${batches.purchaseCurrency} = 'EUR' then 0
+          when ${batches.fxRateToEur} is null then 1
+          else 0
         end
       ), 0)`,
     })
@@ -1057,11 +1074,11 @@ export async function getPreviousCollectionDate(
 }
 
 /**
- * Omits the list's `spentMinorEur`: the detail page asks `getTripMoney` for a
- * fuller picture — spent, still-to-buy, and lines with no price to go on — and
+ * Omits the list's money: the detail page asks `getTripMoney` for a fuller
+ * picture — spent, still-to-buy, and what neither could account for — and
  * carrying a second, cruder total here would be a spare copy of the same sum.
  */
-export interface TripDetail extends Omit<TripRow, 'spentMinorEur'> {
+export interface TripDetail extends Omit<TripRow, 'spentMinorEur' | 'uncostedBoxes'> {
   items: ShoppingRow[];
 }
 
@@ -1460,11 +1477,13 @@ export interface TripMoney {
   /** Actually spent: boxes received against this trip's lines. */
   spentMinorEur: number;
   spentBoxes: number;
+  /** Received boxes priced in złoty with no rate against them, so not in the total. */
+  uncostedBoxes: number;
   /** Expected for what is still outstanding, from the last price paid. */
   estimatedMinorEur: number;
   estimatedLines: number;
-  /** Outstanding lines with no price to go on. Counted, never guessed at. */
-  unpricedLines: number;
+  /** Outstanding lines with no usable price to go on. Counted, never guessed at. */
+  uncostedLines: number;
 }
 
 /**
@@ -1489,10 +1508,19 @@ export async function getTripMoney(tripId: number): Promise<TripMoney> {
     .innerJoin(batches, eq(shoppingItems.receivedBatchId, batches.id))
     .where(and(eq(shoppingItems.tripId, tripId), isNotNull(batches.purchasePriceMinor)));
 
-  const spentMinorEur = receivedRows.reduce(
-    (sum, row) => sum + inEur(row.priceMinor!, row.currency, row.fxRateToEur),
-    0,
-  );
+  let spentMinorEur = 0;
+  let spentBoxes = 0;
+  let uncostedBoxes = 0;
+
+  for (const row of receivedRows) {
+    const eur = inEur(row.priceMinor!, row.currency, row.fxRateToEur);
+    if (eur === null) {
+      uncostedBoxes++;
+      continue;
+    }
+    spentMinorEur += eur;
+    spentBoxes++;
+  }
 
   // Still to buy: everything on the trip that has not produced a box yet.
   const outstanding = await db
@@ -1507,7 +1535,7 @@ export async function getTripMoney(tripId: number): Promise<TripMoney> {
 
   let estimatedMinorEur = 0;
   let estimatedLines = 0;
-  let unpricedLines = 0;
+  let uncostedLines = 0;
 
   for (const line of outstanding) {
     const lastPaid = await db
@@ -1517,42 +1545,67 @@ export async function getTripMoney(tripId: number): Promise<TripMoney> {
         fxRateToEur: batches.fxRateToEur,
       })
       .from(batches)
-      .where(and(eq(batches.variantId, line.variantId), isNotNull(batches.purchasePriceMinor)))
+      /*
+       * The most recent price that can actually be converted, not simply the
+       * most recent. Taking the newest and finding it had no rate against it
+       * reported the line as having no price at all, while a perfectly usable
+       * one sat in the row behind it.
+       */
+      .where(
+        and(
+          eq(batches.variantId, line.variantId),
+          isNotNull(batches.purchasePriceMinor),
+          or(eq(batches.purchaseCurrency, 'EUR'), isNotNull(batches.fxRateToEur)),
+        ),
+      )
       .orderBy(sql`${batches.purchaseDate} is null`, sql`${batches.purchaseDate} desc`)
       .limit(1);
 
     const price = lastPaid[0];
-    if (!price) {
-      unpricedLines++;
+    const eur = price ? inEur(price.priceMinor!, price.currency, price.fxRateToEur) : null;
+    if (eur === null) {
+      uncostedLines++;
       continue;
     }
 
-    estimatedMinorEur +=
-      inEur(price.priceMinor!, price.currency, price.fxRateToEur) * line.quantityPacks;
+    estimatedMinorEur += eur * line.quantityPacks;
     estimatedLines++;
   }
 
   return {
     spentMinorEur,
-    spentBoxes: receivedRows.length,
+    spentBoxes,
+    uncostedBoxes,
     estimatedMinorEur,
     estimatedLines,
-    unpricedLines,
+    uncostedLines,
   };
 }
 
-/** Minor units in euro, using the rate stored alongside the amount. */
-function inEur(minor: number, currency: 'PLN' | 'EUR' | null, fxRateToEur: number | null): number {
-  if (currency === 'EUR') return minor;
-  if (fxRateToEur === null || fxRateToEur <= 0) return 0;
-  return Math.round(minor * fxRateToEur);
+/**
+ * Minor units in euro, using the rate stored alongside the amount. Null when
+ * there is no rate to use — counted separately by every caller rather than
+ * folded in as zero, which is what this used to do and which made a złoty
+ * purchase look free.
+ */
+function inEur(
+  minor: number,
+  currency: 'PLN' | 'EUR' | null,
+  fxRateToEur: number | null,
+): number | null {
+  if (currency === null) return null;
+  const converted = toEurOrNull(money(minor, currency), fxRateToEur);
+  return converted === null ? null : converted.amountMinor;
 }
 
 export interface StockValue {
   /** What the usable stock on the shelf originally cost, prorated by what is left. */
   minorEur: number;
-  /** Boxes in stock whose price was never recorded, so they are not in the total. */
-  unpricedBoxes: number;
+  /**
+   * Boxes in stock the total cannot account for: no price recorded, or a złoty
+   * price with no exchange rate against it.
+   */
+  uncostedBoxes: number;
 }
 
 /**
@@ -1576,16 +1629,17 @@ export async function getStockValue(): Promise<StockValue> {
     .where(eq(batches.status, 'in_stock'));
 
   let minorEur = 0;
-  let unpricedBoxes = 0;
+  let uncostedBoxes = 0;
 
   for (const row of rows) {
-    if (row.priceMinor === null || row.currency === null) {
-      unpricedBoxes++;
+    const eur = row.priceMinor === null ? null : inEur(row.priceMinor, row.currency, row.fxRateToEur);
+    if (eur === null) {
+      uncostedBoxes++;
       continue;
     }
     const fraction = row.packSize > 0 ? Math.min(1, row.quantityRemaining / row.packSize) : 0;
-    minorEur += Math.round(inEur(row.priceMinor, row.currency, row.fxRateToEur) * fraction);
+    minorEur += Math.round(eur * fraction);
   }
 
-  return { minorEur, unpricedBoxes };
+  return { minorEur, uncostedBoxes };
 }
