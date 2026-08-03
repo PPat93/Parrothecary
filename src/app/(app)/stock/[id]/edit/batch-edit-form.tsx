@@ -1,8 +1,8 @@
 'use client';
 
 import { useActionState } from 'react';
-import { ErrorText, Field, Select, SubmitButton, TextInput } from '@/components/form';
-import { CURRENCIES } from '@/db/schema';
+import { ErrorText, Field, SubmitButton, TextInput } from '@/components/form';
+import { PriceFields } from '@/components/price-fields';
 import { updateBatch, type FormResult } from '../../../actions';
 import type { BatchDetail } from '@/lib/queries';
 
@@ -55,28 +55,11 @@ export function BatchEditForm({ box }: { box: BatchDetail }) {
         </Field>
       ) : null}
 
-      <div className="grid grid-cols-[1fr_auto] gap-3">
-        <Field label="Price paid">
-          <TextInput
-            name="price"
-            inputMode="decimal"
-            placeholder="24,99"
-            defaultValue={value('price', formatAmount(box.purchasePriceMinor))}
-          />
-        </Field>
-        <Field label="Currency">
-          <Select
-            name="currency"
-            defaultValue={rejected ? (prev.currency ?? 'PLN') : (box.purchaseCurrency ?? 'PLN')}
-          >
-            {CURRENCIES.map((currency) => (
-              <option key={currency} value={currency}>
-                {currency}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </div>
+      <PriceFields
+        price={value('price', formatAmount(box.purchasePriceMinor))}
+        currency={rejected ? (prev.currency ?? 'PLN') : (box.purchaseCurrency ?? 'PLN')}
+        fxRate={value('fxRate', box.fxRateToEur === null ? '' : String(box.fxRateToEur))}
+      />
 
       <Field label="Purchase date">
         <TextInput

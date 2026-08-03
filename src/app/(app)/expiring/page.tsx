@@ -3,7 +3,7 @@ import {ExpiryBadge} from '@/components/expiry-badge';
 import {todayIso} from '@/domain/date';
 import {daysUntilExpiry, expiryStatus, type ExpiryStatus} from '@/domain/expiry';
 import {formatQuantity} from '@/domain/quantity';
-import {formatMoney, money, sumMoney, toEur, unusedValue} from '@/domain/money';
+import {formatMoney, money, sumMoney, toEurOrNull, unusedValue} from '@/domain/money';
 import {getExpiringStock, getWaste, toExpiryInput, type StockRow} from '@/lib/queries';
 import {setBatchStatus} from '../actions';
 
@@ -47,17 +47,22 @@ export default async function ExpiringPage() {
      * when each was bought, and both live on this page rather than in some
      * statistics view because this is where the bin button is.
      */
-    const priced = waste.filter((row) => row.priceMinor !== null && row.currency !== null);
-    const valueOf = (rows: typeof priced) =>
-        sumMoney(
-            rows.map((row) =>
-                toEur(
-                    unusedValue(money(row.priceMinor!, row.currency!), row.packSize, row.quantityRemaining),
-                    row.fxRateToEur,
-                ),
-            ),
-            'EUR',
+    const hasPrice = waste.filter((row) => row.priceMinor !== null && row.currency !== null);
+
+    /*
+     * A złoty price with no rate recorded cannot be added to a euro total, and
+     * quietly counting it as nothing would make the figure below read as
+     * complete while being short. Left out and counted instead.
+     */
+    const eurOf = (row: (typeof hasPrice)[number]) =>
+        toEurOrNull(
+            unusedValue(money(row.priceMinor!, row.currency!), row.packSize, row.quantityRemaining),
+            row.fxRateToEur,
         );
+
+    const priced = hasPrice.filter((row) => eurOf(row) !== null);
+    const uncosted = hasPrice.length - priced.length;
+    const valueOf = (rows: typeof priced) => sumMoney(rows.map((row) => eurOf(row)!), 'EUR');
 
     const neverOpened = priced.filter((row) => row.openedAt === null);
     const opened = priced.filter((row) => row.openedAt !== null);
@@ -154,7 +159,7 @@ export default async function ExpiringPage() {
                 </div>
             )}
 
-            {priced.length > 0 ? (
+            {priced.length > 0 || uncosted > 0 ? (
                 <div
                     className="mt-6 rounded-2xl border p-4 text-sm"
                     style={{borderColor: 'var(--border)'}}
@@ -182,6 +187,14 @@ export default async function ExpiringPage() {
                             A further {formatMoney(leftInOpened, {showCurrency: true})} was left in{' '}
                             {opened.length} opened {opened.length === 1 ? 'pack' : 'packs'}. Not really waste:
                             they were opened because they were needed, and you cannot buy half a bottle.
+                        </p>
+                    ) : null}
+
+                    {uncosted > 0 ? (
+                        <p className="mt-2 text-xs" style={{color: 'var(--muted)'}} test-data="uncosted-waste">
+                            {uncosted} binned {uncosted === 1 ? 'box has' : 'boxes have'} a złoty price with no
+                            exchange rate recorded, so {uncosted === 1 ? 'it is' : 'they are'} not in either
+                            figure. Add the rate by editing the box.
                         </p>
                     ) : null}
                 </div>

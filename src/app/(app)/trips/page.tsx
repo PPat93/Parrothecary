@@ -82,6 +82,14 @@ function Section({
                                     {trip.spentMinorEur > 0
                                         ? ` · ${formatMoney(money(trip.spentMinorEur, 'EUR'), {showCurrency: true})}`
                                         : ''}
+                                    {/* At least this much: some boxes have no rate to convert. */}
+                                    {trip.uncostedBoxes > 0 ? (
+                                        <span
+                                            title={`${trip.uncostedBoxes} ${trip.uncostedBoxes === 1 ? 'box is' : 'boxes are'} priced in złoty with no exchange rate recorded, so ${trip.uncostedBoxes === 1 ? 'it is' : 'they are'} not in this figure.`}
+                                        >
+                                            {trip.spentMinorEur > 0 ? '+' : ' · some costs unconverted'}
+                                        </span>
+                                    ) : null}
                                 </p>
                             </div>
 

@@ -4,8 +4,8 @@ import { useCallback, useRef, useState } from 'react';
 import { useActionState } from 'react';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { ErrorText, Field, Select, SubmitButton, TextInput } from '@/components/form';
+import { PriceFields } from '@/components/price-fields';
 import { toneStyle } from '@/components/tone';
-import { CURRENCIES } from '@/db/schema';
 import { addBatch, linkBarcode, resolveScan, type FormResult, type ScanResult } from '../../actions';
 import type { VariantRow } from '@/lib/queries';
 
@@ -118,25 +118,11 @@ export function BatchForm({ variants }: { variants: VariantRow[] }) {
           <TextInput name="expiry" placeholder="11.2027" defaultValue={prev.expiry ?? ''} />
         </Field>
 
-        <div className="grid grid-cols-[1fr_auto] gap-3">
-          <Field label="Price paid">
-            <TextInput
-              name="price"
-              inputMode="decimal"
-              placeholder="24,99"
-              defaultValue={prev.price ?? ''}
-            />
-          </Field>
-          <Field label="Currency">
-            <Select name="currency" defaultValue={prev.currency ?? 'PLN'}>
-              {CURRENCIES.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
+        <PriceFields
+          price={prev.price ?? ''}
+          currency={prev.currency ?? 'PLN'}
+          fxRate={prev.fxRate ?? ''}
+        />
 
         <Field label="Purchase date">
           <TextInput name="purchaseDate" type="date" defaultValue={prev.purchaseDate ?? ''} />

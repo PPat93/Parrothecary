@@ -6,7 +6,7 @@ import { ConfirmButton } from '@/components/confirm-button';
 import { ExpiryBadge } from '@/components/expiry-badge';
 import { todayIso } from '@/domain/date';
 import { formatDoseFrequency } from '@/domain/dosing';
-import { formatMoney, formatPricePerUnit, money, pricePerUnit, toEur } from '@/domain/money';
+import { formatMoney, formatPricePerUnit, money, pricePerUnit, toEurOrNull } from '@/domain/money';
 import { formatQuantity } from '@/domain/quantity';
 import { batchStatusLabel } from '@/lib/labels';
 import {
@@ -426,17 +426,28 @@ function PurchaseHistory({
 
   const priced = purchases.map((purchase) => {
     const paid = money(purchase.priceMinor, purchase.currency);
-    const eur = toEur(paid, purchase.fxRateToEur);
+    /*
+     * A złoty price with no rate recorded against it cannot be put in euro, and
+     * that is not an error worth taking the page down for — it is most of what
+     * gets bought locally. The row still shows what it cost and what that works
+     * out at per tablet, in złoty; it just cannot be lined up against a euro
+     * one. Trying to convert it here crashed the whole product page.
+     */
+    const eur = toEurOrNull(paid, purchase.fxRateToEur);
     return {
       ...purchase,
       paid,
       eur,
+      perUnit: pricePerUnit(paid, purchase.packSize),
       // Per unit in euro, so rows in different currencies are comparable.
-      perUnitEur: pricePerUnit(eur, purchase.packSize),
+      perUnitEur: eur === null ? null : pricePerUnit(eur, purchase.packSize),
     };
   });
 
-  const cheapest = Math.min(...priced.map((p) => p.perUnitEur));
+  // Only rows that made it into euro can be ranked against each other.
+  const comparable = priced.filter((p) => p.perUnitEur !== null);
+  const cheapest = comparable.length > 1 ? Math.min(...comparable.map((p) => p.perUnitEur!)) : null;
+  const unconvertible = priced.length - comparable.length;
 
   return (
     <ul className="flex flex-col gap-2">
@@ -449,7 +460,7 @@ function PurchaseHistory({
           <div className="min-w-0">
             <p className="text-sm tabular-nums">
               {formatMoney(purchase.paid, { showCurrency: true })}
-              {purchase.currency !== 'EUR' ? (
+              {purchase.currency !== 'EUR' && purchase.eur !== null ? (
                 <span style={{ color: 'var(--muted)' }}>
                   {' '}
                   ≈ {formatMoney(purchase.eur, { showCurrency: true })}
@@ -468,19 +479,36 @@ function PurchaseHistory({
             className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium tabular-nums"
             style={
               // Only worth colouring when there is something to compare against.
-              priced.length > 1 && purchase.perUnitEur === cheapest
+              cheapest !== null && purchase.perUnitEur === cheapest
                 ? {
                     background: 'color-mix(in oklch, var(--color-ok) 18%, transparent)',
                     color: 'var(--color-ok)',
                   }
                 : { color: 'var(--muted)' }
             }
-            title={`Per ${unitName}, converted at the rate recorded when it was bought`}
+            title={
+              purchase.perUnitEur !== null
+                ? `Per ${unitName}, converted at the rate recorded when it was bought`
+                : `Per ${unitName}. No exchange rate was recorded for this one, so it stays in ${purchase.currency} and is not ranked against the others.`
+            }
           >
-            {formatPricePerUnit(purchase.perUnitEur, 'EUR')} / {unitName}
+            {purchase.perUnitEur !== null
+              ? formatPricePerUnit(purchase.perUnitEur, 'EUR')
+              : formatPricePerUnit(purchase.perUnit, purchase.currency)}{' '}
+            / {unitName}
           </span>
         </li>
       ))}
+
+      {/* Say why a row is not lined up with the rest, and how to fix it. */}
+      {unconvertible > 0 ? (
+        <li className="text-xs" style={{ color: 'var(--muted)' }}>
+          {unconvertible === 1 ? 'One purchase has' : `${unconvertible} purchases have`} no exchange
+          rate recorded, so {unconvertible === 1 ? 'it stays' : 'they stay'} in złoty and{' '}
+          {unconvertible === 1 ? 'is' : 'are'} not compared against the rest. Add the rate by editing
+          the box.
+        </li>
+      ) : null}
     </ul>
   );
 }

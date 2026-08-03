@@ -4,9 +4,10 @@ import {
   formatPricePerUnit,
   money,
   parseAmount,
+  parseFxRate,
   pricePerUnit,
   sumMoney,
-  toEur,
+  toEurOrNull,
   unusedValue,
 } from './money';
 
@@ -46,6 +47,13 @@ describe('parseAmount', () => {
     expect(() => parseAmount('', 'PLN')).toThrow();
     expect(() => parseAmount('about a tenner', 'PLN')).toThrow();
   });
+
+  // Everything this parses is a price paid, and a minus quietly subtracted
+  // from the cupboard's value instead of adding to it.
+  it('refuses a negative price', () => {
+    expect(() => parseAmount('-12,50', 'PLN')).toThrow();
+    expect(() => parseAmount('-12', 'EUR')).toThrow();
+  });
 });
 
 describe('formatMoney', () => {
@@ -73,19 +81,52 @@ describe('formatMoney', () => {
   });
 });
 
-describe('toEur', () => {
+describe('toEurOrNull', () => {
   it('converts złoty at the rate recorded on the purchase date', () => {
     // 100,00 zł at 0.23 EUR/PLN
-    expect(toEur(money(10000, 'PLN'), 0.23)).toEqual({ amountMinor: 2300, currency: 'EUR' });
+    expect(toEurOrNull(money(10000, 'PLN'), 0.23)).toEqual({ amountMinor: 2300, currency: 'EUR' });
   });
 
   it('leaves euro untouched and does not require a rate', () => {
-    expect(toEur(money(1250, 'EUR'), null)).toEqual({ amountMinor: 1250, currency: 'EUR' });
+    expect(toEurOrNull(money(1250, 'EUR'), null)).toEqual({ amountMinor: 1250, currency: 'EUR' });
   });
 
-  it('refuses to guess a missing rate', () => {
-    expect(() => toEur(money(10000, 'PLN'), null)).toThrow();
-    expect(() => toEur(money(10000, 'PLN'), 0)).toThrow();
+  it('refuses to guess a missing rate, without taking the page down', () => {
+    expect(toEurOrNull(money(10000, 'PLN'), null)).toBeNull();
+    expect(toEurOrNull(money(10000, 'PLN'), 0)).toBeNull();
+    expect(toEurOrNull(money(10000, 'PLN'), -0.23)).toBeNull();
+  });
+});
+
+describe('parseFxRate', () => {
+  it('accepts either decimal separator', () => {
+    expect(parseFxRate('0,2312')).toEqual({ ok: true, rate: 0.2312 });
+    expect(parseFxRate(' 0.2312 ')).toEqual({ ok: true, rate: 0.2312 });
+  });
+
+  it('treats blank as not recorded rather than as an error', () => {
+    expect(parseFxRate('')).toEqual({ ok: true, rate: null });
+    expect(parseFxRate('   ')).toEqual({ ok: true, rate: null });
+  });
+
+  it('rejects nonsense and impossible rates', () => {
+    expect(parseFxRate('abc').ok).toBe(false);
+    expect(parseFxRate('0').ok).toBe(false);
+    expect(parseFxRate('-0,23').ok).toBe(false);
+  });
+
+  /*
+   * The likeliest mistake by a distance: "4,35 to the euro" is the number a
+   * bank app shows and the one a person remembers. Taken at face value it
+   * would inflate every euro total in the app by about nineteen times.
+   */
+  it('refuses a rate given the wrong way round, and says which number to use', () => {
+    const result = parseFxRate('4,35');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('0,2299');
+
+    expect(parseFxRate('1').ok).toBe(false);
+    expect(parseFxRate('2312').ok).toBe(false);
   });
 });
 

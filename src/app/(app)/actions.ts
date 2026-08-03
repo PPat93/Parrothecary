@@ -36,7 +36,7 @@ import { findVariantByBarcode, getPreviousCollectionDate } from '@/lib/queries';
 import { defaultOrderByDate } from '@/domain/trip';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
 import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
-import { parseAmount } from '@/domain/money';
+import { parseAmount, parseFxRate } from '@/domain/money';
 import { endSession } from '@/lib/session';
 
 function refreshAll() {
@@ -488,6 +488,7 @@ interface BatchFields {
   purchaseDate: string | null;
   purchasePriceMinor: number | null;
   purchaseCurrency: (typeof CURRENCIES)[number] | null;
+  fxRateToEur: number | null;
 }
 
 /**
@@ -515,6 +516,13 @@ function parseBatchFields(formData: FormData): { fields: BatchFields } | { error
 
   let purchasePriceMinor: number | null = null;
   let purchaseCurrency: (typeof CURRENCIES)[number] | null = null;
+  /*
+   * The rate belongs to the box, not to today: it is what a złoty cost in euro
+   * on the day this was bought, so last year's spend does not move when the
+   * rate does. Nothing wrote it before, which meant every price typed into the
+   * app was złoty that could never be compared with a euro one.
+   */
+  let fxRateToEur: number | null = null;
   const priceRaw = String(formData.get('price') ?? '').trim();
   if (priceRaw) {
     const currency =
@@ -524,6 +532,13 @@ function parseBatchFields(formData: FormData): { fields: BatchFields } | { error
       purchaseCurrency = currency;
     } catch {
       return { error: `Could not read "${priceRaw}" as a price.` };
+    }
+
+    // Euro needs no rate, and storing one would only be something to contradict.
+    if (currency !== 'EUR') {
+      const rate = parseFxRate(String(formData.get('fxRate') ?? ''));
+      if (!rate.ok) return { error: rate.message };
+      fxRateToEur = rate.rate;
     }
   }
 
@@ -537,6 +552,7 @@ function parseBatchFields(formData: FormData): { fields: BatchFields } | { error
       purchaseDate: emptyToNull(String(formData.get('purchaseDate') ?? '').trim()),
       purchasePriceMinor,
       purchaseCurrency,
+      fxRateToEur,
     },
   };
 }

@@ -1,8 +1,8 @@
 'use client';
 
 import { useActionState } from 'react';
-import { ErrorText, Field, Select, SubmitButton, TextInput } from '@/components/form';
-import { CURRENCIES } from '@/db/schema';
+import { ErrorText, Field, SubmitButton, TextInput } from '@/components/form';
+import { PriceFields } from '@/components/price-fields';
 import { receiveShoppingItem, type FormResult } from '../../../actions';
 import type { ShoppingRow } from '@/lib/queries';
 
@@ -40,25 +40,11 @@ export function ReceiveForm({ item }: { item: ShoppingRow }) {
         </Field>
       ) : null}
 
-      <div className="grid grid-cols-[1fr_auto] gap-3">
-        <Field label="Price paid">
-          <TextInput
-            name="price"
-            inputMode="decimal"
-            placeholder="24,99"
-            defaultValue={prev.price ?? ''}
-          />
-        </Field>
-        <Field label="Currency">
-          <Select name="currency" defaultValue={prev.currency ?? 'PLN'}>
-            {CURRENCIES.map((currency) => (
-              <option key={currency} value={currency}>
-                {currency}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </div>
+      <PriceFields
+        price={prev.price ?? ''}
+        currency={prev.currency ?? 'PLN'}
+        fxRate={prev.fxRate ?? ''}
+      />
 
       <Field label="Purchase date">
         <TextInput name="purchaseDate" type="date" defaultValue={prev.purchaseDate ?? ''} />
