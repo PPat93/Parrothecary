@@ -81,7 +81,7 @@ export default async function StockPage({
                             <li
                                 key={group.productId}
                                 className="rounded-2xl border p-3"
-                                test-data={group.name.replace(/\s/g, ``).toLowerCase()}
+                                test-data="main-box-list-item"
                                 style={{background: 'var(--surface)', borderColor: 'var(--border)'}}
                             >
                                 <div className="flex items-baseline justify-between gap-3">

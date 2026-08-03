@@ -88,6 +88,7 @@ export default async function DosesPage() {
                     {[...byMember.entries()].map(([memberId, group]) => (
                             <li
                                 key={memberId}
+                                title="Main doses list item"
                                 test-data={group.name.replace(/\s/g, "").toLowerCase() + "-card"}
                                 className="rounded-2xl border p-3"
                                 style={{background: 'var(--surface)', borderColor: 'var(--border)'}}

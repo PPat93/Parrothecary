@@ -1,7 +1,8 @@
 import {Page, Locator} from "@playwright/test"
 
 export const DOSES_PAGE_TEXTS = {
-    title: `Doses`
+    title: `Doses`,
+    managePeopleBtn: `Manage people`
 } as const;
 
 

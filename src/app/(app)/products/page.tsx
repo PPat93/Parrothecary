@@ -64,7 +64,7 @@ export default async function ProductsPage({
       ) : (
         <ul className="flex flex-col gap-2" test-data="main-products-list">
           {rows.map((row) => (
-            <li key={row.id}>
+            <li key={row.id} test-data="main-products-list-item">
               <Link
                 href={`/products/${row.id}`}
                 className="flex items-center gap-3 rounded-xl border p-3"

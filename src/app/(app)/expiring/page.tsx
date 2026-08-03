@@ -91,8 +91,8 @@ export default async function ExpiringPage() {
 
                         return (
                             <section key={section.status} test-data={section.title.replace(/\s/g, "").toLowerCase()}>
-                                <h2 className="text-sm font-semibold uppercase tracking-wide">{section.title}</h2>
-                                <p className="mb-2 text-xs" style={{color: 'var(--muted)'}}>
+                                <h2 className="text-sm font-semibold uppercase tracking-wide" test-data="section-title">{section.title}</h2>
+                                <p className="mb-2 text-xs" style={{color: 'var(--muted)'}} test-data="section-description">
                                     {section.blurb}
                                 </p>
 
@@ -160,10 +160,10 @@ export default async function ExpiringPage() {
                     style={{borderColor: 'var(--border)'}}
                     test-data="binned-summary"
                 >
-                    <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide">Binned so far</h2>
+                    <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide" test-data="binned-summary-title">Binned so far</h2>
 
                     {neverOpened.length > 0 ? (
-                        <p style={{color: 'var(--muted)'}}>
+                        <p style={{color: 'var(--muted)'}} test-data="money-wasted">
               <span style={{color: 'var(--color-critical)'}}>
                 {formatMoney(thrownAway, {showCurrency: true})}
               </span>{' '}
@@ -171,14 +171,14 @@ export default async function ExpiringPage() {
                             bought and binned without being used. This is the number worth pushing down.
                         </p>
                     ) : (
-                        <p style={{color: 'var(--muted)'}}>
+                        <p style={{color: 'var(--muted)'}} test-data="money-wasted">
                             Nothing has been binned unopened. That is the figure that would mean money wasted,
                             and it is zero.
                         </p>
                     )}
 
                     {opened.length > 0 ? (
-                        <p className="mt-2" style={{color: 'var(--muted)'}}>
+                        <p className="mt-2" style={{color: 'var(--muted)'}} test-data="not-wasted">
                             A further {formatMoney(leftInOpened, {showCurrency: true})} was left in{' '}
                             {opened.length} opened {opened.length === 1 ? 'pack' : 'packs'}. Not really waste:
                             they were opened because they were needed, and you cannot buy half a bottle.

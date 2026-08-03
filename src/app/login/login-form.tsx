@@ -26,7 +26,7 @@ export function LoginForm() {
       />
 
       {state.error ? (
-        <p role="alert" className="text-sm" style={{ color: 'var(--color-critical)' }}>
+        <p role="alert" className="text-sm" style={{ color: 'var(--color-critical)' }} test-data="error-message">
           {state.error}
         </p>
       ) : null}
