@@ -59,6 +59,7 @@ export default async function ShoppingPage() {
                 </div>
             ) : (
                 <details
+                    test-data="add-shopping-item"
                     className="mb-6 rounded-2xl border p-3"
                     style={{background: 'var(--surface)', borderColor: 'var(--border)'}}
                 >
@@ -84,13 +85,13 @@ export default async function ShoppingPage() {
 
                     return (
                         <section key={stage.status} test-data={stage.title.replace(/\s/g, "").toLowerCase()}>
-                            <h2 className="text-sm font-semibold uppercase tracking-wide">
+                            <h2 className="text-sm font-semibold uppercase tracking-wide" test-data="section-title">
                                 {stage.title}{' '}
                                 <span className="font-normal tabular-nums" style={{color: 'var(--muted)'}}>
                   {stageItems.length}
                 </span>
                             </h2>
-                            <p className="mb-2 text-xs" style={{color: 'var(--muted)'}}>
+                            <p className="mb-2 text-xs" style={{color: 'var(--muted)'}} test-data="section-description">
                                 {stage.blurb}
                             </p>
 
