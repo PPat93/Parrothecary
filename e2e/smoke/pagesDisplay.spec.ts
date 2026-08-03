@@ -5,6 +5,8 @@ import {STOCK_PAGE_TEXTS} from "../pages/mainPages/stockPage";
 import {DOSES_PAGE_TEXTS} from "../pages/mainPages/dosesPage";
 import {EXPIRING_PAGE_TEXTS} from "../pages/mainPages/expiringPage";
 import {SHOPPING_PAGE_TEXTS} from "../pages/mainPages/shoppingPage";
+import {TRIPS_PAGE_TEXTS} from "../pages/mainPages/tripsPage";
+import {PRODUCTS_PAGE_TEXTS} from "../pages/mainPages/productsPage";
 
 test.describe(`Login page display`, async () => {
 
@@ -51,7 +53,7 @@ test.describe(`Stock page display`, async () => {
         await expect(dosesPage.managePeopleBtn).toBeVisible();
         await expect(dosesPage.managePeopleBtn).toHaveText(DOSES_PAGE_TEXTS.managePeopleBtn);
         await expect(dosesPage.dosesList).toBeVisible();
-        const listItems = await dosesPage.dosesList.locator(`> li`).count();
+        const listItems = await dosesPage.dosesList.getByTitle(`Main doses list item`).count();
         expect(listItems).toBeGreaterThanOrEqual(2);
     })
 
@@ -83,7 +85,7 @@ test.describe(`Stock page display`, async () => {
         await expect(shoppingPage.addItemSection.locator(`summary`)).toHaveText(SHOPPING_PAGE_TEXTS.addItem);
         await expect(shoppingPage.shoppingGroups).toBeVisible();
 
-        const shoppingGroupsCount = await shoppingPage.shoppingGroups.locator(`> section`).count();
+        const shoppingGroupsCount = await shoppingPage.shoppingGroups.getByTitle(`Shopping section`).count();
         expect(shoppingGroupsCount).toBe(4);
 
         await expect(shoppingPage.toBuySection.locator(shoppingPage.sectionTitle)).toContainText(SHOPPING_PAGE_TEXTS.toBuyTitle);
@@ -96,4 +98,57 @@ test.describe(`Stock page display`, async () => {
         await expect(shoppingPage.inCupboardSection.locator(shoppingPage.sectionDesc)).toHaveText(SHOPPING_PAGE_TEXTS.inCupboardDesc);
     })
 
+    test(`Trips page is displayed`, async ({tripsPage}) => {
+
+        //  Arrange & Act
+        await tripsPage.goToPage();
+
+        //  Assert
+        await expect(tripsPage.pageTitle).toHaveText(TRIPS_PAGE_TEXTS.title);
+        await expect(tripsPage.pageDesc).toHaveText(TRIPS_PAGE_TEXTS.description);
+        await expect(tripsPage.newTripBtn).toBeVisible();
+        await expect(tripsPage.newTripBtn).toHaveText(TRIPS_PAGE_TEXTS.newTripBtn);
+        await expect(tripsPage.mainTripsGroup).toBeVisible();
+        const listItems = await tripsPage.mainTripsGroup.getByTitle(`Trips section`).count();
+        expect(listItems).toBe(2);
+        await expect(tripsPage.plannedSection).toBeVisible();
+        await expect(tripsPage.plannedSection.locator(tripsPage.sectionTitle)).toHaveText(TRIPS_PAGE_TEXTS.planedSectionTitle);
+        await expect(tripsPage.doneSection).toBeVisible();
+        await expect(tripsPage.doneSection.locator(tripsPage.sectionTitle)).toHaveText(TRIPS_PAGE_TEXTS.doneSectionTitle);
+    })
+
+    test(`Products page is displayed`, async ({productsPage}) => {
+
+        const regBtnActive = /\(--text\)/
+        const regBtnInactive = /\(--muted\)/
+
+        //  Arrange & Act
+        await productsPage.goToPage();
+
+        //  Assert
+        //  Active list
+        await expect(productsPage.pageTitle).toHaveText(PRODUCTS_PAGE_TEXTS.title);
+        await expect(productsPage.newProductBtn).toBeVisible();
+        await expect(productsPage.newProductBtn).toHaveText(PRODUCTS_PAGE_TEXTS.newProductBtn);
+        await expect(productsPage.productStatsListSwitch).toBeVisible();
+        await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchActive)).toBeVisible();
+        await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchActive)).toHaveAttribute(`style`, regBtnActive);
+        await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toBeVisible();
+        await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toHaveAttribute(`style`, regBtnInactive);
+        await expect(productsPage.mainSearchField).toBeVisible();
+        await expect(productsPage.productsList).toBeVisible()
+
+        const productListItemsActive = await productsPage.productsListItem.filter({visible: true}).count();
+        expect(productListItemsActive).toBeGreaterThanOrEqual(4);
+
+        //  Archived list
+        await productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived).click();
+        await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchActive)).toBeVisible();
+        await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchActive)).toHaveAttribute(`style`, regBtnInactive);
+        await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toBeVisible();
+        await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toHaveAttribute(`style`, regBtnActive);
+
+        const productListItemsArchived = await productsPage.productsListItem.filter({visible: true}).count();
+        expect(productListItemsArchived).toBe(2);
+    })
 })

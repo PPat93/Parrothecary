@@ -1,7 +1,10 @@
 import {Page, Locator} from "@playwright/test"
 
 export const PRODUCTS_PAGE_TEXTS = {
-    title: `Products`
+    title: `Products`,
+    newProductBtn: `New product`,
+    switchActive: `Active`,
+    switchArchived: `Archived`
 } as const;
 
 
@@ -12,6 +15,7 @@ export class ProductsPage {
     readonly productStatsListSwitch: Locator;
     readonly mainSearchField: Locator;
     readonly productsList: Locator;
+    readonly productsListItem: Locator;
 
     constructor(page: Page) {
         this.page = page;
@@ -19,7 +23,8 @@ export class ProductsPage {
         this.newProductBtn = page.getByTestId(`add-product-btn`);
         this.productStatsListSwitch = page.getByTestId(`product-status-list-switch`);
         this.mainSearchField = page.getByPlaceholder(`Name, brand, substance or symptom…`);
-        this.productsList = page.getByTestId(`main-product-list`);
+        this.productsList = page.getByTestId(`main-products-list`);
+        this.productsListItem = page.getByTestId(`main-products-list-item`);
     }
 
     async goToPage() {

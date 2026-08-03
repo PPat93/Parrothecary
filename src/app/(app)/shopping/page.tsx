@@ -84,7 +84,7 @@ export default async function ShoppingPage() {
                     const canFailToArrive = stage.status === 'ordered' || stage.status === 'arrived';
 
                     return (
-                        <section key={stage.status} test-data={stage.title.replace(/\s/g, "").toLowerCase()}>
+                        <section key={stage.status} test-data={stage.title.replace(/\s/g, "").toLowerCase()} title="Shopping section">
                             <h2 className="text-sm font-semibold uppercase tracking-wide" test-data="section-title">
                                 {stage.title}{' '}
                                 <span className="font-normal tabular-nums" style={{color: 'var(--muted)'}}>
