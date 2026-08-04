@@ -4,6 +4,9 @@ import { logout } from '@/app/(app)/actions';
 /**
  * Slim bar on every authenticated view, so locking the app is always in the
  * same place. It used to be a link buried at the bottom of the products page.
+ *
+ * The name and parrot go home. Stock is already in the bottom nav, but three
+ * screens deep in a product's boxes the header is where a thumb reaches first.
  */
 export function AppHeader() {
   return (
@@ -11,7 +14,12 @@ export function AppHeader() {
       className="sticky top-0 z-20 flex items-center justify-between border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]"
       style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
     >
-      <span className="flex items-center gap-2">
+      {/*
+        The whole lockup is the way home, not just the picture: the name beside
+        it reads as one thing, and half of a brand mark being clickable is the
+        kind of detail that gets discovered by accident or not at all.
+      */}
+      <Link href="/" title="Parrothecary — back to stock" className="flex items-center gap-2">
         {/* Sits on its own dark disc so the neon lines survive light mode. */}
         <span
           className="flex h-7 w-7 items-center justify-center rounded-full"
@@ -23,7 +31,7 @@ export function AppHeader() {
           <img src="/parrot-64.png" alt="Mini parrot logo" width={24} height={24} className="h-6 w-6 object-contain" />
         </span>
         <span className="text-sm font-semibold tracking-tight">Parrothecary</span>
-      </span>
+      </Link>
 
       <span className="flex items-center gap-1">
         <Link
