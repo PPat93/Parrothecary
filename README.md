@@ -13,8 +13,9 @@ order before the deadline".
 and expiry; barcode scanning; dose schedules; run-out projection; trips with an order deadline;
 the audit worksheet; prices, waste and cupboard value.
 
-What is left is reporting and delivery rather than new mechanics — see "Roadmap" below. The app
-still runs locally; it has not been deployed yet.
+Phase 4 is next — a stock ledger and the features that stand on it — and deployment is
+deliberately last, after end-to-end coverage. See "Roadmap" below. The app still runs locally,
+and the database it runs against is disposable test data.
 
 ## Getting started
 
@@ -132,9 +133,14 @@ so `setup` must be selected there or the stored session is never refreshed.
 
 ## Deployment
 
-Not yet done — the app runs locally for now. Target is an unprivileged Debian LXC on the
-household Proxmox host, behind Caddy with an internal CA (a trusted certificate is required for
-camera access, passkeys and home-screen install, all of which browsers block on plain HTTP).
+Not yet done — the app runs locally for now, and is the last phase on the roadmap rather than the
+next one. Target is an unprivileged Debian LXC on the household Proxmox host, behind Caddy with an
+internal CA (a trusted certificate is required for camera access and home-screen install, both of
+which browsers block on plain HTTP).
+
+Updates are built and tested locally against a separate database, so production is never the place
+anything is tried first. Migrations are forward-only and get a backup taken immediately before
+they run.
 
 ## Roadmap
 
@@ -156,24 +162,102 @@ camera access, passkeys and home-screen install, all of which browsers block on 
   present. It reports binned-unopened separately from what was left in opened packs — the first is
   money wasted, the second is the cost of having something available, and adding them together
   would flatter one and slander the other.
-- **Phase 4** — push notifications, statistics, xlsx export, passkeys.
-- **Phase 5** — duplicate-substance warnings, alternatives between products, audit log, deployment
-  and backups.
+### Phase 4 — before deployment
+
+Ordered. The database is still disposable, and it stops being disposable the day the app is
+deployed and real stock is entered — so anything that changes *what gets recorded* is cheapest
+now, and anything that only reads it can wait.
+
+1. **Stock ledger.** Every quantity change becomes an immutable row: batch, signed delta, reason
+   (`received` / `dose` / `adjust` / `binned` / `audit` / `opening`), timestamp. Today a tap on
+   the minus button rewrites `quantity_remaining` and nothing records that it happened, when, or
+   why — only doses survive, in `dose_events`.
+
+   This is the foundation for everything below it, and the one item with a real deadline: a ledger
+   cannot backfill history it never saw. It also replaces four separate features with one table —
+   arbitrary date ranges, between-trip summaries, "start counting fresh" (an `opening` row, not a
+   delete), and the audit below.
+2. **Audit mode.** Count the real shelf, type the numbers, differences land as `audit` movements.
+   Correcting a miscount is already possible; what is missing is any record that it happened, and
+   therefore any answer to how much stock quietly evaporates between counts.
+3. **Duplicate-substance warnings.** Warn when two things being taken share an active ingredient —
+   two cold remedies both containing paracetamol is an overdose path the app currently says
+   nothing about. The data is already in `product_substances`.
+4. **Alternatives between products.** `product_alternatives` already exists in the schema and is
+   wired to nothing. Feeds "out of this, but you have that".
+5. **Travel kit.** See below.
+6. **Help view.** What each screen is for and what the words on it mean — grace, FEFO, order-by,
+   the difference between binning a box and using it up.
+7. **CSV export.** No dependencies, opens in any spreadsheet, and doubles as a manual escape
+   hatch on deployment day. Formatting is two clicks outside the app; xlsx was dropped as a
+   maintenance burden that buys nothing.
+
+End-to-end happy-path coverage runs alongside, per feature as each settles. Items 3, 4 and 6
+barely move existing screens; item 1 changes what the stock buttons do underneath, so stock specs
+should wait for it.
+
+### Phase 5 — deployment
+
+Deliberately last: the app should be tested before it becomes the thing the household actually
+relies on, and this is the part that needs learning rather than reviewing.
+
+Backups ship *with* it, not after. Deployment day is when real stock and fresh photos get entered,
+and that data is valuable immediately — while today there is exactly one copy of the database on
+one machine. `VACUUM INTO` gives a consistent single-file backup while the app keeps running,
+which is also the safe way to take a copy for testing a migration against realistic data.
+
+The database is wiped for this: a clean start, entered fresh against the real cupboard.
+
+### Phase 6 — after deployment
+
+8. **Between-trip summaries and statistics.** Bought, used and binned between any two dates, and
+   between one restock and the next. Placed here on purpose rather than demoted: comparing two
+   restocks needs two real restocks, so this is worth building once the ledger has months of live
+   data behind it, not against invented rows.
+
+### The travel kit, in more detail
+
+A trip gains a `kind`: a restock, or ordinary travel. Ordinary travel opens a packing list.
+
+Two things it is not. It does **not** share `shopping_items` — that table carries a purchase
+lifecycle (`to_buy → ordered → arrived → in_stock`), while a packing line is "N units of this,
+from this box". Same `trips` table, separate `travel_kit_items`. And it does **not** move stock
+out of the cupboard, at first: that needs a "what came back" step which nobody performs while
+actually travelling, and a forgotten return leaves the numbers worse than never having tried. The
+ledger makes that upgrade a pair of reasons whenever the drift starts to matter.
+
+What makes it more than a notes app is that the list arrives filled in. Active dose schedules must
+come along and the app already knows how many — `unitsDueBetween` is unit-tested and is what the
+audit worksheet uses, so twelve days away with one tablet daily packs twelve and says the box only
+holds nine. Expiry is checked so nothing packed dies mid-trip. Symptom coverage is checked so the
+bag is not missing a whole category.
+
+**Open, to settle before development starts:** whether the suggested list is editable as a
+*default* — a standing "always pack something for stomach, headache and allergy" that the user
+maintains, rather than a suggestion recomputed from scratch each time. It is the difference
+between a template and an algorithm, and probably wants both: computed doses that cannot be
+forgotten, plus a saved list of standing items.
 
 ### Deferred
 
-Wanted, agreed, and deliberately not built yet. Written down because otherwise they exist only in
+Wanted, agreed, and deliberately not built. Written down because otherwise they exist only in
 somebody's memory, which is how a small good idea quietly disappears.
 
-- **Help view.** What each screen is for and what the words on it mean — grace, FEFO, order-by,
-  the difference between binning a box and using it up. Split off from the v1.2 branch to keep
-  that one small.
 - **Thumbnail plus name in search results.** Recognising a box by sight beats reading a foreign
   name, which the stock list already relies on; search results still return text only.
-- **Travel kit builder.** Pick what comes along for a trip and take it out of the cupboard's
-  figures while it is away, so "what is at home" stays honest.
 - **Prescription renewal reminders.** Prescription products already carry a flag; nothing yet
   tracks when a script needs renewing, which is a different deadline from running out.
+
+### Dropped
+
+- **xlsx export** — a heavyweight dependency for formatting that takes two clicks in a spreadsheet.
+  CSV instead.
+- **Push notifications** — the app is used daily, so reminders would be noise, and they would have
+  forced the first background scheduler into an app that deliberately derives everything on read.
+- **Passkeys** — sessions already last 90 days and renew on use, so "remember me" exists in all
+  but name; a password manager covers the rest.
+- **Audit log as a changelog** — who-changed-what has no audience in a two-person household. The
+  reconciliation people actually mean by "audit" is item 2 above.
 
 Not planned: a PL/EN interface toggle (dropped 2026-07-27 — the UI stays English, while product
 *data* is bilingual through name/nameAlt and the Polish symptom tags), and anything paediatric.
