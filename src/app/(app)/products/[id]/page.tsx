@@ -12,11 +12,13 @@ import { batchStatusLabel } from '@/lib/labels';
 import {
   getProduct,
   getProductPurchases,
+  getSubstanceLinks,
   getSubstanceNames,
   getSymptomNames,
   type ProductDetail,
   type PurchaseRow,
 } from '@/lib/queries';
+import { overlapsForProduct } from '@/domain/substances';
 import {
   archiveProduct,
   deleteProduct,
@@ -31,13 +33,28 @@ import { PhotoForm } from './photo-form';
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [product, substanceNames, symptomNames, purchases] = await Promise.all([
+  const [product, substanceNames, symptomNames, purchases, substanceLinks] = await Promise.all([
     getProduct(Number(id)),
     getSubstanceNames(),
     getSymptomNames(),
     getProductPurchases(Number(id)),
+    getSubstanceLinks(),
   ]);
   if (!product) notFound();
+
+  /*
+   * Stated, not warned about. Most overlaps are harmless — saline in a nasal
+   * gel and saline in ampoules share an ingredient and nothing else — and a
+   * cabinet that cries wolf about those is one whose warnings get skipped. The
+   * warning proper lives on the Doses board, where two things are actually
+   * being taken.
+   */
+  const overlaps = overlapsForProduct(product.id, substanceLinks).map((overlap) => ({
+    name: substanceLinks.find((link) => link.substanceId === overlap.substanceId)?.substanceName,
+    others: overlap.productIds
+      .map((productId) => substanceLinks.find((link) => link.productId === productId))
+      .filter((link) => link !== undefined),
+  }));
 
   const today = todayIso();
 
@@ -170,6 +187,39 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           ))
         )}
         <AddSubstanceForm productId={product.id} substanceNames={substanceNames} />
+
+        {/*
+          Inside this section rather than in one of its own: it is a fact about
+          the ingredients listed directly above it, and a separate panel would
+          give it a weight it does not deserve.
+        */}
+        {overlaps.length > 0 ? (
+          <div
+            className="mt-3 border-t pt-3 text-xs"
+            test-data="shared-substances"
+            style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+          >
+            {overlaps.map((overlap) => (
+              <p key={overlap.name} className="break-words">
+                Also in the cabinet with {overlap.name}:{' '}
+                {overlap.others.map((other, index) => (
+                  <span key={other.productId}>
+                    {index > 0 ? ', ' : ''}
+                    <Link
+                      href={`/products/${other.productId}`}
+                      className="underline underline-offset-2"
+                    >
+                      {other.productName}
+                      {other.productStrength ? ` ${other.productStrength}` : ''}
+                    </Link>
+                    {other.amountText ?? (other.amountMg !== null ? ` (${other.amountMg} mg)` : '')}
+                  </span>
+                ))}
+                .
+              </p>
+            ))}
+          </div>
+        ) : null}
       </Section>
 
       <Section title="Used for">

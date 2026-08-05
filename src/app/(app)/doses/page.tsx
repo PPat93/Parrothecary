@@ -14,9 +14,11 @@ import {daysPastDate} from '@/domain/expiry';
 import {nextBatchToOpen, totalAvailable} from '@/domain/fefo';
 import {formatQuantity} from '@/domain/quantity';
 import {projectRunOut, scheduleDailyRate} from '@/domain/runout';
+import {scheduleClashes} from '@/domain/substances';
 import {
     getActiveDoseSchedules,
     getBatchesForProducts,
+    getSubstanceLinks,
     getTakenOccurrences,
     type DoseScheduleBoardRow,
 } from '@/lib/queries';
@@ -29,13 +31,39 @@ export default async function DosesPage() {
     const cutoff = addDays(today, -(HISTORY_DAYS - 1));
 
     const schedules = await getActiveDoseSchedules();
-    const [taken, stockByProduct] = await Promise.all([
+    const [taken, stockByProduct, substanceLinks] = await Promise.all([
         getTakenOccurrences(
             schedules.map((s) => s.scheduleId),
             cutoff,
         ),
         getBatchesForProducts([...new Set(schedules.map((s) => s.productId))]),
+        getSubstanceLinks(),
     ]);
+
+    /*
+     * The one overlap worth interrupting someone about: two things on the same
+     * person's schedule containing the same active ingredient. Taking both is
+     * a double dose of something that has a ceiling, and nothing else in the
+     * app would ever mention it.
+     *
+     * Two people each on their own paracetamol is not this, and is not
+     * flagged — see `scheduleClashes`.
+     */
+    const clashesByMember = new Map<number, { substance: string; products: string[] }[]>();
+    for (const clash of scheduleClashes(schedules, substanceLinks)) {
+        const substance =
+            substanceLinks.find((link) => link.substanceId === clash.substanceId)?.substanceName ??
+            'the same ingredient';
+        const names = clash.productIds.map(
+            (productId) =>
+                substanceLinks.find((link) => link.productId === productId)?.productName ??
+                'something',
+        );
+        clashesByMember.set(clash.memberId, [
+            ...(clashesByMember.get(clash.memberId) ?? []),
+            {substance, products: names},
+        ]);
+    }
 
     // Grouped by member so "which of Piotr's doses is this" is answered by the
     // card it sits in, without repeating his name on every row.
@@ -99,6 +127,18 @@ export default async function DosesPage() {
                                 >
                                     {group.name}
                                 </Link>
+
+                                {(clashesByMember.get(memberId) ?? []).map((clash) => (
+                                    <p
+                                        key={clash.substance}
+                                        className="mb-2 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+                                        test-data="substance-clash"
+                                        style={{background: 'var(--color-critical)', color: 'white'}}
+                                    >
+                                        {clash.products.join(' and ')} both contain {clash.substance}.
+                                        Taking both is a double dose.
+                                    </p>
+                                ))}
 
                                 <ul
                                     className="flex flex-col gap-2"

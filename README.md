@@ -196,9 +196,20 @@ now, and anything that only reads it can wait.
    in stages, and a form demanding all thirty numbers before accepting any would be abandoned
    halfway down the shelf. Rows that agree write nothing at all — agreement is not an event, and
    a row per box counted would bury the differences that are the point.
-3. **Duplicate-substance warnings.** Warn when two things being taken share an active ingredient —
-   two cold remedies both containing paracetamol is an overdose path the app currently says
-   nothing about. The data is already in `product_substances`.
+3. **Duplicate-substance warnings — done.** Two things containing the same active ingredient.
+   Reaching for a headache tablet and a cold remedy an hour apart, both with paracetamol in
+   them, is a double dose of something with a real ceiling, and nothing in the app said a word
+   about it.
+
+   Split deliberately into a fact and a warning, because most overlaps are neither dangerous nor
+   interesting. A saline nasal gel and saline ampoules share sodium chloride and that is all they
+   share — a cabinet that raises an alarm about those is one whose alarms get ignored. So the
+   product page *states* what else contains the same ingredient, in passing and in muted text,
+   while the Doses board *warns*, in red, only where two things are on the same person's
+   schedule at once.
+
+   Per person, never per household: two people each taking their own paracetamol is not a double
+   dose, and flagging it would be both wrong and annoying.
 4. **Alternatives between products.** `product_alternatives` already exists in the schema and is
    wired to nothing. Feeds "out of this, but you have that".
 5. **Travel kit.** See below.

@@ -1366,6 +1366,46 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Shared ingredients                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface SubstanceLink {
+  productId: number;
+  substanceId: number;
+  substanceName: string;
+  productName: string;
+  productStrength: string | null;
+  /** Per base unit, where it can be expressed as a number. */
+  amountMg: number | null;
+  amountText: string | null;
+}
+
+/**
+ * Which products contain which active ingredients.
+ *
+ * Archived products are left out: a box that is no longer kept cannot be
+ * reached for by mistake, so naming it in an overlap would be noise about
+ * something that is not in the house.
+ */
+export async function getSubstanceLinks(): Promise<SubstanceLink[]> {
+  return db
+    .select({
+      productId: productSubstances.productId,
+      substanceId: productSubstances.substanceId,
+      substanceName: substances.name,
+      productName: products.name,
+      productStrength: products.strength,
+      amountMg: productSubstances.amountMg,
+      amountText: productSubstances.amountText,
+    })
+    .from(productSubstances)
+    .innerJoin(substances, eq(productSubstances.substanceId, substances.id))
+    .innerJoin(products, eq(productSubstances.productId, products.id))
+    .where(isNull(products.archivedAt))
+    .orderBy(byName);
+}
+
+/* ------------------------------------------------------------------ */
 /* Statistics — money                                                  */
 /* ------------------------------------------------------------------ */
 
