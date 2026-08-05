@@ -54,6 +54,7 @@ Open http://localhost:3000.
 | `npm run db:symptoms` | Load the symptom tag vocabulary (run before any seed) |
 | `npm run db:seed` | Load demo data |
 | `npm run db:reset` | **Delete all data**, keep the schema (`-- --force` to skip the prompt) |
+| `npm run db:check-ledger` | Verify every box agrees with its stock movements |
 | `npm run auth:hash -- "…"` | Generate a master-password hash |
 | `npm run audit:routes` | List routes and check each is behind the session guard |
 
@@ -82,6 +83,10 @@ Rules that must hold:
   purchase so historical spend does not drift with the exchange rate.
 - **Nothing is hard-deleted.** Products archive; batches get a terminal status. Consumption
   history is what makes the later phases possible.
+- **Every quantity change is recorded.** `stock_movements` holds one signed row per change, with
+  a reason. Undo writes an opposite row rather than erasing the first, so a mistake and its
+  correction are both on the record. The invariant — `sum(delta)` equals what is in the box, and
+  zero once it leaves stock — is checkable with `npm run db:check-ledger`.
 
 ## Layout
 

@@ -22,6 +22,7 @@ import {
   products,
   shoppingItems,
   productSymptoms,
+  stockMovements,
   substances,
   symptoms,
   trips,
@@ -31,6 +32,7 @@ import {
 import { isValidEan13, parseScan } from '@/domain/barcode';
 import { todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
+import { applyAdjustment, movementForStatusChange, type LedgerBatchStatus } from '@/domain/ledger';
 import { deletePhoto, savePhoto } from '@/lib/photos';
 import { findVariantByBarcode, getPreviousCollectionDate } from '@/lib/queries';
 import { defaultOrderByDate } from '@/domain/trip';
@@ -567,7 +569,25 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
   const parsed = parseBatchFields(formData);
   if ('error' in parsed) return fail(parsed.error);
 
-  await db.insert(batches).values({ variantId, ...parsed.fields });
+  /*
+   * The box and the row saying it arrived go in together. A torn write here
+   * would leave the ledger disagreeing with the shelf, which is the one thing
+   * it exists not to do.
+   */
+  db.transaction((tx) => {
+    const inserted = tx
+      .insert(batches)
+      .values({ variantId, ...parsed.fields })
+      .returning({ id: batches.id })
+      .all();
+
+    const batchId = inserted[0]?.id;
+    if (batchId === undefined) throw new Error('Could not add the box.');
+
+    tx.insert(stockMovements)
+      .values({ batchId, delta: parsed.fields.quantityRemaining, reason: 'received' })
+      .run();
+  });
 
   refreshAll();
   redirect('/');
@@ -616,19 +636,34 @@ export async function receiveShoppingItem(
   const parsed = parseBatchFields(formData);
   if ('error' in parsed) return fail(parsed.error);
 
-  const inserted = await db
-    .insert(batches)
-    .values({ variantId: item.variantId, ...parsed.fields })
-    .returning({ id: batches.id });
+  /*
+   * Three writes that only make sense together: the box, the row saying it
+   * arrived, and the shopping line that becomes it.
+   */
+  const batchId = db.transaction((tx) => {
+    const inserted = tx
+      .insert(batches)
+      .values({ variantId: item.variantId, ...parsed.fields })
+      .returning({ id: batches.id })
+      .all();
 
-  const batchId = inserted[0]?.id;
+    const newId = inserted[0]?.id;
+    if (newId === undefined) throw new Error('Could not add the box to stock.');
+
+    tx.insert(stockMovements)
+      .values({ batchId: newId, delta: parsed.fields.quantityRemaining, reason: 'received' })
+      .run();
+
+    // Keep the line, mark it received, and remember which box it became.
+    tx.update(shoppingItems)
+      .set({ status: 'in_stock', receivedBatchId: newId, updatedAt: new Date() })
+      .where(eq(shoppingItems.id, itemId))
+      .run();
+
+    return newId;
+  });
+
   if (batchId === undefined) return fail('Could not add the box to stock.');
-
-  // Keep the line, mark it received, and remember which box it became.
-  await db
-    .update(shoppingItems)
-    .set({ status: 'in_stock', receivedBatchId: batchId, updatedAt: new Date() })
-    .where(eq(shoppingItems.id, itemId));
 
   refreshAll();
   redirect('/shopping');
@@ -650,10 +685,32 @@ export async function updateBatch(_prev: FormResult, formData: FormData): Promis
   const parsed = parseBatchFields(formData);
   if ('error' in parsed) return fail(parsed.error);
 
-  await db
-    .update(batches)
-    .set({ ...parsed.fields, updatedAt: new Date() })
-    .where(eq(batches.id, id));
+  const before = await db
+    .select({ quantityRemaining: batches.quantityRemaining })
+    .from(batches)
+    .where(eq(batches.id, id))
+    .limit(1);
+
+  const previous = before[0];
+  if (!previous) return fail('That box no longer exists.');
+
+  /*
+   * Correcting a typed-in quantity is still stock moving, even though it looks
+   * like editing a field. Recorded as the difference so that fixing "100"
+   * to "10" reads as the ninety that were never there, not as a fresh count.
+   */
+  const delta = Math.round((parsed.fields.quantityRemaining - previous.quantityRemaining) * 100) / 100;
+
+  db.transaction((tx) => {
+    tx.update(batches)
+      .set({ ...parsed.fields, updatedAt: new Date() })
+      .where(eq(batches.id, id))
+      .run();
+
+    if (delta !== 0) {
+      tx.insert(stockMovements).values({ batchId: id, delta, reason: 'adjust' }).run();
+    }
+  });
 
   refreshAll();
   redirect('/');
@@ -864,21 +921,40 @@ export async function adjustBatch(formData: FormData): Promise<void> {
   const delta = Number(formData.get('delta'));
   if (!Number.isInteger(id) || !Number.isFinite(delta)) return;
 
-  await db
-    .update(batches)
-    .set({
-      quantityRemaining: sql`max(0, round((${batches.quantityRemaining} + ${delta}) * 100) / 100)`,
-      // Adjusting a sealed box means it has just been opened.
-      openedAt: sql`coalesce(${batches.openedAt}, date('now'))`,
-      updatedAt: new Date(),
-    })
-    .where(eq(batches.id, id));
+  const rows = await db
+    .select({ quantityRemaining: batches.quantityRemaining })
+    .from(batches)
+    .where(eq(batches.id, id))
+    .limit(1);
 
-  // Emptying a box retires it so it drops out of the stock list.
-  await db
-    .update(batches)
-    .set({ status: 'consumed' })
-    .where(sql`${batches.id} = ${id} and ${batches.quantityRemaining} <= 0`);
+  const current = rows[0];
+  if (!current) return;
+
+  /*
+   * Computed here rather than in SQL because the ledger needs the delta that
+   * was actually applied. Pressing minus on a box with 0.5 left takes half a
+   * tablet, not a whole one, and recording the button press instead of the
+   * movement would put the two out of step immediately.
+   */
+  const { next, applied } = applyAdjustment(current.quantityRemaining, delta);
+  if (applied === 0) return;
+
+  db.transaction((tx) => {
+    tx.update(batches)
+      .set({
+        quantityRemaining: next,
+        // Adjusting a sealed box means it has just been opened.
+        openedAt: sql`coalesce(${batches.openedAt}, date('now'))`,
+        updatedAt: new Date(),
+        // Emptying a box retires it so it drops out of the stock list. No
+        // movement for that: the units already left on the row above.
+        ...(next <= 0 ? { status: 'consumed' as const } : {}),
+      })
+      .where(eq(batches.id, id))
+      .run();
+
+    tx.insert(stockMovements).values({ batchId: id, delta: applied, reason: 'adjust' }).run();
+  });
 
   refreshAll();
 }
@@ -889,10 +965,40 @@ export async function setBatchStatus(formData: FormData): Promise<void> {
   if (!Number.isInteger(id)) return;
   if (!BATCH_STATUSES.some((s) => s === status)) return;
 
-  await db
-    .update(batches)
-    .set({ status: status as (typeof BATCH_STATUSES)[number], updatedAt: new Date() })
-    .where(eq(batches.id, id));
+  const rows = await db
+    .select({ status: batches.status, quantityRemaining: batches.quantityRemaining })
+    .from(batches)
+    .where(eq(batches.id, id))
+    .limit(1);
+
+  const current = rows[0];
+  if (!current) return;
+
+  /*
+   * Binning leaves `quantity_remaining` alone — the waste figures cost what
+   * was left in the box, so that number has to survive. The units leave the
+   * cupboard here instead, as a closing row that takes this batch's running
+   * total to zero. Restoring the box writes the same row the other way up.
+   */
+  const movement = movementForStatusChange(
+    current.status as LedgerBatchStatus,
+    status as LedgerBatchStatus,
+    current.quantityRemaining,
+  );
+
+  db.transaction((tx) => {
+    tx.update(batches)
+      .set({ status: status as (typeof BATCH_STATUSES)[number], updatedAt: new Date() })
+      .where(eq(batches.id, id))
+      .run();
+
+    if (movement) {
+      tx.insert(stockMovements)
+        .values({ batchId: id, delta: movement.delta, reason: movement.reason })
+        .run();
+    }
+  });
+
   refreshAll();
 }
 
@@ -1217,27 +1323,44 @@ export async function confirmDose(formData: FormData): Promise<void> {
   if (allocations.length === 0) return; // nothing in stock to take this from
 
   for (const allocation of allocations) {
-    await db
-      .update(batches)
-      .set({
-        quantityRemaining: sql`max(0, round((${batches.quantityRemaining} - ${allocation.quantity}) * 100) / 100)`,
-        // Taking a dose implicitly opens the pack, same as the stock stepper.
-        openedAt: sql`coalesce(${batches.openedAt}, date('now'))`,
-        updatedAt: new Date(),
-      })
-      .where(eq(batches.id, allocation.batchId));
+    db.transaction((tx) => {
+      tx.update(batches)
+        .set({
+          quantityRemaining: sql`max(0, round((${batches.quantityRemaining} - ${allocation.quantity}) * 100) / 100)`,
+          // Taking a dose implicitly opens the pack, same as the stock stepper.
+          openedAt: sql`coalesce(${batches.openedAt}, date('now'))`,
+          updatedAt: new Date(),
+        })
+        .where(eq(batches.id, allocation.batchId))
+        .run();
 
-    await db
-      .update(batches)
-      .set({ status: 'consumed' })
-      .where(sql`${batches.id} = ${allocation.batchId} and ${batches.quantityRemaining} <= 0`);
+      tx.update(batches)
+        .set({ status: 'consumed' })
+        .where(sql`${batches.id} = ${allocation.batchId} and ${batches.quantityRemaining} <= 0`)
+        .run();
 
-    await db.insert(doseEvents).values({
-      scheduleId,
-      date,
-      occurrence,
-      batchId: allocation.batchId,
-      quantity: allocation.quantity,
+      const event = tx
+        .insert(doseEvents)
+        .values({
+          scheduleId,
+          date,
+          occurrence,
+          batchId: allocation.batchId,
+          quantity: allocation.quantity,
+        })
+        .returning({ id: doseEvents.id })
+        .all();
+
+      // FEFO never allocates more than a box holds, so the applied delta is
+      // the allocation — no clamping to account for, unlike the stepper.
+      tx.insert(stockMovements)
+        .values({
+          batchId: allocation.batchId,
+          delta: -allocation.quantity,
+          reason: 'dose',
+          doseEventId: event[0]?.id ?? null,
+        })
+        .run();
     });
   }
 
@@ -1263,22 +1386,42 @@ export async function undoDose(formData: FormData): Promise<void> {
     );
 
   for (const event of events) {
-    await db
-      .update(batches)
-      .set({
-        quantityRemaining: sql`round((${batches.quantityRemaining} + ${event.quantity}) * 100) / 100`,
-        updatedAt: new Date(),
-      })
-      .where(eq(batches.id, event.batchId));
+    db.transaction((tx) => {
+      tx.update(batches)
+        .set({
+          quantityRemaining: sql`round((${batches.quantityRemaining} + ${event.quantity}) * 100) / 100`,
+          updatedAt: new Date(),
+        })
+        .where(eq(batches.id, event.batchId))
+        .run();
 
-    // Only resurrect a batch that was auto-retired by hitting zero — leave a
-    // deliberately discarded or expired batch exactly as the user left it.
-    await db
-      .update(batches)
-      .set({ status: 'in_stock' })
-      .where(and(eq(batches.id, event.batchId), eq(batches.status, 'consumed')));
+      // Only resurrect a batch that was auto-retired by hitting zero — leave a
+      // deliberately discarded or expired batch exactly as the user left it.
+      // Putting the units back is the row above; the status just follows.
+      tx.update(batches)
+        .set({ status: 'in_stock' })
+        .where(and(eq(batches.id, event.batchId), eq(batches.status, 'consumed')))
+        .run();
 
-    await db.delete(doseEvents).where(eq(doseEvents.id, event.id));
+      /*
+       * An opposite row rather than deleting the original: the tap and the
+       * correction both happened, and a ledger that quietly forgets the first
+       * one cannot be reconciled against anything.
+       *
+       * Unlinked from the dose event on purpose — that row is about to be
+       * deleted, and this movement has to outlive it.
+       */
+      tx.insert(stockMovements)
+        .values({
+          batchId: event.batchId,
+          delta: event.quantity,
+          reason: 'dose',
+          note: 'dose undone',
+        })
+        .run();
+
+      tx.delete(doseEvents).where(eq(doseEvents.id, event.id)).run();
+    });
   }
 
   refreshAll();
