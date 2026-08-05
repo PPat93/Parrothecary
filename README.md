@@ -173,18 +173,29 @@ Ordered. The database is still disposable, and it stops being disposable the day
 deployed and real stock is entered — so anything that changes *what gets recorded* is cheapest
 now, and anything that only reads it can wait.
 
-1. **Stock ledger.** Every quantity change becomes an immutable row: batch, signed delta, reason
-   (`received` / `dose` / `adjust` / `binned` / `audit` / `opening`), timestamp. Today a tap on
-   the minus button rewrites `quantity_remaining` and nothing records that it happened, when, or
-   why — only doses survive, in `dose_events`.
+1. **Stock ledger — done.** Every quantity change is an immutable row: batch, signed delta,
+   reason (`received` / `dose` / `adjust` / `binned` / `audit` / `opening`), timestamp. Before
+   it, a tap on the minus button rewrote `quantity_remaining` and nothing recorded that it had
+   happened, when, or why — only doses survived, in `dose_events`. Undo writes an opposite row
+   rather than erasing the original, so a mistake and its correction are both on the record.
 
    This is the foundation for everything below it, and the one item with a real deadline: a ledger
    cannot backfill history it never saw. It also replaces four separate features with one table —
    arbitrary date ranges, between-trip summaries, "start counting fresh" (an `opening` row, not a
    delete), and the audit below.
-2. **Audit mode.** Count the real shelf, type the numbers, differences land as `audit` movements.
-   Correcting a miscount is already possible; what is missing is any record that it happened, and
-   therefore any answer to how much stock quietly evaporates between counts.
+2. **Stock count — done.** Walk the cupboard, type what is actually in each box, and every
+   difference lands as an `audit` movement. Correcting a miscount was already possible; what was
+   missing was any record that it happened, and therefore any answer to how much stock quietly
+   evaporates between counts. The page reports that running total back.
+
+   Named "stock count" rather than "audit" because the trip page already calls its buying
+   worksheet a cabinet audit, and the two ask opposite questions — that one asks what to buy,
+   this one asks whether the shelf matches the app.
+
+   Every field is optional: a blank box means "did not count this one". A cupboard gets counted
+   in stages, and a form demanding all thirty numbers before accepting any would be abandoned
+   halfway down the shelf. Rows that agree write nothing at all — agreement is not an event, and
+   a row per box counted would bury the differences that are the point.
 3. **Duplicate-substance warnings.** Warn when two things being taken share an active ingredient —
    two cold remedies both containing paracetamol is an overdose path the app currently says
    nothing about. The data is already in `product_substances`.
