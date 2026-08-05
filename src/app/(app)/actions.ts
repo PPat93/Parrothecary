@@ -32,7 +32,12 @@ import {
 import { isValidEan13, parseScan } from '@/domain/barcode';
 import { todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
-import { applyAdjustment, movementForStatusChange, type LedgerBatchStatus } from '@/domain/ledger';
+import {
+  applyAdjustment,
+  movementForCount,
+  movementForStatusChange,
+  type LedgerBatchStatus,
+} from '@/domain/ledger';
 import { deletePhoto, savePhoto } from '@/lib/photos';
 import { findVariantByBarcode, getPreviousCollectionDate } from '@/lib/queries';
 import { defaultOrderByDate } from '@/domain/trip';
@@ -957,6 +962,113 @@ export async function adjustBatch(formData: FormData): Promise<void> {
   });
 
   refreshAll();
+}
+
+/**
+ * Reconcile the cupboard against a physical count.
+ *
+ * Every field is optional and blank means "did not count this one". Counting a
+ * cabinet is a job you do in stages between other things, and a form that
+ * demanded a number for all thirty boxes before it would accept any of them
+ * would simply not get used — the trip worksheet already learned that lesson
+ * the hard way.
+ *
+ * Rows that agree are left alone: no update, no movement. Agreement is not an
+ * event, and writing a row for every box counted would bury the differences,
+ * which are the only reason to do this at all.
+ */
+export async function recordStockCount(
+  _prev: FormResult,
+  formData: FormData,
+): Promise<FormResult> {
+  const fail = (error: string): FormResult => ({ error, values: snapshot(formData) });
+
+  const counts: { batchId: number; counted: number }[] = [];
+
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith('count_') || typeof value !== 'string') continue;
+
+    const raw = value.trim();
+    if (raw === '') continue; // not counted, which is a normal answer
+
+    const batchId = Number(key.slice('count_'.length));
+    if (!Number.isInteger(batchId)) continue;
+
+    const counted = parseUnits(raw);
+    if (counted === null || counted < 0) {
+      return fail(`"${raw}" is not a count. Enter a number — 30, 32.5 or 32,5 all work.`);
+    }
+    // Zero is legitimate: an empty box on the shelf. Anything finer than a
+    // hundredth is not, for the same reason the stepper refuses it.
+    if (counted > 0 && !isTrackableQuantity(counted)) {
+      return fail(`Counts go down to ${UNIT_PRECISION} of a unit — "${raw}" is finer than that.`);
+    }
+
+    counts.push({ batchId, counted });
+  }
+
+  if (counts.length === 0) {
+    return fail('Nothing counted yet. Fill in the boxes you have checked and leave the rest blank.');
+  }
+
+  const current = await db
+    .select({
+      id: batches.id,
+      quantityRemaining: batches.quantityRemaining,
+      status: batches.status,
+    })
+    .from(batches)
+    .where(
+      inArray(
+        batches.id,
+        counts.map((c) => c.batchId),
+      ),
+    );
+
+  const byId = new Map(current.map((row) => [row.id, row]));
+
+  let changed = 0;
+  let netUnits = 0;
+
+  db.transaction((tx) => {
+    for (const { batchId, counted } of counts) {
+      const box = byId.get(batchId);
+      // A box that left stock while the count was being typed is not ours to
+      // resurrect — the count was of a shelf that has since moved on.
+      if (!box || box.status !== 'in_stock') continue;
+
+      const movement = movementForCount(box.quantityRemaining, counted);
+      if (!movement) continue;
+
+      tx.update(batches)
+        .set({
+          quantityRemaining: counted,
+          updatedAt: new Date(),
+          // Counted as empty means empty, and an empty box leaves the shelf.
+          ...(counted <= 0 ? { status: 'consumed' as const } : {}),
+        })
+        .where(eq(batches.id, batchId))
+        .run();
+
+      tx.insert(stockMovements)
+        .values({
+          batchId,
+          delta: movement.delta,
+          reason: movement.reason,
+          note: 'stock count',
+        })
+        .run();
+
+      changed++;
+      netUnits += movement.delta;
+    }
+  });
+
+  refreshAll();
+  redirect(
+    `/count?counted=${counts.length}&changed=${changed}` +
+      `&net=${Math.round(netUnits * 100) / 100}`,
+  );
 }
 
 export async function setBatchStatus(formData: FormData): Promise<void> {

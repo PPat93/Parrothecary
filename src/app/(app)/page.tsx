@@ -47,9 +47,17 @@ export default async function StockPage({
         <div className="mx-auto w-full max-w-2xl">
             <header className="mb-4 flex items-baseline justify-between">
                 <h1 className="text-2xl font-semibold tracking-tight" test-data="stock-title">Stock</h1>
-                <Link href="/stock/new" className={LINK_BUTTON} test-data="add-box-btn" style={toneStyle('accent')}>
-                    Add box
-                </Link>
+                <div className="flex items-center gap-2">
+                    {/* Counting the shelf belongs next to the shelf. Neutral rather
+                        than accent: it is an occasional job, not the main action. */}
+                    <Link href="/count" className={LINK_BUTTON} test-data="count-stock-btn"
+                          style={toneStyle('neutral')}>
+                        Audit
+                    </Link>
+                    <Link href="/stock/new" className={LINK_BUTTON} test-data="add-box-btn" style={toneStyle('accent')}>
+                        Add box
+                    </Link>
+                </div>
             </header>
 
             <SearchBox action="/" value={search} placeholder="Name, brand, substance or symptom…"/>

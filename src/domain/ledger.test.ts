@@ -4,6 +4,7 @@ import {
   MOVEMENT_REASONS,
   applyAdjustment,
   isOutOfStock,
+  movementForCount,
   movementForStatusChange,
   netUnits,
   summariseMovements,
@@ -117,6 +118,33 @@ describe('applyAdjustment', () => {
         expect(next).toBeGreaterThanOrEqual(0);
       }
     }
+  });
+});
+
+describe('movementForCount', () => {
+  it('records what the shelf actually holds, as a difference', () => {
+    // App believed 30, the shelf has 28. Two went somewhere unrecorded.
+    expect(movementForCount(30, 28)).toEqual({ delta: -2, reason: 'audit' });
+  });
+
+  it('handles finding more than expected', () => {
+    expect(movementForCount(10, 14)).toEqual({ delta: 4, reason: 'audit' });
+  });
+
+  it('says nothing when the count agrees', () => {
+    // Most rows, most counts. Agreement is not an event.
+    expect(movementForCount(30, 30)).toBeNull();
+    expect(movementForCount(0, 0)).toBeNull();
+  });
+
+  it('handles an empty box found on the shelf', () => {
+    expect(movementForCount(3, 0)).toEqual({ delta: -3, reason: 'audit' });
+  });
+
+  it('copes with fractional counts', () => {
+    expect(movementForCount(3, 2.5)).toEqual({ delta: -0.5, reason: 'audit' });
+    // Would be -0.09999999999999998 unrounded.
+    expect(movementForCount(0.3, 0.2)).toEqual({ delta: -0.1, reason: 'audit' });
   });
 });
 

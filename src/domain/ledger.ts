@@ -111,6 +111,23 @@ export function applyAdjustment(
   return { next, applied: roundUnits(next - current) };
 }
 
+/**
+ * The row a physical count owes the ledger.
+ *
+ * Counting is absolute where the stepper is relative: you are not saying "one
+ * less", you are saying "there are nine". The difference from what the app
+ * believed is the movement, and its sign is the interesting part — stock
+ * quietly leaves cupboards far more often than it appears in them.
+ *
+ * Null when the count agrees, which is most rows most of the time. Agreement
+ * is not an event and does not belong in the ledger.
+ */
+export function movementForCount(expected: number, counted: number): Movement | null {
+  const delta = roundUnits(counted - expected);
+  if (delta === 0) return null;
+  return { delta, reason: 'audit' };
+}
+
 export interface MovementSummary {
   /** Units that came into the house. */
   received: number;

@@ -14,8 +14,8 @@ and expiry; barcode scanning; dose schedules; run-out projection; trips with an 
 the audit worksheet; prices, waste and cupboard value.
 
 Phase 4 is next — a stock ledger and the features that stand on it — and deployment is
-deliberately last, after end-to-end coverage. See "Roadmap" below. The app still runs locally,
-and the database it runs against is disposable test data.
+deliberately last, after end-to-end coverage. See "Roadmap" below. The app still runs locally
+against test data, which gets wiped for a clean start when it is deployed.
 
 ## Getting started
 
@@ -173,18 +173,29 @@ Ordered. The database is still disposable, and it stops being disposable the day
 deployed and real stock is entered — so anything that changes *what gets recorded* is cheapest
 now, and anything that only reads it can wait.
 
-1. **Stock ledger.** Every quantity change becomes an immutable row: batch, signed delta, reason
-   (`received` / `dose` / `adjust` / `binned` / `audit` / `opening`), timestamp. Today a tap on
-   the minus button rewrites `quantity_remaining` and nothing records that it happened, when, or
-   why — only doses survive, in `dose_events`.
+1. **Stock ledger — done.** Every quantity change is an immutable row: batch, signed delta,
+   reason (`received` / `dose` / `adjust` / `binned` / `audit` / `opening`), timestamp. Before
+   it, a tap on the minus button rewrote `quantity_remaining` and nothing recorded that it had
+   happened, when, or why — only doses survived, in `dose_events`. Undo writes an opposite row
+   rather than erasing the original, so a mistake and its correction are both on the record.
 
    This is the foundation for everything below it, and the one item with a real deadline: a ledger
    cannot backfill history it never saw. It also replaces four separate features with one table —
    arbitrary date ranges, between-trip summaries, "start counting fresh" (an `opening` row, not a
    delete), and the audit below.
-2. **Audit mode.** Count the real shelf, type the numbers, differences land as `audit` movements.
-   Correcting a miscount is already possible; what is missing is any record that it happened, and
-   therefore any answer to how much stock quietly evaporates between counts.
+2. **Stock count — done.** Walk the cupboard, type what is actually in each box, and every
+   difference lands as an `audit` movement. Correcting a miscount was already possible; what was
+   missing was any record that it happened, and therefore any answer to how much stock quietly
+   evaporates between counts. The page reports that running total back.
+
+   Named "stock count" rather than "audit" because the trip page already calls its buying
+   worksheet a cabinet audit, and the two ask opposite questions — that one asks what to buy,
+   this one asks whether the shelf matches the app.
+
+   Every field is optional: a blank box means "did not count this one". A cupboard gets counted
+   in stages, and a form demanding all thirty numbers before accepting any would be abandoned
+   halfway down the shelf. Rows that agree write nothing at all — agreement is not an event, and
+   a row per box counted would bury the differences that are the point.
 3. **Duplicate-substance warnings.** Warn when two things being taken share an active ingredient —
    two cold remedies both containing paracetamol is an overdose path the app currently says
    nothing about. The data is already in `product_substances`.
@@ -196,6 +207,15 @@ now, and anything that only reads it can wait.
 7. **CSV export.** No dependencies, opens in any spreadsheet, and doubles as a manual escape
    hatch on deployment day. Formatting is two clicks outside the app; xlsx was dropped as a
    maintenance burden that buys nothing.
+8. **Statistics: money.** Spend per trip and per year, waste, cupboard value, and price per unit
+   across pack sizes. Every figure here already has years of purchases behind it, so this half
+   is meaningful the day it is built.
+9. **Statistics: usage.** Bought, used and binned over a date range and between one restock and
+   the next; consumption per product. Built second and in its own branch, because it reads the
+   ledger rather than the purchase history and is the half that fills in over time.
+
+   Sections with nothing to show render nothing. No placeholder text explaining what the page is
+   waiting for — this app has two users and both of them know.
 
 End-to-end happy-path coverage runs alongside, per feature as each settles. Items 3, 4 and 6
 barely move existing screens; item 1 changes what the stock buttons do underneath, so stock specs
@@ -213,12 +233,11 @@ which is also the safe way to take a copy for testing a migration against realis
 
 The database is wiped for this: a clean start, entered fresh against the real cupboard.
 
-### Phase 6 — after deployment
-
-8. **Between-trip summaries and statistics.** Bought, used and binned between any two dates, and
-   between one restock and the next. Placed here on purpose rather than demoted: comparing two
-   restocks needs two real restocks, so this is worth building once the ledger has months of live
-   data behind it, not against invented rows.
+Statistics moved here from after deployment, where they were originally placed to let the ledger
+accrue first. That reasoning was wrong: the database is wiped at deployment, so nothing recorded
+beforehand survives and waiting buys nothing. What is genuinely time-dependent is narrower —
+comparing one restock to the next needs two real restocks, and no amount of sequencing produces
+those early.
 
 ### The travel kit, in more detail
 

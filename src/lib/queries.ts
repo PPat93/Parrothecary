@@ -11,6 +11,7 @@ import {
   productSymptoms,
   products,
   shoppingItems,
+  stockMovements,
   TRIP_STATUSES,
   substances,
   symptoms,
@@ -1361,6 +1362,46 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
       onListPacks: onList.get(product.productId) ?? null,
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Counting the shelf                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * When the cupboard was last counted, or null if it never has been.
+ *
+ * The count is only meaningful next to a date: "nothing has drifted" means one
+ * thing after a fortnight and quite another after a year.
+ */
+export async function getLastStockCount(): Promise<Date | null> {
+  const rows = await db
+    .select({ occurredAt: stockMovements.occurredAt })
+    .from(stockMovements)
+    .where(eq(stockMovements.reason, 'audit'))
+    .orderBy(sql`${stockMovements.occurredAt} desc`)
+    .limit(1);
+
+  return rows[0]?.occurredAt ?? null;
+}
+
+/**
+ * How much drift the last few counts turned up.
+ *
+ * The number the whole exercise exists to produce: correcting a miscount was
+ * always possible, but until every correction was on the record there was no
+ * way to ask how much stock leaves the house without anyone noticing.
+ */
+export async function getCountDrift(): Promise<{ movements: number; netUnits: number }> {
+  const rows = await db
+    .select({ delta: stockMovements.delta })
+    .from(stockMovements)
+    .where(eq(stockMovements.reason, 'audit'));
+
+  return {
+    movements: rows.length,
+    netUnits: Math.round(rows.reduce((sum, row) => sum + row.delta, 0) * 100) / 100,
+  };
 }
 
 /* ------------------------------------------------------------------ */
