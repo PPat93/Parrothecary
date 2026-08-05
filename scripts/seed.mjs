@@ -62,7 +62,25 @@ const seed = db.transaction(() => {
 
 seed();
 
-const counts = ['products', 'variants', 'batches'].map(
+/*
+ * Opening balances, so the ledger agrees with the shelf from the first run.
+ * Demo boxes did not arrive through the app and have no history to replay, so
+ * each starts with one row saying what was in it.
+ */
+db.exec(`
+  insert into stock_movements (batch_id, delta, reason, occurred_at)
+  select id, quantity_remaining, 'opening',
+         coalesce(strftime('%s', purchase_date), unixepoch())
+  from batches
+  where quantity_remaining > 0;
+
+  insert into stock_movements (batch_id, delta, reason, occurred_at)
+  select id, -quantity_remaining, 'binned', unixepoch()
+  from batches
+  where status <> 'in_stock' and quantity_remaining > 0;
+`);
+
+const counts = ['products', 'variants', 'batches', 'stock_movements'].map(
   (t) => `${t}: ${db.prepare(`select count(*) c from ${t}`).get().c}`,
 );
 console.log(`Seeded ${dbPath}`);

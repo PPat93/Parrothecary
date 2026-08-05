@@ -8,6 +8,9 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
+// The ledger's own module owns this list; the column just spells it out in SQL.
+// domain/ imports nothing, so the dependency only ever points this way.
+import { MOVEMENT_REASONS } from '@/domain/ledger';
 
 /**
  * The four-layer model:
@@ -504,6 +507,56 @@ export const doseEvents = sqliteTable(
   (t) => [
     index('dose_events_schedule_date_idx').on(t.scheduleId, t.date),
     index('dose_events_batch_idx').on(t.batchId),
+  ],
+);
+
+/* ------------------------------------------------------------------ */
+/* Stock ledger — every unit that moved, and why                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One row per change to how much is in a box.
+ *
+ * `quantity_remaining` on the batch is the current number and stays that way;
+ * this is the history behind it, which the app used to throw away on every
+ * tap. See `src/domain/ledger.ts` for the invariant these rows keep.
+ *
+ * Rows are never updated or deleted — an undo writes an opposite row, so the
+ * mistake and its correction are both on the record. They do cascade with the
+ * batch, because deleting a box that was entered by accident should not leave
+ * its movements behind claiming units that never existed.
+ */
+export const stockMovements = sqliteTable(
+  'stock_movements',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    batchId: integer('batch_id')
+      .notNull()
+      .references(() => batches.id, { onDelete: 'cascade' }),
+
+    /** Signed base units: positive into the cupboard, negative out of it. */
+    delta: real('delta').notNull(),
+    reason: text('reason', { enum: MOVEMENT_REASONS }).notNull(),
+
+    /**
+     * The dose this came from, when it came from one. Set null rather than
+     * cascading: undoing a dose deletes the event, and the movement pair that
+     * records it must outlive that.
+     */
+    doseEventId: integer('dose_event_id').references(() => doseEvents.id, {
+      onDelete: 'set null',
+    }),
+
+    note: text('note'),
+
+    occurredAt: integer('occurred_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [
+    index('stock_movements_batch_idx').on(t.batchId),
+    // Every "between these two dates" question sorts on this.
+    index('stock_movements_occurred_idx').on(t.occurredAt),
   ],
 );
 
