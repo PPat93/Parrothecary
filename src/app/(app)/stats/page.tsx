@@ -8,6 +8,7 @@ import {
   getWaste,
   summariseWaste,
 } from '@/lib/queries';
+import { StatsTabs } from './tabs';
 
 const eur = (minor: number) => formatMoney(money(minor, 'EUR'), { showCurrency: true });
 
@@ -36,8 +37,10 @@ export default async function StatsPage() {
   return (
     <div className="mx-auto w-full max-w-2xl">
       <h1 className="mb-4 text-2xl font-semibold tracking-tight" test-data="stats-title">
-        Money
+        Statistics
       </h1>
+
+      <StatsTabs active="money" />
 
       {/* What is sitting in the drawers, prorated by what is left in each box. */}
       {value.minorEur > 0 ? (

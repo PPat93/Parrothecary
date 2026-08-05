@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, eq, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import {
   batches,
@@ -24,6 +24,7 @@ import { todayIso } from '@/domain/date';
 import { isDosable, type ExpiryInput } from '@/domain/expiry';
 import type { FefoBatch } from '@/domain/fefo';
 import { money, toEurOrNull, unusedValue } from '@/domain/money';
+import { summariseMovements, type Movement, type MovementSummary } from '@/domain/ledger';
 
 /**
  * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
@@ -1550,6 +1551,161 @@ export function summariseWaste(rows: WasteRow[]): WasteSummary {
   }
 
   return summary;
+}
+
+/* ------------------------------------------------------------------ */
+/* Statistics — usage, read from the ledger                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Movements are timestamped; trips and presets are calendar dates. Parsed as
+ * UTC midnight so a window's edges do not shift with the machine's timezone —
+ * a box received on the last day of a trip window belongs inside it.
+ */
+function startOfDay(date: IsoDate): Date {
+  return new Date(`${date}T00:00:00Z`);
+}
+
+/*
+ * A note on what is deliberately NOT totalled here.
+ *
+ * Units are only comparable within a product. Sixty tablets, thirty millilitres
+ * and one emergency blanket do not add up to ninety-one of anything, so no
+ * figure on the usage page sums deltas across products — the per-product tables
+ * carry units, and everything wider counts movements and boxes instead. It
+ * would have been easy to print "316 units received" and it would have meant
+ * nothing at all.
+ */
+
+export interface ProductUsage {
+  productId: number;
+  name: string;
+  strength: string | null;
+  unitName: string;
+  summary: MovementSummary;
+}
+
+/**
+ * What each product got through in a window.
+ *
+ * Grouped by product rather than by box, because "we get through a lot of
+ * paracetamol" is a fact about the medicine, not about which box it came out
+ * of — and FEFO means it comes out of a different box every few weeks.
+ */
+export async function getUsageByProduct(from: Date, to: Date): Promise<ProductUsage[]> {
+  const rows = await db
+    .select({
+      productId: products.id,
+      name: products.name,
+      strength: products.strength,
+      unitName: products.unitName,
+      delta: stockMovements.delta,
+      reason: stockMovements.reason,
+    })
+    .from(stockMovements)
+    .innerJoin(batches, eq(stockMovements.batchId, batches.id))
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(and(gte(stockMovements.occurredAt, from), lte(stockMovements.occurredAt, to)));
+
+  const byProduct = new Map<number, { row: (typeof rows)[number]; movements: Movement[] }>();
+
+  for (const row of rows) {
+    const entry = byProduct.get(row.productId) ?? { row, movements: [] };
+    entry.movements.push({ delta: row.delta, reason: row.reason });
+    byProduct.set(row.productId, entry);
+  }
+
+  return [...byProduct.values()]
+    .map(({ row, movements }) => ({
+      productId: row.productId,
+      name: row.name,
+      strength: row.strength,
+      unitName: row.unitName,
+      summary: summariseMovements(movements),
+    }))
+    // Most used first: the question is always "what are we getting through".
+    .sort((a, b) => b.summary.used - a.summary.used);
+}
+
+export interface RestockWindow {
+  fromLabel: string;
+  toLabel: string;
+  fromDate: string;
+  toDate: string;
+  days: number;
+  /** Counts, not units — see the note above on why these cannot be added up. */
+  boxesReceived: number;
+  doses: number;
+  boxesBinned: number;
+  corrections: number;
+  productsTouched: number;
+}
+
+/**
+ * What happened between one restock and the next.
+ *
+ * The question the whole ledger was built for: a trip is the natural unit of
+ * this household's supply cycle, so "did we buy too much last time" is really
+ * "what did we get through between these two collections". Windows are built
+ * from consecutive completed trips — a planned one has not happened yet and
+ * would open a window with no end.
+ */
+export async function getRestockWindows(): Promise<RestockWindow[]> {
+  const completed = await db
+    .select({ label: trips.label, collectionDate: trips.collectionDate })
+    .from(trips)
+    .where(eq(trips.status, 'completed'))
+    .orderBy(asc(trips.collectionDate));
+
+  if (completed.length < 2) return [];
+
+  // One pass over the movements rather than a query per window: at this scale
+  // the whole ledger is smaller than the round trips would be.
+  const movements = await db
+    .select({
+      productId: variants.productId,
+      batchId: stockMovements.batchId,
+      delta: stockMovements.delta,
+      reason: stockMovements.reason,
+      occurredAt: stockMovements.occurredAt,
+    })
+    .from(stockMovements)
+    .innerJoin(batches, eq(stockMovements.batchId, batches.id))
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .where(gte(stockMovements.occurredAt, startOfDay(completed[0]!.collectionDate)));
+
+  const windows: RestockWindow[] = [];
+
+  for (let i = 1; i < completed.length; i++) {
+    const previous = completed[i - 1]!;
+    const current = completed[i]!;
+    const from = startOfDay(previous.collectionDate);
+    const to = startOfDay(current.collectionDate);
+
+    const inWindow = movements.filter((m) => m.occurredAt >= from && m.occurredAt < to);
+    if (inWindow.length === 0) continue;
+
+    windows.push({
+      fromLabel: previous.label,
+      toLabel: current.label,
+      fromDate: previous.collectionDate,
+      toDate: current.collectionDate,
+      days: Math.round((to.getTime() - from.getTime()) / 86_400_000),
+      boxesReceived: new Set(
+        inWindow.filter((m) => m.reason === 'received' || m.reason === 'opening').map((m) => m.batchId),
+      ).size,
+      doses: inWindow.filter((m) => m.reason === 'dose' && m.delta < 0).length,
+      boxesBinned: new Set(
+        inWindow.filter((m) => m.reason === 'binned' && m.delta < 0).map((m) => m.batchId),
+      ).size,
+      corrections: inWindow.filter((m) => m.reason === 'adjust' || m.reason === 'audit').length,
+      productsTouched: new Set(inWindow.map((m) => m.productId)).size,
+    });
+  }
+
+  // Most recent first: last time is what you compare the next one against.
+  return windows.reverse();
 }
 
 /* ------------------------------------------------------------------ */

@@ -214,9 +214,14 @@ now, and anything that only reads it can wait.
    A cross-product "which pack size is cheapest" section was dropped after checking the data:
    no product has ever been bought in two different pack sizes, so it would have rendered
    nothing. Price-per-unit over time replaced it, which the same data does support.
-9. **Statistics: usage.** Bought, used and binned over a date range and between one restock and
-   the next; consumption per product. Built second and in its own branch, because it reads the
-   ledger rather than the purchase history and is the half that fills in over time.
+9. **Statistics: usage — done.** What moved per product over a chosen window, and what happened
+   between one restock and the next. Reads the ledger rather than the purchase history, so it is
+   the half that fills in as the app gets used.
+
+   **Nothing here adds units across products.** Sixty tablets, thirty millilitres and one
+   emergency blanket are not ninety-one of anything — units are only comparable within a product.
+   The per-product table carries units; anything spanning the whole cabinet counts boxes and
+   movements instead. Printing "316 units received" would have been easy and meaningless.
 
    Sections with nothing to show render nothing. No placeholder text explaining what the page is
    waiting for — this app has two users and both of them know.
