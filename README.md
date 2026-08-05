@@ -207,9 +207,13 @@ now, and anything that only reads it can wait.
 7. **CSV export.** No dependencies, opens in any spreadsheet, and doubles as a manual escape
    hatch on deployment day. Formatting is two clicks outside the app; xlsx was dropped as a
    maintenance burden that buys nothing.
-8. **Statistics: money.** Spend per trip and per year, waste, cupboard value, and price per unit
-   across pack sizes. Every figure here already has years of purchases behind it, so this half
-   is meaningful the day it is built.
+8. **Statistics: money — done.** Cupboard value, spend per year, spend per trip, what a unit
+   costs now against the first time it was bought, and the waste split. Every figure has years
+   of purchases behind it, so this half was meaningful the day it was built.
+
+   A cross-product "which pack size is cheapest" section was dropped after checking the data:
+   no product has ever been bought in two different pack sizes, so it would have rendered
+   nothing. Price-per-unit over time replaced it, which the same data does support.
 9. **Statistics: usage.** Bought, used and binned over a date range and between one restock and
    the next; consumption per product. Built second and in its own branch, because it reads the
    ledger rather than the purchase history and is the half that fills in over time.
