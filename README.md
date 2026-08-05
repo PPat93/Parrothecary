@@ -14,8 +14,8 @@ and expiry; barcode scanning; dose schedules; run-out projection; trips with an 
 the audit worksheet; prices, waste and cupboard value.
 
 Phase 4 is next — a stock ledger and the features that stand on it — and deployment is
-deliberately last, after end-to-end coverage. See "Roadmap" below. The app still runs locally,
-and the database it runs against is disposable test data.
+deliberately last, after end-to-end coverage. See "Roadmap" below. The app still runs locally
+against test data, which gets wiped for a clean start when it is deployed.
 
 ## Getting started
 
@@ -207,6 +207,15 @@ now, and anything that only reads it can wait.
 7. **CSV export.** No dependencies, opens in any spreadsheet, and doubles as a manual escape
    hatch on deployment day. Formatting is two clicks outside the app; xlsx was dropped as a
    maintenance burden that buys nothing.
+8. **Statistics: money.** Spend per trip and per year, waste, cupboard value, and price per unit
+   across pack sizes. Every figure here already has years of purchases behind it, so this half
+   is meaningful the day it is built.
+9. **Statistics: usage.** Bought, used and binned over a date range and between one restock and
+   the next; consumption per product. Built second and in its own branch, because it reads the
+   ledger rather than the purchase history and is the half that fills in over time.
+
+   Sections with nothing to show render nothing. No placeholder text explaining what the page is
+   waiting for — this app has two users and both of them know.
 
 End-to-end happy-path coverage runs alongside, per feature as each settles. Items 3, 4 and 6
 barely move existing screens; item 1 changes what the stock buttons do underneath, so stock specs
@@ -224,12 +233,11 @@ which is also the safe way to take a copy for testing a migration against realis
 
 The database is wiped for this: a clean start, entered fresh against the real cupboard.
 
-### Phase 6 — after deployment
-
-8. **Between-trip summaries and statistics.** Bought, used and binned between any two dates, and
-   between one restock and the next. Placed here on purpose rather than demoted: comparing two
-   restocks needs two real restocks, so this is worth building once the ledger has months of live
-   data behind it, not against invented rows.
+Statistics moved here from after deployment, where they were originally placed to let the ledger
+accrue first. That reasoning was wrong: the database is wiped at deployment, so nothing recorded
+beforehand survives and waiting buys nothing. What is genuinely time-dependent is narrower —
+comparing one restock to the next needs two real restocks, and no amount of sequencing produces
+those early.
 
 ### The travel kit, in more detail
 

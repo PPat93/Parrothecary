@@ -52,7 +52,7 @@ export default async function StockPage({
                         than accent: it is an occasional job, not the main action. */}
                     <Link href="/count" className={LINK_BUTTON} test-data="count-stock-btn"
                           style={toneStyle('neutral')}>
-                        Count
+                        Audit
                     </Link>
                     <Link href="/stock/new" className={LINK_BUTTON} test-data="add-box-btn" style={toneStyle('accent')}>
                         Add box
