@@ -3,8 +3,8 @@ import {ExpiryBadge} from '@/components/expiry-badge';
 import {todayIso} from '@/domain/date';
 import {daysUntilExpiry, expiryStatus, type ExpiryStatus} from '@/domain/expiry';
 import {formatQuantity} from '@/domain/quantity';
-import {formatMoney, money, sumMoney, toEurOrNull, unusedValue} from '@/domain/money';
-import {getExpiringStock, getWaste, toExpiryInput, type StockRow} from '@/lib/queries';
+import {formatMoney, money} from '@/domain/money';
+import {getExpiringStock, getWaste, summariseWaste, toExpiryInput, type StockRow} from '@/lib/queries';
 import {setBatchStatus} from '../actions';
 
 const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
@@ -43,31 +43,17 @@ export default async function ExpiringPage() {
      * "waste" would be arithmetically true and practically a lie, and it would
      * make the honest number next to it easy to ignore.
      *
-     * Both are costed on the unused portion only, converted at the rate recorded
-     * when each was bought, and both live on this page rather than in some
-     * statistics view because this is where the bin button is.
+     * The split itself lives in `summariseWaste` and is shared with the Money
+     * page — it is exactly the kind of rule that drifts once there are two
+     * copies. It stays on screen here as well as there because this is where
+     * the bin button is.
      */
-    const hasPrice = waste.filter((row) => row.priceMinor !== null && row.currency !== null);
-
-    /*
-     * A złoty price with no rate recorded cannot be added to a euro total, and
-     * quietly counting it as nothing would make the figure below read as
-     * complete while being short. Left out and counted instead.
-     */
-    const eurOf = (row: (typeof hasPrice)[number]) =>
-        toEurOrNull(
-            unusedValue(money(row.priceMinor!, row.currency!), row.packSize, row.quantityRemaining),
-            row.fxRateToEur,
-        );
-
-    const priced = hasPrice.filter((row) => eurOf(row) !== null);
-    const uncosted = hasPrice.length - priced.length;
-    const valueOf = (rows: typeof priced) => sumMoney(rows.map((row) => eurOf(row)!), 'EUR');
-
-    const neverOpened = priced.filter((row) => row.openedAt === null);
-    const opened = priced.filter((row) => row.openedAt !== null);
-    const thrownAway = valueOf(neverOpened);
-    const leftInOpened = valueOf(opened);
+    const summary = summariseWaste(waste);
+    const uncosted = summary.uncostedBoxes;
+    const neverOpened = summary.neverOpenedBoxes;
+    const opened = summary.openedBoxes;
+    const thrownAway = money(summary.thrownAwayMinorEur, 'EUR');
+    const leftInOpened = money(summary.leftInOpenedMinorEur, 'EUR');
 
     const byStatus = new Map<ExpiryStatus, StockRow[]>();
     for (const row of rows) {
@@ -159,7 +145,7 @@ export default async function ExpiringPage() {
                 </div>
             )}
 
-            {priced.length > 0 || uncosted > 0 ? (
+            {neverOpened > 0 || opened > 0 || uncosted > 0 ? (
                 <div
                     className="mt-6 rounded-2xl border p-4 text-sm"
                     style={{borderColor: 'var(--border)'}}
@@ -167,12 +153,12 @@ export default async function ExpiringPage() {
                 >
                     <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide" test-data="binned-summary-title">Binned so far</h2>
 
-                    {neverOpened.length > 0 ? (
+                    {neverOpened > 0 ? (
                         <p style={{color: 'var(--muted)'}} test-data="money-wasted">
               <span style={{color: 'var(--color-critical)'}}>
                 {formatMoney(thrownAway, {showCurrency: true})}
               </span>{' '}
-                            in {neverOpened.length} {neverOpened.length === 1 ? 'box' : 'boxes'} never opened —
+                            in {neverOpened} {neverOpened === 1 ? 'box' : 'boxes'} never opened —
                             bought and binned without being used. This is the number worth pushing down.
                         </p>
                     ) : (
@@ -182,10 +168,10 @@ export default async function ExpiringPage() {
                         </p>
                     )}
 
-                    {opened.length > 0 ? (
+                    {opened > 0 ? (
                         <p className="mt-2" style={{color: 'var(--muted)'}} test-data="not-wasted">
                             A further {formatMoney(leftInOpened, {showCurrency: true})} was left in{' '}
-                            {opened.length} opened {opened.length === 1 ? 'pack' : 'packs'}. Not really waste:
+                            {opened} opened {opened === 1 ? 'pack' : 'packs'}. Not really waste:
                             they were opened because they were needed, and you cannot buy half a bottle.
                         </p>
                     ) : null}

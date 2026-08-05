@@ -34,6 +34,30 @@ export function AppHeader() {
       </Link>
 
       <span className="flex items-center gap-1">
+        {/* Money is a look-at-it-occasionally screen, not one of the six things
+            the bottom bar is for, so it lives up here with About. */}
+        <Link
+          href="/stats"
+          aria-label="Money"
+          title="Money"
+          className="flex h-9 w-9 items-center justify-center rounded-lg"
+          style={{ color: 'var(--muted)' }}
+        >
+          <svg
+            aria-hidden
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+          </svg>
+        </Link>
+
         <Link
           href="/about"
           aria-label="About Parrothecary"

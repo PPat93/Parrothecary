@@ -23,7 +23,7 @@ import type { IsoDate } from '@/domain/date';
 import { todayIso } from '@/domain/date';
 import { isDosable, type ExpiryInput } from '@/domain/expiry';
 import type { FefoBatch } from '@/domain/fefo';
-import { money, toEurOrNull } from '@/domain/money';
+import { money, toEurOrNull, unusedValue } from '@/domain/money';
 
 /**
  * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
@@ -1362,6 +1362,194 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
       onListPacks: onList.get(product.productId) ?? null,
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Statistics — money                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface YearSpend {
+  year: string;
+  minorEur: number;
+  boxes: number;
+  /** Boxes that year whose price could not be converted, so are not in the total. */
+  uncostedBoxes: number;
+}
+
+/**
+ * What was spent each year.
+ *
+ * By purchase date rather than by trip: boxes bought locally belong to a year
+ * but to no trip, and leaving them out would make the yearly figure quietly
+ * smaller than the money that actually left the account.
+ */
+export async function getSpendByYear(): Promise<YearSpend[]> {
+  const rows = await db
+    .select({
+      purchaseDate: batches.purchaseDate,
+      priceMinor: batches.purchasePriceMinor,
+      currency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
+    })
+    .from(batches)
+    .where(and(isNotNull(batches.purchasePriceMinor), isNotNull(batches.purchaseDate)));
+
+  const byYear = new Map<string, YearSpend>();
+
+  for (const row of rows) {
+    const year = (row.purchaseDate ?? '').slice(0, 4);
+    if (year.length !== 4) continue;
+
+    const entry = byYear.get(year) ?? { year, minorEur: 0, boxes: 0, uncostedBoxes: 0 };
+    const eur = inEur(row.priceMinor!, row.currency, row.fxRateToEur);
+
+    if (eur === null) entry.uncostedBoxes++;
+    else {
+      entry.minorEur += eur;
+      entry.boxes++;
+    }
+
+    byYear.set(year, entry);
+  }
+
+  return [...byYear.values()].sort((a, b) => a.year.localeCompare(b.year));
+}
+
+export interface PriceTrend {
+  productId: number;
+  name: string;
+  strength: string | null;
+  unitName: string;
+  /** Minor euro units per base unit, so pack sizes cannot flatter each other. */
+  firstPerUnit: number;
+  latestPerUnit: number;
+  firstDate: string;
+  latestDate: string;
+  purchases: number;
+}
+
+/**
+ * What a tablet costs now against what it cost the first time, per product.
+ *
+ * Per unit rather than per pack, because the pack can change size between one
+ * restock and the next and the price per box would then be comparing two
+ * different things. Only products bought more than once appear — a single
+ * purchase has nothing to be a trend against.
+ */
+export async function getPriceTrends(): Promise<PriceTrend[]> {
+  const rows = await db
+    .select({
+      productId: products.id,
+      name: products.name,
+      strength: products.strength,
+      unitName: products.unitName,
+      packSize: variants.packSize,
+      purchaseDate: batches.purchaseDate,
+      priceMinor: batches.purchasePriceMinor,
+      currency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(and(isNotNull(batches.purchasePriceMinor), isNotNull(batches.purchaseDate)))
+    .orderBy(sql`${batches.purchaseDate} asc`);
+
+  const byProduct = new Map<number, PriceTrend>();
+
+  for (const row of rows) {
+    const eur = inEur(row.priceMinor!, row.currency, row.fxRateToEur);
+    // Nothing to compare against if it cannot be put in euro, or if the pack
+    // size is unusable as a denominator.
+    if (eur === null || row.packSize <= 0) continue;
+
+    const perUnit = eur / row.packSize;
+    const date = row.purchaseDate!;
+    const existing = byProduct.get(row.productId);
+
+    if (!existing) {
+      byProduct.set(row.productId, {
+        productId: row.productId,
+        name: row.name,
+        strength: row.strength,
+        unitName: row.unitName,
+        firstPerUnit: perUnit,
+        latestPerUnit: perUnit,
+        firstDate: date,
+        latestDate: date,
+        purchases: 1,
+      });
+      continue;
+    }
+
+    // Rows arrive oldest first, so every later one is the latest so far.
+    existing.latestPerUnit = perUnit;
+    existing.latestDate = date;
+    existing.purchases++;
+  }
+
+  return [...byProduct.values()]
+    .filter((trend) => trend.purchases > 1)
+    // Steepest rise first: that is the one worth doing something about.
+    .sort((a, b) => b.latestPerUnit - b.firstPerUnit - (a.latestPerUnit - a.firstPerUnit));
+}
+
+export interface WasteSummary {
+  /** Bought, never opened, binned. The figure worth pushing down. */
+  thrownAwayMinorEur: number;
+  neverOpenedBoxes: number;
+  /** Left in packs that were opened and used. Not really waste. */
+  leftInOpenedMinorEur: number;
+  openedBoxes: number;
+  /** Binned boxes whose price could not be converted, so are in neither figure. */
+  uncostedBoxes: number;
+}
+
+/**
+ * The two waste figures, deliberately not added together.
+ *
+ * A sealed box that expired is money thrown away. A box that was opened is
+ * not: half a bottle left at its expiry date did its job on the wounds it was
+ * opened for, and that size was the smallest one sold. Adding them would
+ * flatter one and slander the other.
+ *
+ * Shared with the Expiring page rather than written out twice — the split is
+ * the kind of rule that drifts the moment there are two copies of it.
+ */
+export function summariseWaste(rows: WasteRow[]): WasteSummary {
+  const summary: WasteSummary = {
+    thrownAwayMinorEur: 0,
+    neverOpenedBoxes: 0,
+    leftInOpenedMinorEur: 0,
+    openedBoxes: 0,
+    uncostedBoxes: 0,
+  };
+
+  for (const row of rows) {
+    if (row.priceMinor === null || row.currency === null) continue;
+
+    const unused = unusedValue(
+      money(row.priceMinor, row.currency),
+      row.packSize,
+      row.quantityRemaining,
+    );
+    const eur = toEurOrNull(unused, row.fxRateToEur);
+
+    if (eur === null) {
+      summary.uncostedBoxes++;
+      continue;
+    }
+
+    if (row.openedAt === null) {
+      summary.thrownAwayMinorEur += eur.amountMinor;
+      summary.neverOpenedBoxes++;
+    } else {
+      summary.leftInOpenedMinorEur += eur.amountMinor;
+      summary.openedBoxes++;
+    }
+  }
+
+  return summary;
 }
 
 /* ------------------------------------------------------------------ */
