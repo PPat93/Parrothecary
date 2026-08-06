@@ -952,13 +952,25 @@ export async function adjustBatch(formData: FormData): Promise<void> {
   if (!Number.isInteger(id) || !Number.isFinite(delta)) return;
 
   const rows = await db
-    .select({ quantityRemaining: batches.quantityRemaining })
+    .select({ quantityRemaining: batches.quantityRemaining, status: batches.status })
     .from(batches)
     .where(eq(batches.id, id))
     .limit(1);
 
   const current = rows[0];
   if (!current) return;
+
+  /*
+   * The stepper means "I have just taken one out of the cupboard", and you
+   * cannot take one out of a box that is in the bin. The stock list only shows
+   * boxes in stock, but a tab left open while the box was binned somewhere else
+   * still has the buttons on screen — and pressing one used to move units on a
+   * batch whose ledger is supposed to be closed at zero.
+   *
+   * Refused rather than balanced. Editing a binned box's quantity is a real
+   * correction and gets a balancing row; pressing minus on one is a stale page.
+   */
+  if (current.status !== 'in_stock') return;
 
   /*
    * Computed here rather than in SQL because the ledger needs the delta that

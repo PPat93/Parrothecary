@@ -223,9 +223,19 @@ now, and anything that only reads it can wait.
 5. **Travel kit.** See below.
 6. **Help view.** What each screen is for and what the words on it mean — grace, FEFO, order-by,
    the difference between binning a box and using it up.
-7. **CSV export.** No dependencies, opens in any spreadsheet, and doubles as a manual escape
-   hatch on deployment day. Formatting is two clicks outside the app; xlsx was dropped as a
-   maintenance burden that buys nothing.
+7. **CSV export — done.** Three downloads from the Money page: boxes, stock movements, and the
+   product catalogue. Together they are enough to rebuild the cabinet by hand if this app ever
+   stops running. No dependencies; formatting is two clicks in a spreadsheet, which is why xlsx
+   was dropped.
+
+   Three files rather than one, because they answer different questions and a single sheet would
+   repeat the product name on every row of the ledger. Boxes include the ones used up and binned:
+   an escape hatch that quietly omits everything thrown away is a worse record than the database
+   it came from. Every file starts with a byte-order mark — without one Excel reads UTF-8 as the
+   local codepage and turns `Roztwór` and `µg` into mojibake.
+
+   Served by a route handler rather than a server action, since an action cannot hand the browser
+   a file, with the session checked in the handler the same way the photo route does it.
 8. **Statistics: money — done.** Cupboard value, spend per year, spend per trip, what a unit
    costs now against the first time it was bought, and the waste split. Every figure has years
    of purchases behind it, so this half was meaningful the day it was built.

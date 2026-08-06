@@ -190,7 +190,54 @@ export default async function StatsPage() {
           ) : null}
         </Section>
       ) : null}
+
+      {/*
+        Three files rather than one: they answer different questions, and a
+        single sheet would repeat the product name on every row of the ledger.
+        Together they are enough to rebuild the cabinet by hand.
+      */}
+      <Section title="Export">
+        <ul className="flex flex-col gap-2 text-sm" test-data="stats-export">
+          <ExportLink
+            kind="stock"
+            label="Boxes"
+            blurb="Every box ever entered, including used up and binned — quantities, expiry, lot, price."
+          />
+          <ExportLink
+            kind="movements"
+            label="Stock movements"
+            blurb="The whole ledger. The only one of these that cannot be reconstructed by looking in the cupboard."
+          />
+          <ExportLink
+            kind="products"
+            label="Products"
+            blurb="The catalogue: ingredients, symptom tags, barcodes, pack sizes. The part that took an evening to type."
+          />
+        </ul>
+      </Section>
     </div>
+  );
+}
+
+function ExportLink({ kind, label, blurb }: { kind: string; label: string; blurb: string }) {
+  return (
+    <li>
+      {/*
+        A plain anchor, not next/link: this is a file download rather than a
+        navigation, and the router has no business intercepting it.
+      */}
+      <a
+        href={`/export/${kind}`}
+        download
+        className="font-medium underline underline-offset-4"
+        style={{ color: 'var(--color-accent)' }}
+      >
+        {label}.csv
+      </a>
+      <p className="text-xs" style={{ color: 'var(--muted)' }}>
+        {blurb}
+      </p>
+    </li>
   );
 }
 
