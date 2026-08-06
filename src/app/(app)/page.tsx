@@ -92,14 +92,26 @@ export default async function StockPage({
                                 style={{background: 'var(--surface)', borderColor: 'var(--border)'}}
                             >
                                 <div className="flex items-baseline justify-between gap-3">
-                                    <h2 className="font-medium">
-                                        {group.name}
-                                        {group.strength ? (
-                                            <span className="font-normal" style={{color: 'var(--muted)'}}>
-                      {' '}
-                                                {group.strength}
-                    </span>
-                                        ) : null}
+                                    {/*
+                                      The name only, not the whole card: the steppers live inside
+                                      this card and a tap target wrapped round them would send you
+                                      to another page every time you missed a button by a few
+                                      pixels. The heading sits two rows above them, which is far
+                                      enough for a thumb.
+                                    */}
+                                    <h2 className="min-w-0 font-medium">
+                                        <Link href={`/products/${group.productId}`}
+                                              className="break-words hover:underline underline-offset-4">
+                                            {group.name}
+                                            {group.strength ? (
+                                                <span className="font-normal" style={{color: 'var(--muted)'}}>
+                          {' '}
+                                                    {group.strength}
+                        </span>
+                                            ) : null}
+                                            <span aria-hidden className="ml-1 text-sm"
+                                                  style={{color: 'var(--muted)'}}>›</span>
+                                        </Link>
                                     </h2>
                                     <span className="shrink-0 text-right text-sm tabular-nums"
                                           style={{color: 'var(--muted)'}}>
