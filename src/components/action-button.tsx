@@ -20,6 +20,7 @@ export function ActionButton({
   pendingLabel,
   className = 'rounded-lg border px-3 py-1.5 text-xs font-medium',
   title,
+  disabled = false,
   'aria-label': ariaLabel,
 }: {
   children: React.ReactNode;
@@ -28,6 +29,8 @@ export function ActionButton({
   pendingLabel?: string;
   className?: string;
   title?: string;
+  /** For a form that cannot be submitted yet — an amount that is not a number. */
+  disabled?: boolean;
   'aria-label'?: string;
 }) {
   const { pending } = useFormStatus();
@@ -35,7 +38,7 @@ export function ActionButton({
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || disabled}
       title={title}
       aria-label={ariaLabel}
       aria-busy={pending}

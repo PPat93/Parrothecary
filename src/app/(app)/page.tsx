@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import {ActionButton} from '@/components/action-button';
 import {ExpiryBadge} from '@/components/expiry-badge';
 import {RunOutBadge} from '@/components/run-out-badge';
 import {LINK_BUTTON, toneStyle} from '@/components/tone';
@@ -19,7 +18,7 @@ import {
     groupByProduct,
     toExpiryInput,
 } from '@/lib/queries';
-import {adjustBatch} from './actions';
+import {TakeStepper} from './take-stepper';
 
 export default async function StockPage({
                                             searchParams,
@@ -93,14 +92,26 @@ export default async function StockPage({
                                 style={{background: 'var(--surface)', borderColor: 'var(--border)'}}
                             >
                                 <div className="flex items-baseline justify-between gap-3">
-                                    <h2 className="font-medium">
-                                        {group.name}
-                                        {group.strength ? (
-                                            <span className="font-normal" style={{color: 'var(--muted)'}}>
-                      {' '}
-                                                {group.strength}
-                    </span>
-                                        ) : null}
+                                    {/*
+                                      The name only, not the whole card: the steppers live inside
+                                      this card and a tap target wrapped round them would send you
+                                      to another page every time you missed a button by a few
+                                      pixels. The heading sits two rows above them, which is far
+                                      enough for a thumb.
+                                    */}
+                                    <h2 className="min-w-0 font-medium">
+                                        <Link href={`/products/${group.productId}`}
+                                              className="break-words hover:underline underline-offset-4">
+                                            {group.name}
+                                            {group.strength ? (
+                                                <span className="font-normal" style={{color: 'var(--muted)'}}>
+                          {' '}
+                                                    {group.strength}
+                        </span>
+                                            ) : null}
+                                            <span aria-hidden className="ml-1 text-sm"
+                                                  style={{color: 'var(--muted)'}}>›</span>
+                                        </Link>
                                     </h2>
                                     <span className="shrink-0 text-right text-sm tabular-nums"
                                           style={{color: 'var(--muted)'}}>
@@ -152,11 +163,14 @@ export default async function StockPage({
                                                 ) : null}
                     </span>
 
-                                            <Stepper batchId={box.batchId} delta={-1} label="−"/>
-                                            <Stepper batchId={box.batchId} delta={1} label="+"/>
+                                            <TakeStepper batchId={box.batchId} unitName={box.unitName}
+                                                          remaining={box.quantityRemaining}
+                                                          packSize={box.packSize}/>
 
-                                            {/* Correcting a mistyped quantity must not go through the
-                        steppers — ninety taps would log ninety doses. */}
+                                            {/* Correcting a mistyped quantity belongs here, not on the
+                        stepper. Taking ninety out says ninety were used; this
+                        says there were never ninety to begin with. The ledger
+                        records them differently, and only one is consumption. */}
                                             <Link
                                                 href={`/stock/${box.batchId}/edit`}
                                                 aria-label={`Correct this box of ${group.name}`}
@@ -203,21 +217,6 @@ export default async function StockPage({
     );
 }
 
-function Stepper({batchId, delta, label}: { batchId: number; delta: number; label: string }) {
-    return (
-        <form action={adjustBatch}>
-            <input type="hidden" name="id" value={batchId}/>
-            <input type="hidden" name="delta" value={delta}/>
-            <ActionButton
-                aria-label={delta > 0 ? 'Add one' : 'Take one'}
-                tone={delta > 0 ? 'ok' : 'neutral'}
-                className="h-9 w-9 rounded-lg border text-lg leading-none"
-            >
-                {label}
-            </ActionButton>
-        </form>
-    );
-}
 
 function NoMatches({search}: { search: string }) {
     return (
