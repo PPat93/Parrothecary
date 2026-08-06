@@ -1,4 +1,4 @@
-import type { BATCH_STATUSES, SHOPPING_STATUSES } from '@/db/schema';
+import type { ALTERNATIVE_RELATIONS, BATCH_STATUSES, SHOPPING_STATUSES } from '@/db/schema';
 
 /**
  * Human wording for the status enums.
@@ -29,6 +29,28 @@ export const BATCH_STATUS_LABELS: Record<(typeof BATCH_STATUSES)[number], string
   expired: 'binned, expired',
   discarded: 'discarded',
 };
+
+/**
+ * How one product stands in for another.
+ *
+ * Worded to read after the product's name — "Ibuprom Max — same active
+ * substance" — because that is the sentence being answered: we are out of this
+ * one, what else would do.
+ */
+export const ALTERNATIVE_RELATION_LABELS: Record<
+  (typeof ALTERNATIVE_RELATIONS)[number],
+  string
+> = {
+  same_substance: 'same active substance',
+  local_equivalent: 'local equivalent',
+  substitute: 'works instead',
+};
+
+export function alternativeRelationLabel(relation: string): string {
+  return (
+    ALTERNATIVE_RELATION_LABELS[relation as keyof typeof ALTERNATIVE_RELATION_LABELS] ?? relation
+  );
+}
 
 /**
  * The row types carry `status` as a plain string, so both of these fall back to

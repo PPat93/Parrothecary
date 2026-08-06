@@ -7,6 +7,7 @@ import {
   doseEvents,
   doseSchedules,
   householdMembers,
+  productAlternatives,
   productSubstances,
   productSymptoms,
   products,
@@ -22,7 +23,7 @@ import {
 import type { IsoDate } from '@/domain/date';
 import { todayIso } from '@/domain/date';
 import { isDosable, type ExpiryInput } from '@/domain/expiry';
-import type { FefoBatch } from '@/domain/fefo';
+import { totalAvailable, type FefoBatch } from '@/domain/fefo';
 import { money, toEurOrNull, unusedValue } from '@/domain/money';
 import { summariseMovements, type Movement, type MovementSummary } from '@/domain/ledger';
 
@@ -1505,6 +1506,114 @@ export async function getProductExport() {
     symptoms: (symptomsByProduct.get(row.productId) ?? []).join('; '),
     barcodes: (barcodesByProduct.get(row.productId) ?? []).join('; '),
     packs: (packsByProduct.get(row.productId) ?? []).join('; '),
+  }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Alternatives — what else would do                                   */
+/* ------------------------------------------------------------------ */
+
+export interface AlternativeRow {
+  productId: number;
+  name: string;
+  strength: string | null;
+  relation: string;
+  note: string | null;
+  archived: boolean;
+  /** Usable units on the shelf right now — the first thing you want to know. */
+  inStockUnits: number;
+  unitName: string;
+}
+
+/**
+ * What could stand in for this product.
+ *
+ * Read in both directions from a single stored row. Storing one row per pair
+ * and looking both ways is the only version that cannot go half-linked: record
+ * it on the paracetamol and it is missing from the ibuprofen, which is exactly
+ * the moment you would be looking for it.
+ */
+export async function getAlternatives(productId: number): Promise<AlternativeRow[]> {
+  const rows = await db
+    .select({
+      forward: productAlternatives.productId,
+      backward: productAlternatives.alternativeProductId,
+      relation: productAlternatives.relation,
+      note: productAlternatives.note,
+    })
+    .from(productAlternatives)
+    .where(
+      or(
+        eq(productAlternatives.productId, productId),
+        eq(productAlternatives.alternativeProductId, productId),
+      ),
+    );
+
+  if (rows.length === 0) return [];
+
+  // Whichever end of the pair is not the product being looked at.
+  const otherIds = rows.map((row) => (row.forward === productId ? row.backward : row.forward));
+
+  const [others, stock] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        name: products.name,
+        strength: products.strength,
+        unitName: products.unitName,
+        archivedAt: products.archivedAt,
+      })
+      .from(products)
+      .where(inArray(products.id, otherIds))
+      .orderBy(byName),
+    /*
+     * Through the same helpers the rest of the app counts stock with, rather
+     * than a correlated subquery of its own. "In stock" has one definition —
+     * it excludes anything past what its product tolerates — and a second
+     * hand-written version here would have quietly offered you a box that no
+     * screen would let you take a dose from.
+     */
+    getBatchesForProducts(otherIds),
+  ]);
+
+  const today = todayIso();
+  const detail = new Map(others.map((row) => [row.id, row]));
+
+  return rows
+    .map((row) => {
+      const otherId = row.forward === productId ? row.backward : row.forward;
+      const other = detail.get(otherId);
+      if (!other) return null;
+
+      return {
+        productId: otherId,
+        name: other.name,
+        strength: other.strength,
+        relation: row.relation,
+        note: row.note,
+        archived: other.archivedAt !== null,
+        inStockUnits: totalAvailable(stock.get(otherId) ?? [], today),
+        unitName: other.unitName,
+      };
+    })
+    .filter((row) => row !== null)
+    // Something on the shelf beats something that is only theoretically similar.
+    .sort((a, b) => b.inStockUnits - a.inStockUnits || a.name.localeCompare(b.name));
+}
+
+/** Products this one could be linked to: everything else still kept. */
+export async function getAlternativeCandidates(
+  productId: number,
+): Promise<{ id: number; label: string }[]> {
+  const rows = await db
+    .select({ id: products.id, name: products.name, strength: products.strength })
+    .from(products)
+    .where(and(isNull(products.archivedAt), sql`${products.id} <> ${productId}`))
+    .orderBy(byName);
+
+  return rows.map((row) => ({
+    id: row.id,
+    label: [row.name, row.strength].filter(Boolean).join(' '),
   }));
 }
 

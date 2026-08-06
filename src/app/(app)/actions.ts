@@ -2,10 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
 import {
+  ALTERNATIVE_RELATIONS,
   BARCODE_TYPES,
   BATCH_STATUSES,
   CURRENCIES,
@@ -18,6 +19,7 @@ import {
   doseEvents,
   doseSchedules,
   householdMembers,
+  productAlternatives,
   productSubstances,
   products,
   shoppingItems,
@@ -1140,6 +1142,90 @@ export async function recordStockCount(
     `/count?counted=${counts.length}&changed=${changed}` +
       `&net=${Math.round(netUnits * 100) / 100}`,
   );
+}
+
+/**
+ * Record that one product could stand in for another.
+ *
+ * Stored once, read from both ends. The pair is checked in both directions
+ * before inserting, because A-instead-of-B and B-instead-of-A are the same
+ * fact, and holding both would show the product twice on one page and let the
+ * two rows disagree about the relation.
+ */
+export async function addAlternative(
+  _prev: FormResult,
+  formData: FormData,
+): Promise<FormResult> {
+  const productId = Number(formData.get('productId'));
+  const alternativeId = Number(formData.get('alternativeId'));
+  const relation = String(formData.get('relation') ?? '');
+  const note = emptyToNull(String(formData.get('note') ?? '').trim());
+
+  if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
+  if (!Number.isInteger(alternativeId) || alternativeId <= 0) {
+    return { error: 'Pick something for it to stand in for.', values: snapshot(formData) };
+  }
+  if (alternativeId === productId) {
+    return { error: 'A product cannot be an alternative to itself.', values: snapshot(formData) };
+  }
+  if (!ALTERNATIVE_RELATIONS.some((r) => r === relation)) {
+    return { error: 'Pick how the two are related.', values: snapshot(formData) };
+  }
+
+  const existing = await db
+    .select({ productId: productAlternatives.productId })
+    .from(productAlternatives)
+    .where(
+      or(
+        and(
+          eq(productAlternatives.productId, productId),
+          eq(productAlternatives.alternativeProductId, alternativeId),
+        ),
+        and(
+          eq(productAlternatives.productId, alternativeId),
+          eq(productAlternatives.alternativeProductId, productId),
+        ),
+      ),
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    return { error: 'These two are already linked.', values: snapshot(formData) };
+  }
+
+  await db.insert(productAlternatives).values({
+    productId,
+    alternativeProductId: alternativeId,
+    relation: relation as (typeof ALTERNATIVE_RELATIONS)[number],
+    note,
+  });
+
+  refreshAll();
+  return { error: null, ok: true };
+}
+
+/** Unlinks whichever way round the pair happens to be stored. */
+export async function removeAlternative(formData: FormData): Promise<void> {
+  const productId = Number(formData.get('productId'));
+  const alternativeId = Number(formData.get('alternativeId'));
+  if (!Number.isInteger(productId) || !Number.isInteger(alternativeId)) return;
+
+  await db
+    .delete(productAlternatives)
+    .where(
+      or(
+        and(
+          eq(productAlternatives.productId, productId),
+          eq(productAlternatives.alternativeProductId, alternativeId),
+        ),
+        and(
+          eq(productAlternatives.productId, alternativeId),
+          eq(productAlternatives.alternativeProductId, productId),
+        ),
+      ),
+    );
+
+  refreshAll();
 }
 
 export async function setBatchStatus(formData: FormData): Promise<void> {
