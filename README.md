@@ -174,10 +174,18 @@ deployed and real stock is entered — so anything that changes *what gets recor
 now, and anything that only reads it can wait.
 
 1. **Stock ledger — done.** Every quantity change is an immutable row: batch, signed delta,
-   reason (`received` / `dose` / `adjust` / `binned` / `audit` / `opening`), timestamp. Before
+   reason (`received` / `dose` / `taken` / `adjust` / `binned` / `audit` / `opening`),
+   timestamp. Before
    it, a tap on the minus button rewrote `quantity_remaining` and nothing recorded that it had
    happened, when, or why — only doses survived, in `dose_events`. Undo writes an opposite row
    rather than erasing the original, so a mistake and its correction are both on the record.
+
+   The reasons distinguish three things that look identical in a database and are not: a tablet
+   **taken** by hand off the stock list, a quantity **adjusted** because it was typed wrong, and
+   a difference an **audit** count could not explain. Only the first is consumption. They shared
+   one reason at first, which reported every unscheduled product — most of the cabinet — as never
+   used at all, and could not be untangled afterwards because the distinction had never been
+   written down.
 
    This is the foundation for everything below it, and the one item with a real deadline: a ledger
    cannot backfill history it never saw. It also replaces four separate features with one table —

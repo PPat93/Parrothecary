@@ -193,7 +193,14 @@ describe('summariseMovements', () => {
       move(-30, 'binned'),
     ]);
 
-    expect(summary).toEqual({ received: 90, used: 20, binned: 30, adjusted: 0, net: 40 });
+    expect(summary).toEqual({
+      received: 90,
+      used: 20,
+      binned: 30,
+      corrected: 0,
+      drift: 0,
+      net: 40,
+    });
   });
 
   it('counts an opening balance as stock that came in', () => {
@@ -212,10 +219,44 @@ describe('summariseMovements', () => {
     expect(summary.net).toBe(0);
   });
 
-  it('keeps corrections signed, because they go both ways', () => {
-    const summary = summariseMovements([move(-3, 'adjust'), move(1, 'audit')]);
-    expect(summary.adjusted).toBe(-2);
-    expect(summary.used).toBe(0);
+  it('keeps corrections and drift apart, and out of what was used', () => {
+    /*
+     * Three different facts that used to share one bucket: a tablet swallowed,
+     * a quantity mis-typed, and stock a count could not account for. Only the
+     * first answers "how fast do we get through this".
+     */
+    const summary = summariseMovements([
+      move(-2, 'taken'),
+      move(-3, 'adjust'),
+      move(1, 'audit'),
+    ]);
+    expect(summary.used).toBe(2);
+    expect(summary.corrected).toBe(-3);
+    expect(summary.drift).toBe(1);
+  });
+
+  it('counts hand-taken units as used, not as a correction', () => {
+    // Two taps of minus on the stock list for two vitamin C.
+    const summary = summariseMovements([move(-1, 'taken'), move(-1, 'taken')]);
+    expect(summary.used).toBe(2);
+    expect(summary.corrected).toBe(0);
+  });
+
+  it('lets the plus button put one back', () => {
+    // Took three, put one back: two were used.
+    const summary = summariseMovements([
+      move(-1, 'taken'),
+      move(-1, 'taken'),
+      move(-1, 'taken'),
+      move(1, 'taken'),
+    ]);
+    expect(summary.used).toBe(2);
+    expect(summary.net).toBe(-2);
+  });
+
+  it('adds scheduled doses and hand-taken units into one figure', () => {
+    const summary = summariseMovements([move(-1, 'dose'), move(-2, 'taken')]);
+    expect(summary.used).toBe(3);
   });
 
   it('is all zeroes for no movements', () => {
@@ -223,7 +264,8 @@ describe('summariseMovements', () => {
       received: 0,
       used: 0,
       binned: 0,
-      adjusted: 0,
+      corrected: 0,
+      drift: 0,
       net: 0,
     });
   });

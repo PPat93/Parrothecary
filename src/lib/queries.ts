@@ -1684,9 +1684,11 @@ export interface RestockWindow {
   days: number;
   /** Counts, not units — see the note above on why these cannot be added up. */
   boxesReceived: number;
-  doses: number;
+  /** Times something was taken: scheduled doses and hand-taken alike. */
+  timesTaken: number;
   boxesBinned: number;
   corrections: number;
+  countDifferences: number;
   productsTouched: number;
 }
 
@@ -1743,11 +1745,14 @@ export async function getRestockWindows(): Promise<RestockWindow[]> {
       boxesReceived: new Set(
         inWindow.filter((m) => m.reason === 'received' || m.reason === 'opening').map((m) => m.batchId),
       ).size,
-      doses: inWindow.filter((m) => m.reason === 'dose' && m.delta < 0).length,
+      timesTaken: inWindow.filter(
+        (m) => (m.reason === 'dose' || m.reason === 'taken') && m.delta < 0,
+      ).length,
       boxesBinned: new Set(
         inWindow.filter((m) => m.reason === 'binned' && m.delta < 0).map((m) => m.batchId),
       ).size,
-      corrections: inWindow.filter((m) => m.reason === 'adjust' || m.reason === 'audit').length,
+      corrections: inWindow.filter((m) => m.reason === 'adjust').length,
+      countDifferences: inWindow.filter((m) => m.reason === 'audit').length,
       productsTouched: new Set(inWindow.map((m) => m.productId)).size,
     });
   }

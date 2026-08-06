@@ -983,7 +983,13 @@ export async function adjustBatch(formData: FormData): Promise<void> {
       .where(eq(batches.id, id))
       .run();
 
-    tx.insert(stockMovements).values({ batchId: id, delta: applied, reason: 'adjust' }).run();
+    /*
+     * `taken`, not `adjust`: pressing minus on the stock list is somebody
+     * swallowing a tablet, and most of this cabinet is never on a dose
+     * schedule. Filing it as a correction reported the plasters, the
+     * painkillers and the vitamins as never used at all.
+     */
+    tx.insert(stockMovements).values({ batchId: id, delta: applied, reason: 'taken' }).run();
   });
 
   refreshAll();
