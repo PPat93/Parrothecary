@@ -128,6 +128,29 @@ export function movementForCount(expected: number, counted: number): Movement | 
   return { delta, reason: 'audit' };
 }
 
+/**
+ * The row needed to keep a box that has already left stock balanced at zero.
+ *
+ * Things still happen to a binned box: its quantity gets corrected because the
+ * original entry was a typo, or a dose taken out of it weeks ago gets undone.
+ * Each of those is a real movement and gets its own row — but the box is not
+ * back in the cupboard, so the running total has to come back to zero or it
+ * starts claiming units that are in the bin.
+ *
+ * Null for a box still in stock, where the movement stands on its own.
+ */
+export function closureMovement(
+  status: LedgerBatchStatus,
+  delta: number,
+): Movement | null {
+  if (!isOutOfStock(status)) return null;
+
+  const rounded = roundUnits(delta);
+  if (rounded === 0) return null;
+
+  return { delta: -rounded, reason: 'binned' };
+}
+
 export interface MovementSummary {
   /** Units that came into the house. */
   received: number;

@@ -3,6 +3,7 @@ import { BATCH_STATUSES } from '@/db/schema';
 import {
   MOVEMENT_REASONS,
   applyAdjustment,
+  closureMovement,
   isOutOfStock,
   movementForCount,
   movementForStatusChange,
@@ -117,6 +118,36 @@ describe('applyAdjustment', () => {
         expect(Math.round((current + applied) * 100) / 100).toBe(next);
         expect(next).toBeGreaterThanOrEqual(0);
       }
+    }
+  });
+});
+
+describe('closureMovement', () => {
+  /*
+   * Both of these were live bugs: editing the quantity on a binned box, and
+   * undoing a dose taken from a box that was binned afterwards. Each wrote a
+   * movement and left the batch's running total non-zero while the box sat in
+   * the bin — so the ledger claimed units that were not in the cupboard.
+   */
+  it('balances a correction made to a box that has left stock', () => {
+    expect(closureMovement('expired', -5)).toEqual({ delta: 5, reason: 'binned' });
+    expect(closureMovement('discarded', 3)).toEqual({ delta: -3, reason: 'binned' });
+    expect(closureMovement('consumed', 1)).toEqual({ delta: -1, reason: 'binned' });
+  });
+
+  it('leaves a box that is still in stock alone', () => {
+    // Here the movement stands on its own — the total should change.
+    expect(closureMovement('in_stock', -5)).toBeNull();
+  });
+
+  it('does nothing when nothing moved', () => {
+    expect(closureMovement('expired', 0)).toBeNull();
+  });
+
+  it('cancels the movement it balances, exactly', () => {
+    for (const delta of [-30, -0.25, 0.1, 7.5, 62]) {
+      const closure = closureMovement('expired', delta);
+      expect(netUnits([{ delta, reason: 'adjust' }, closure!])).toBe(0);
     }
   });
 });

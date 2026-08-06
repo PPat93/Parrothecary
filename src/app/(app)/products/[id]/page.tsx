@@ -51,8 +51,19 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
    */
   const overlaps = overlapsForProduct(product.id, substanceLinks).map((overlap) => ({
     name: substanceLinks.find((link) => link.substanceId === overlap.substanceId)?.substanceName,
+    /*
+     * Matched on the substance as well as the product. Looking up by product
+     * alone returns whichever ingredient that product happens to list first,
+     * so a two-ingredient box would print its caffeine content beside the
+     * word "paracetamol" — the right shape of sentence with the wrong number
+     * in it, which is worse than saying nothing.
+     */
     others: overlap.productIds
-      .map((productId) => substanceLinks.find((link) => link.productId === productId))
+      .map((productId) =>
+        substanceLinks.find(
+          (link) => link.productId === productId && link.substanceId === overlap.substanceId,
+        ),
+      )
       .filter((link) => link !== undefined),
   }));
 

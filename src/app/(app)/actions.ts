@@ -34,6 +34,7 @@ import { todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import {
   applyAdjustment,
+  closureMovement,
   movementForCount,
   movementForStatusChange,
   type LedgerBatchStatus,
@@ -579,20 +580,26 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
    * would leave the ledger disagreeing with the shelf, which is the one thing
    * it exists not to do.
    */
-  db.transaction((tx) => {
-    const inserted = tx
-      .insert(batches)
-      .values({ variantId, ...parsed.fields })
-      .returning({ id: batches.id })
-      .all();
+  try {
+    db.transaction((tx) => {
+      const inserted = tx
+        .insert(batches)
+        .values({ variantId, ...parsed.fields })
+        .returning({ id: batches.id })
+        .all();
 
-    const batchId = inserted[0]?.id;
-    if (batchId === undefined) throw new Error('Could not add the box.');
+      const batchId = inserted[0]?.id;
+      if (batchId === undefined) throw new Error('insert produced no row');
 
-    tx.insert(stockMovements)
-      .values({ batchId, delta: parsed.fields.quantityRemaining, reason: 'received' })
-      .run();
-  });
+      tx.insert(stockMovements)
+        .values({ batchId, delta: parsed.fields.quantityRemaining, reason: 'received' })
+        .run();
+    });
+  } catch {
+    // The throw rolls the transaction back; without catching it the user got a
+    // crash page instead of the form telling them what happened.
+    return fail('Could not add the box. Nothing was saved.');
+  }
 
   refreshAll();
   redirect('/');
@@ -645,28 +652,34 @@ export async function receiveShoppingItem(
    * Three writes that only make sense together: the box, the row saying it
    * arrived, and the shopping line that becomes it.
    */
-  const batchId = db.transaction((tx) => {
-    const inserted = tx
-      .insert(batches)
-      .values({ variantId: item.variantId, ...parsed.fields })
-      .returning({ id: batches.id })
-      .all();
+  let batchId: number | undefined;
+  try {
+    batchId = db.transaction((tx) => {
+      const inserted = tx
+        .insert(batches)
+        .values({ variantId: item.variantId, ...parsed.fields })
+        .returning({ id: batches.id })
+        .all();
 
-    const newId = inserted[0]?.id;
-    if (newId === undefined) throw new Error('Could not add the box to stock.');
+      const newId = inserted[0]?.id;
+      if (newId === undefined) throw new Error('insert produced no row');
 
-    tx.insert(stockMovements)
-      .values({ batchId: newId, delta: parsed.fields.quantityRemaining, reason: 'received' })
-      .run();
+      tx.insert(stockMovements)
+        .values({ batchId: newId, delta: parsed.fields.quantityRemaining, reason: 'received' })
+        .run();
 
-    // Keep the line, mark it received, and remember which box it became.
-    tx.update(shoppingItems)
-      .set({ status: 'in_stock', receivedBatchId: newId, updatedAt: new Date() })
-      .where(eq(shoppingItems.id, itemId))
-      .run();
+      // Keep the line, mark it received, and remember which box it became.
+      tx.update(shoppingItems)
+        .set({ status: 'in_stock', receivedBatchId: newId, updatedAt: new Date() })
+        .where(eq(shoppingItems.id, itemId))
+        .run();
 
-    return newId;
-  });
+      return newId;
+    });
+  } catch {
+    // Rolled back — the line is untouched and no box was created.
+    return fail('Could not add the box to stock. Nothing was saved.');
+  }
 
   if (batchId === undefined) return fail('Could not add the box to stock.');
 
@@ -691,7 +704,7 @@ export async function updateBatch(_prev: FormResult, formData: FormData): Promis
   if ('error' in parsed) return fail(parsed.error);
 
   const before = await db
-    .select({ quantityRemaining: batches.quantityRemaining })
+    .select({ quantityRemaining: batches.quantityRemaining, status: batches.status })
     .from(batches)
     .where(eq(batches.id, id))
     .limit(1);
@@ -714,6 +727,18 @@ export async function updateBatch(_prev: FormResult, formData: FormData): Promis
 
     if (delta !== 0) {
       tx.insert(stockMovements).values({ batchId: id, delta, reason: 'adjust' }).run();
+
+      /*
+       * Correcting the quantity on a box that is already in the bin is a real
+       * correction, but it does not put anything back in the cupboard — so the
+       * closing row moves with it and the batch stays balanced at zero.
+       */
+      const closure = closureMovement(previous.status as LedgerBatchStatus, delta);
+      if (closure) {
+        tx.insert(stockMovements)
+          .values({ batchId: id, delta: closure.delta, reason: closure.reason, note: 'still binned' })
+          .run();
+      }
     }
   });
 
@@ -1011,26 +1036,33 @@ export async function recordStockCount(
     return fail('Nothing counted yet. Fill in the boxes you have checked and leave the rest blank.');
   }
 
-  const current = await db
-    .select({
-      id: batches.id,
-      quantityRemaining: batches.quantityRemaining,
-      status: batches.status,
-    })
-    .from(batches)
-    .where(
-      inArray(
-        batches.id,
-        counts.map((c) => c.batchId),
-      ),
-    );
-
-  const byId = new Map(current.map((row) => [row.id, row]));
-
   let changed = 0;
   let netUnits = 0;
 
   db.transaction((tx) => {
+    /*
+     * Read inside the transaction, not before it. Counting a cupboard takes
+     * long enough that a box can be binned from the other phone while the
+     * numbers are being typed, and a guard checking a status fetched minutes
+     * earlier would happily resurrect it.
+     */
+    const current = tx
+      .select({
+        id: batches.id,
+        quantityRemaining: batches.quantityRemaining,
+        status: batches.status,
+      })
+      .from(batches)
+      .where(
+        inArray(
+          batches.id,
+          counts.map((c) => c.batchId),
+        ),
+      )
+      .all();
+
+    const byId = new Map(current.map((row) => [row.id, row]));
+
     for (const { batchId, counted } of counts) {
       const box = byId.get(batchId);
       // A box that left stock while the count was being typed is not ours to
@@ -1487,8 +1519,14 @@ export async function undoDose(formData: FormData): Promise<void> {
   if (!Number.isInteger(scheduleId) || !date || !Number.isInteger(occurrence)) return;
 
   const events = await db
-    .select({ id: doseEvents.id, batchId: doseEvents.batchId, quantity: doseEvents.quantity })
+    .select({
+      id: doseEvents.id,
+      batchId: doseEvents.batchId,
+      quantity: doseEvents.quantity,
+      batchStatus: batches.status,
+    })
     .from(doseEvents)
+    .innerJoin(batches, eq(doseEvents.batchId, batches.id))
     .where(
       and(
         eq(doseEvents.scheduleId, scheduleId),
@@ -1531,6 +1569,27 @@ export async function undoDose(formData: FormData): Promise<void> {
           note: 'dose undone',
         })
         .run();
+
+      /*
+       * A box auto-retired at zero comes back to `in_stock` on the row above,
+       * so its units genuinely return and nothing needs balancing. One that
+       * was deliberately binned stays binned — the dose is still undone, but
+       * the tablet is in the bin, not the cupboard.
+       */
+      const closure = closureMovement(
+        event.batchStatus === 'consumed' ? 'in_stock' : (event.batchStatus as LedgerBatchStatus),
+        event.quantity,
+      );
+      if (closure) {
+        tx.insert(stockMovements)
+          .values({
+            batchId: event.batchId,
+            delta: closure.delta,
+            reason: closure.reason,
+            note: 'still binned',
+          })
+          .run();
+      }
 
       tx.delete(doseEvents).where(eq(doseEvents.id, event.id)).run();
     });
