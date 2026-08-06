@@ -49,8 +49,13 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
    * warning proper lives on the Doses board, where two things are actually
    * being taken.
    */
-  const overlaps = overlapsForProduct(product.id, substanceLinks).map((overlap) => ({
-    name: substanceLinks.find((link) => link.substanceId === overlap.substanceId)?.substanceName,
+  // Archived boxes are not in the cabinet, so they are not "also in the
+  // cabinet". The Doses board deliberately does not filter them — a schedule
+  // can still be running against one.
+  const inCabinet = substanceLinks.filter((link) => link.archivedAt === null);
+
+  const overlaps = overlapsForProduct(product.id, inCabinet).map((overlap) => ({
+    name: inCabinet.find((link) => link.substanceId === overlap.substanceId)?.substanceName,
     /*
      * Matched on the substance as well as the product. Looking up by product
      * alone returns whichever ingredient that product happens to list first,
@@ -60,7 +65,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
      */
     others: overlap.productIds
       .map((productId) =>
-        substanceLinks.find(
+        inCabinet.find(
           (link) => link.productId === productId && link.substanceId === overlap.substanceId,
         ),
       )

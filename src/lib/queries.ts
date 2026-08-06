@@ -1378,14 +1378,19 @@ export interface SubstanceLink {
   /** Per base unit, where it can be expressed as a number. */
   amountMg: number | null;
   amountText: string | null;
+  /** Set when the product has been archived. */
+  archivedAt: Date | null;
 }
 
 /**
  * Which products contain which active ingredients.
  *
- * Archived products are left out: a box that is no longer kept cannot be
- * reached for by mistake, so naming it in an overlap would be noise about
- * something that is not in the house.
+ * Archived products are included, and filtering them is left to the caller,
+ * because the two screens want opposite things. Listing an archived box as
+ * "also in the cabinet" is noise about something no longer kept — but a
+ * schedule can still be running against an archived product, and refusing to
+ * check that one for a clash would put the hole in exactly the place a safety
+ * warning cannot afford one.
  */
 export async function getSubstanceLinks(): Promise<SubstanceLink[]> {
   return db
@@ -1397,11 +1402,11 @@ export async function getSubstanceLinks(): Promise<SubstanceLink[]> {
       productStrength: products.strength,
       amountMg: productSubstances.amountMg,
       amountText: productSubstances.amountText,
+      archivedAt: products.archivedAt,
     })
     .from(productSubstances)
     .innerJoin(substances, eq(productSubstances.substanceId, substances.id))
     .innerJoin(products, eq(productSubstances.productId, products.id))
-    .where(isNull(products.archivedAt))
     .orderBy(byName);
 }
 
@@ -1494,7 +1499,10 @@ export async function getPriceTrends(): Promise<PriceTrend[]> {
     .innerJoin(variants, eq(batches.variantId, variants.id))
     .innerJoin(products, eq(variants.productId, products.id))
     .where(and(isNotNull(batches.purchasePriceMinor), isNotNull(batches.purchaseDate)))
-    .orderBy(sql`${batches.purchaseDate} asc`);
+    // Insertion order breaks ties: every box bought on one trip shares a
+    // purchase date, so date alone leaves "first" and "latest" up to whatever
+    // order SQLite happens to return.
+    .orderBy(sql`${batches.purchaseDate} asc`, asc(batches.id));
 
   const byProduct = new Map<number, PriceTrend>();
 

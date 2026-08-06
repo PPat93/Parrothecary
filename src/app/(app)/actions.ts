@@ -1431,6 +1431,32 @@ export async function confirmDose(formData: FormData): Promise<void> {
   const occurrence = Number(formData.get('occurrence'));
   if (!Number.isInteger(scheduleId) || !date || !Number.isInteger(occurrence)) return;
 
+  /*
+   * Already confirmed? Then this is the same tap arriving twice.
+   *
+   * A pill that has been taken re-renders as "tap to undo", but on a slow
+   * phone the second tap lands before that happens — and each one used to
+   * deduct a full dose. Two taps took three tablets out of the cupboard for
+   * one dose actually swallowed.
+   *
+   * Not a unique index, because FEFO legitimately splits one dose across two
+   * boxes and writes an event per box. The occurrence is what must be unique,
+   * not the row.
+   */
+  const alreadyTaken = await db
+    .select({ id: doseEvents.id })
+    .from(doseEvents)
+    .where(
+      and(
+        eq(doseEvents.scheduleId, scheduleId),
+        eq(doseEvents.date, date),
+        eq(doseEvents.occurrence, occurrence),
+      ),
+    )
+    .limit(1);
+
+  if (alreadyTaken.length > 0) return;
+
   const scheduleRows = await db
     .select({
       doseUnits: doseSchedules.doseUnits,
