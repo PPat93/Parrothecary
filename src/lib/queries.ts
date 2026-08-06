@@ -1366,6 +1366,149 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Export — getting the data back out                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every box ever entered, including the ones that have left stock.
+ *
+ * Terminal boxes are not filtered out: this is the escape hatch, and a copy of
+ * the cupboard that quietly omits everything thrown away or used up would be a
+ * worse record than the database it came from.
+ */
+export async function getBoxExport() {
+  return db
+    .select({
+      batchId: batches.id,
+      product: products.name,
+      productAlt: products.nameAlt,
+      strength: products.strength,
+      form: products.form,
+      unit: products.unitName,
+      pack: variants.packLabel,
+      packSize: variants.packSize,
+      quantityRemaining: batches.quantityRemaining,
+      status: batches.status,
+      expiryDate: batches.expiryDate,
+      expiryPrecision: batches.expiryPrecision,
+      lotNumber: batches.lotNumber,
+      location: batches.location,
+      openedAt: batches.openedAt,
+      purchaseDate: batches.purchaseDate,
+      priceMinor: batches.purchasePriceMinor,
+      currency: batches.purchaseCurrency,
+      fxRateToEur: batches.fxRateToEur,
+      notes: batches.notes,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .orderBy(byName, asc(batches.id));
+}
+
+/**
+ * The whole ledger, oldest first.
+ *
+ * The one export that cannot be reconstructed from anything else: current
+ * quantities can be recounted off the shelf, but how they got that way exists
+ * nowhere but here.
+ */
+export async function getMovementExport() {
+  return db
+    .select({
+      occurredAt: stockMovements.occurredAt,
+      product: products.name,
+      strength: products.strength,
+      unit: products.unitName,
+      batchId: stockMovements.batchId,
+      delta: stockMovements.delta,
+      reason: stockMovements.reason,
+      note: stockMovements.note,
+    })
+    .from(stockMovements)
+    .innerJoin(batches, eq(stockMovements.batchId, batches.id))
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .orderBy(asc(stockMovements.occurredAt), asc(stockMovements.id));
+}
+
+/**
+ * The catalogue, with the things that took longest to type: which ingredients
+ * are in what, what each is reached for, and the barcodes that were scanned in.
+ * Rebuilding those by hand is an evening; the quantities are a walk to the
+ * cupboard.
+ */
+export async function getProductExport() {
+  const rows = await db
+    .select({
+      productId: products.id,
+      name: products.name,
+      nameAlt: products.nameAlt,
+      form: products.form,
+      strength: products.strength,
+      unit: products.unitName,
+      manufacturer: products.manufacturer,
+      isPrescription: products.isPrescription,
+      hasExpiry: products.hasExpiry,
+      expiryGraceDays: products.expiryGraceDays,
+      notes: products.notes,
+      archivedAt: products.archivedAt,
+    })
+    .from(products)
+    .orderBy(byName);
+
+  const [links, symptomRows, barcodeRows, packRows] = await Promise.all([
+    getSubstanceLinks(),
+    db
+      .select({ productId: productSymptoms.productId, name: symptoms.nameEn })
+      .from(productSymptoms)
+      .innerJoin(symptoms, eq(productSymptoms.symptomId, symptoms.id)),
+    db
+      .select({ productId: variants.productId, code: variantBarcodes.code })
+      .from(variantBarcodes)
+      .innerJoin(variants, eq(variantBarcodes.variantId, variants.id)),
+    db
+      .select({ productId: variants.productId, packSize: variants.packSize, label: variants.packLabel })
+      .from(variants),
+  ]);
+
+  /** Several rows per product collapsed into one cell, which is what a sheet wants. */
+  const gather = <T>(items: T[], key: (item: T) => number, value: (item: T) => string) => {
+    const map = new Map<number, string[]>();
+    for (const item of items) {
+      map.set(key(item), [...(map.get(key(item)) ?? []), value(item)]);
+    }
+    return map;
+  };
+
+  const substancesByProduct = gather(
+    links,
+    (l) => l.productId,
+    (l) => {
+      // The separator belongs to the join, not to one of the two branches —
+      // putting it inside the numeric one gave "Magnesium citrate100 mg".
+      const amount = l.amountText ?? (l.amountMg !== null ? `${l.amountMg} mg` : null);
+      return amount === null ? l.substanceName : `${l.substanceName} ${amount}`;
+    },
+  );
+  const symptomsByProduct = gather(symptomRows, (s) => s.productId, (s) => s.name);
+  const barcodesByProduct = gather(barcodeRows, (b) => b.productId, (b) => b.code);
+  const packsByProduct = gather(
+    packRows,
+    (p) => p.productId,
+    (p) => p.label ?? String(p.packSize),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    substances: (substancesByProduct.get(row.productId) ?? []).join('; '),
+    symptoms: (symptomsByProduct.get(row.productId) ?? []).join('; '),
+    barcodes: (barcodesByProduct.get(row.productId) ?? []).join('; '),
+    packs: (packsByProduct.get(row.productId) ?? []).join('; '),
+  }));
+}
+
+/* ------------------------------------------------------------------ */
 /* Shared ingredients                                                  */
 /* ------------------------------------------------------------------ */
 
