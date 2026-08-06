@@ -1749,12 +1749,13 @@ export function summariseWaste(rows: WasteRow[]): WasteSummary {
 /* ------------------------------------------------------------------ */
 
 /**
- * Movements are timestamped; trips and presets are calendar dates. Parsed as
- * UTC midnight so a window's edges do not shift with the machine's timezone —
- * a box received on the last day of a trip window belongs inside it.
+ * Movements are timestamped; trips are calendar dates. Parsed as LOCAL
+ * midnight, because that is what the date on a trip means to the person who
+ * typed it. Reading it as UTC put anything that happened between midnight and
+ * two in the morning into the previous window.
  */
 function startOfDay(date: IsoDate): Date {
-  return new Date(`${date}T00:00:00Z`);
+  return new Date(`${date}T00:00:00`);
 }
 
 /*

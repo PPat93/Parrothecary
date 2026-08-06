@@ -61,8 +61,19 @@ export function csvMoney(minor: number | null): string {
   return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 
-/** A timestamp a spreadsheet can sort, and a human can read. */
+/**
+ * A timestamp a spreadsheet can sort, and a human can read.
+ *
+ * Local time, not UTC. Every other date in this app is a local calendar date,
+ * and an export that renders a dose taken at one in the morning as eleven the
+ * previous night is not a record anyone can reconcile against their own memory.
+ */
 export function csvTimestamp(date: Date | null): string {
   if (date === null) return '';
-  return date.toISOString().replace('T', ' ').slice(0, 19);
+
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
 }

@@ -82,7 +82,24 @@ describe('csvMoney', () => {
 
 describe('csvTimestamp', () => {
   it('writes something sortable and readable', () => {
-    expect(csvTimestamp(new Date('2026-08-05T14:30:00Z'))).toBe('2026-08-05 14:30:00');
+    // Built from local components, so this is the wall clock of the machine
+    // that recorded it — which is what every other date in the app means.
+    const local = new Date(2026, 7, 5, 14, 30, 0);
+    expect(csvTimestamp(local)).toBe('2026-08-05 14:30:00');
+  });
+
+  it('keeps the local calendar day for a time just after midnight', () => {
+    /*
+     * The bug this replaced: toISOString() on 01:00 in a UTC+2 summer renders
+     * as 23:00 the previous day, so a dose taken on the 6th was exported as
+     * having happened on the 5th.
+     */
+    const justAfterMidnight = new Date(2026, 7, 6, 1, 0, 0);
+    expect(csvTimestamp(justAfterMidnight)).toBe('2026-08-06 01:00:00');
+  });
+
+  it('pads every component', () => {
+    expect(csvTimestamp(new Date(2026, 0, 2, 3, 4, 5))).toBe('2026-01-02 03:04:05');
   });
 
   it('writes nothing for no date', () => {
