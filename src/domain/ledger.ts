@@ -109,6 +109,15 @@ export function movementForStatusChange(
  * The ledger has to record what moved rather than what was asked for, or the
  * two drift apart on the first press against an almost-empty box.
  *
+ * Bounded at both ends, because a box is a physical thing: it cannot give out
+ * more than it holds, and it cannot take back more than it came with. Putting
+ * a thousand tablets into a pack of fifty used to be allowed silently, leaving
+ * a single box reading "20 packs + 22 tablets".
+ *
+ * `capacity` is the pack size. Omit it for a box with no meaningful ceiling.
+ * Correcting a quantity that genuinely exceeds the pack belongs on the edit
+ * form, which is the tool for fixing records rather than moving stock.
+ *
  * Returns the new quantity and the delta that got it there, both rounded, so
  * the caller writes one number to the batch and the other to the ledger and
  * they cannot disagree.
@@ -116,8 +125,16 @@ export function movementForStatusChange(
 export function applyAdjustment(
   current: number,
   requested: number,
+  capacity?: number,
 ): { next: number; applied: number } {
-  const next = Math.max(0, roundUnits(current + requested));
+  let next = Math.max(0, roundUnits(current + requested));
+
+  // Never pulls a box below what it already holds: an over-full box stays as
+  // it is rather than being quietly trimmed by an unrelated press.
+  if (capacity !== undefined && capacity > 0) {
+    next = Math.min(next, Math.max(roundUnits(capacity), roundUnits(current)));
+  }
+
   return { next, applied: roundUnits(next - current) };
 }
 

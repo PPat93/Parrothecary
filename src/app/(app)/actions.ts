@@ -948,12 +948,32 @@ export async function removeBarcode(formData: FormData): Promise<void> {
 /** One-tap +/- from the stock list. Clamps at zero rather than going negative. */
 export async function adjustBatch(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
-  const delta = Number(formData.get('delta'));
-  if (!Number.isInteger(id) || !Number.isFinite(delta)) return;
+  if (!Number.isInteger(id)) return;
+
+  /*
+   * The amount is typed now, not fixed at one, so it arrives as text and has
+   * to be parsed the way every other quantity in the app is — "0,5" comes off
+   * a Polish phone keyboard and has to mean half a tablet, not nothing.
+   *
+   * Sign is handled separately because parseUnits deliberately refuses
+   * negatives: a quantity is never below zero, only the direction is.
+   */
+  const raw = String(formData.get('delta') ?? '').trim();
+  const takingOut = raw.startsWith('-');
+  const magnitude = parseUnits(takingOut ? raw.slice(1) : raw);
+  if (magnitude === null || magnitude <= 0 || !isTrackableQuantity(magnitude)) return;
+
+  const delta = takingOut ? -magnitude : magnitude;
 
   const rows = await db
-    .select({ quantityRemaining: batches.quantityRemaining, status: batches.status })
+    .select({
+      quantityRemaining: batches.quantityRemaining,
+      status: batches.status,
+      // The box cannot hold more than the pack it is.
+      packSize: variants.packSize,
+    })
     .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
     .where(eq(batches.id, id))
     .limit(1);
 
@@ -978,7 +998,8 @@ export async function adjustBatch(formData: FormData): Promise<void> {
    * tablet, not a whole one, and recording the button press instead of the
    * movement would put the two out of step immediately.
    */
-  const { next, applied } = applyAdjustment(current.quantityRemaining, delta);
+  const { next, applied } = applyAdjustment(current.quantityRemaining, delta, current.packSize);
+  // Nothing moved: an empty box asked to give, or a full one asked to take back.
   if (applied === 0) return;
 
   db.transaction((tx) => {

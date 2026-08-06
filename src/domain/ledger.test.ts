@@ -110,6 +110,30 @@ describe('applyAdjustment', () => {
     expect(applied).toBe(0);
   });
 
+  it('will not put more into a box than the pack holds', () => {
+    /*
+     * A 50-tablet pack asked to take a thousand back. It used to accept them,
+     * and the stock list then read "20 packs + 22 tablets" for one box.
+     */
+    expect(applyAdjustment(22, 1000, 50)).toEqual({ next: 50, applied: 28 });
+    expect(applyAdjustment(50, 1, 50)).toEqual({ next: 50, applied: 0 });
+  });
+
+  it('still lets a box be filled up to its pack size', () => {
+    expect(applyAdjustment(20, 30, 50)).toEqual({ next: 50, applied: 30 });
+  });
+
+  it('leaves an already over-full box alone rather than trimming it', () => {
+    // However it got to 1022, an unrelated press is not the place to discover
+    // that and silently delete 972 tablets.
+    expect(applyAdjustment(1022, 1, 50)).toEqual({ next: 1022, applied: 0 });
+    expect(applyAdjustment(1022, -2, 50)).toEqual({ next: 1020, applied: -2 });
+  });
+
+  it('is unbounded above when no capacity is given', () => {
+    expect(applyAdjustment(22, 1000)).toEqual({ next: 1022, applied: 1000 });
+  });
+
   it('keeps next and applied consistent for any press', () => {
     // The property the ledger depends on: current + applied === next, always.
     for (const current of [0, 0.25, 0.5, 1, 7.5, 30, 62]) {

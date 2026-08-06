@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import {ActionButton} from '@/components/action-button';
 import {ExpiryBadge} from '@/components/expiry-badge';
 import {RunOutBadge} from '@/components/run-out-badge';
 import {LINK_BUTTON, toneStyle} from '@/components/tone';
@@ -19,7 +18,7 @@ import {
     groupByProduct,
     toExpiryInput,
 } from '@/lib/queries';
-import {adjustBatch} from './actions';
+import {TakeStepper} from './take-stepper';
 
 export default async function StockPage({
                                             searchParams,
@@ -152,11 +151,14 @@ export default async function StockPage({
                                                 ) : null}
                     </span>
 
-                                            <Stepper batchId={box.batchId} delta={-1} label="−"/>
-                                            <Stepper batchId={box.batchId} delta={1} label="+"/>
+                                            <TakeStepper batchId={box.batchId} unitName={box.unitName}
+                                                          remaining={box.quantityRemaining}
+                                                          packSize={box.packSize}/>
 
-                                            {/* Correcting a mistyped quantity must not go through the
-                        steppers — ninety taps would log ninety doses. */}
+                                            {/* Correcting a mistyped quantity belongs here, not on the
+                        stepper. Taking ninety out says ninety were used; this
+                        says there were never ninety to begin with. The ledger
+                        records them differently, and only one is consumption. */}
                                             <Link
                                                 href={`/stock/${box.batchId}/edit`}
                                                 aria-label={`Correct this box of ${group.name}`}
@@ -203,21 +205,6 @@ export default async function StockPage({
     );
 }
 
-function Stepper({batchId, delta, label}: { batchId: number; delta: number; label: string }) {
-    return (
-        <form action={adjustBatch}>
-            <input type="hidden" name="id" value={batchId}/>
-            <input type="hidden" name="delta" value={delta}/>
-            <ActionButton
-                aria-label={delta > 0 ? 'Add one' : 'Take one'}
-                tone={delta > 0 ? 'ok' : 'neutral'}
-                className="h-9 w-9 rounded-lg border text-lg leading-none"
-            >
-                {label}
-            </ActionButton>
-        </form>
-    );
-}
 
 function NoMatches({search}: { search: string }) {
     return (
