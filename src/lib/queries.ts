@@ -1366,6 +1366,51 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Shared ingredients                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface SubstanceLink {
+  productId: number;
+  substanceId: number;
+  substanceName: string;
+  productName: string;
+  productStrength: string | null;
+  /** Per base unit, where it can be expressed as a number. */
+  amountMg: number | null;
+  amountText: string | null;
+  /** Set when the product has been archived. */
+  archivedAt: Date | null;
+}
+
+/**
+ * Which products contain which active ingredients.
+ *
+ * Archived products are included, and filtering them is left to the caller,
+ * because the two screens want opposite things. Listing an archived box as
+ * "also in the cabinet" is noise about something no longer kept — but a
+ * schedule can still be running against an archived product, and refusing to
+ * check that one for a clash would put the hole in exactly the place a safety
+ * warning cannot afford one.
+ */
+export async function getSubstanceLinks(): Promise<SubstanceLink[]> {
+  return db
+    .select({
+      productId: productSubstances.productId,
+      substanceId: productSubstances.substanceId,
+      substanceName: substances.name,
+      productName: products.name,
+      productStrength: products.strength,
+      amountMg: productSubstances.amountMg,
+      amountText: productSubstances.amountText,
+      archivedAt: products.archivedAt,
+    })
+    .from(productSubstances)
+    .innerJoin(substances, eq(productSubstances.substanceId, substances.id))
+    .innerJoin(products, eq(productSubstances.productId, products.id))
+    .orderBy(byName);
+}
+
+/* ------------------------------------------------------------------ */
 /* Statistics — money                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -1454,7 +1499,10 @@ export async function getPriceTrends(): Promise<PriceTrend[]> {
     .innerJoin(variants, eq(batches.variantId, variants.id))
     .innerJoin(products, eq(variants.productId, products.id))
     .where(and(isNotNull(batches.purchasePriceMinor), isNotNull(batches.purchaseDate)))
-    .orderBy(sql`${batches.purchaseDate} asc`);
+    // Insertion order breaks ties: every box bought on one trip shares a
+    // purchase date, so date alone leaves "first" and "latest" up to whatever
+    // order SQLite happens to return.
+    .orderBy(sql`${batches.purchaseDate} asc`, asc(batches.id));
 
   const byProduct = new Map<number, PriceTrend>();
 
@@ -1636,9 +1684,11 @@ export interface RestockWindow {
   days: number;
   /** Counts, not units — see the note above on why these cannot be added up. */
   boxesReceived: number;
-  doses: number;
+  /** Times something was taken: scheduled doses and hand-taken alike. */
+  timesTaken: number;
   boxesBinned: number;
   corrections: number;
+  countDifferences: number;
   productsTouched: number;
 }
 
@@ -1695,11 +1745,14 @@ export async function getRestockWindows(): Promise<RestockWindow[]> {
       boxesReceived: new Set(
         inWindow.filter((m) => m.reason === 'received' || m.reason === 'opening').map((m) => m.batchId),
       ).size,
-      doses: inWindow.filter((m) => m.reason === 'dose' && m.delta < 0).length,
+      timesTaken: inWindow.filter(
+        (m) => (m.reason === 'dose' || m.reason === 'taken') && m.delta < 0,
+      ).length,
       boxesBinned: new Set(
         inWindow.filter((m) => m.reason === 'binned' && m.delta < 0).map((m) => m.batchId),
       ).size,
-      corrections: inWindow.filter((m) => m.reason === 'adjust' || m.reason === 'audit').length,
+      corrections: inWindow.filter((m) => m.reason === 'adjust').length,
+      countDifferences: inWindow.filter((m) => m.reason === 'audit').length,
       productsTouched: new Set(inWindow.map((m) => m.productId)).size,
     });
   }

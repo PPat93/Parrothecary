@@ -45,7 +45,8 @@ export default async function UsagePage({
       row.summary.used !== 0 ||
       row.summary.received !== 0 ||
       row.summary.binned !== 0 ||
-      row.summary.adjusted !== 0,
+      row.summary.corrected !== 0 ||
+      row.summary.drift !== 0,
   );
 
   return (
@@ -114,10 +115,18 @@ export default async function UsagePage({
                       binned {formatQuantity(row.summary.binned, row.unitName)}
                     </span>
                   ) : null}
-                  {row.summary.adjusted !== 0 ? (
+                  {/* Kept apart from "used": stock that was never there is not
+                      stock anybody got through. */}
+                  {row.summary.corrected !== 0 ? (
+                    <span className="block" style={{ color: 'var(--muted)' }}>
+                      corrected {row.summary.corrected > 0 ? '+' : ''}
+                      {row.summary.corrected}
+                    </span>
+                  ) : null}
+                  {row.summary.drift !== 0 ? (
                     <span className="block" style={{ color: 'var(--color-warning)' }}>
-                      corrected {row.summary.adjusted > 0 ? '+' : ''}
-                      {row.summary.adjusted}
+                      {row.summary.drift < 0 ? 'missing ' : 'found +'}
+                      {row.summary.drift < 0 ? -row.summary.drift : row.summary.drift}
                     </span>
                   ) : null}
                 </span>
@@ -151,9 +160,12 @@ export default async function UsagePage({
                     window.boxesReceived > 0
                       ? `${window.boxesReceived} ${window.boxesReceived === 1 ? 'box' : 'boxes'} in`
                       : null,
-                    window.doses > 0 ? `${window.doses} doses` : null,
+                    window.timesTaken > 0 ? `${window.timesTaken} taken` : null,
                     window.boxesBinned > 0 ? `${window.boxesBinned} binned` : null,
                     window.corrections > 0 ? `${window.corrections} corrections` : null,
+                    window.countDifferences > 0
+                      ? `${window.countDifferences} count ${window.countDifferences === 1 ? 'difference' : 'differences'}`
+                      : null,
                   ]
                     .filter(Boolean)
                     .join(' · ')}

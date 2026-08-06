@@ -3,6 +3,7 @@ import { BATCH_STATUSES } from '@/db/schema';
 import {
   MOVEMENT_REASONS,
   applyAdjustment,
+  closureMovement,
   isOutOfStock,
   movementForCount,
   movementForStatusChange,
@@ -121,6 +122,36 @@ describe('applyAdjustment', () => {
   });
 });
 
+describe('closureMovement', () => {
+  /*
+   * Both of these were live bugs: editing the quantity on a binned box, and
+   * undoing a dose taken from a box that was binned afterwards. Each wrote a
+   * movement and left the batch's running total non-zero while the box sat in
+   * the bin — so the ledger claimed units that were not in the cupboard.
+   */
+  it('balances a correction made to a box that has left stock', () => {
+    expect(closureMovement('expired', -5)).toEqual({ delta: 5, reason: 'binned' });
+    expect(closureMovement('discarded', 3)).toEqual({ delta: -3, reason: 'binned' });
+    expect(closureMovement('consumed', 1)).toEqual({ delta: -1, reason: 'binned' });
+  });
+
+  it('leaves a box that is still in stock alone', () => {
+    // Here the movement stands on its own — the total should change.
+    expect(closureMovement('in_stock', -5)).toBeNull();
+  });
+
+  it('does nothing when nothing moved', () => {
+    expect(closureMovement('expired', 0)).toBeNull();
+  });
+
+  it('cancels the movement it balances, exactly', () => {
+    for (const delta of [-30, -0.25, 0.1, 7.5, 62]) {
+      const closure = closureMovement('expired', delta);
+      expect(netUnits([{ delta, reason: 'adjust' }, closure!])).toBe(0);
+    }
+  });
+});
+
 describe('movementForCount', () => {
   it('records what the shelf actually holds, as a difference', () => {
     // App believed 30, the shelf has 28. Two went somewhere unrecorded.
@@ -162,7 +193,14 @@ describe('summariseMovements', () => {
       move(-30, 'binned'),
     ]);
 
-    expect(summary).toEqual({ received: 90, used: 20, binned: 30, adjusted: 0, net: 40 });
+    expect(summary).toEqual({
+      received: 90,
+      used: 20,
+      binned: 30,
+      corrected: 0,
+      drift: 0,
+      net: 40,
+    });
   });
 
   it('counts an opening balance as stock that came in', () => {
@@ -181,10 +219,44 @@ describe('summariseMovements', () => {
     expect(summary.net).toBe(0);
   });
 
-  it('keeps corrections signed, because they go both ways', () => {
-    const summary = summariseMovements([move(-3, 'adjust'), move(1, 'audit')]);
-    expect(summary.adjusted).toBe(-2);
-    expect(summary.used).toBe(0);
+  it('keeps corrections and drift apart, and out of what was used', () => {
+    /*
+     * Three different facts that used to share one bucket: a tablet swallowed,
+     * a quantity mis-typed, and stock a count could not account for. Only the
+     * first answers "how fast do we get through this".
+     */
+    const summary = summariseMovements([
+      move(-2, 'taken'),
+      move(-3, 'adjust'),
+      move(1, 'audit'),
+    ]);
+    expect(summary.used).toBe(2);
+    expect(summary.corrected).toBe(-3);
+    expect(summary.drift).toBe(1);
+  });
+
+  it('counts hand-taken units as used, not as a correction', () => {
+    // Two taps of minus on the stock list for two vitamin C.
+    const summary = summariseMovements([move(-1, 'taken'), move(-1, 'taken')]);
+    expect(summary.used).toBe(2);
+    expect(summary.corrected).toBe(0);
+  });
+
+  it('lets the plus button put one back', () => {
+    // Took three, put one back: two were used.
+    const summary = summariseMovements([
+      move(-1, 'taken'),
+      move(-1, 'taken'),
+      move(-1, 'taken'),
+      move(1, 'taken'),
+    ]);
+    expect(summary.used).toBe(2);
+    expect(summary.net).toBe(-2);
+  });
+
+  it('adds scheduled doses and hand-taken units into one figure', () => {
+    const summary = summariseMovements([move(-1, 'dose'), move(-2, 'taken')]);
+    expect(summary.used).toBe(3);
   });
 
   it('is all zeroes for no movements', () => {
@@ -192,7 +264,8 @@ describe('summariseMovements', () => {
       received: 0,
       used: 0,
       binned: 0,
-      adjusted: 0,
+      corrected: 0,
+      drift: 0,
       net: 0,
     });
   });

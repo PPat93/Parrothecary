@@ -28,7 +28,17 @@ export const MOVEMENT_REASONS = [
   'received',
   /** Taken as a scheduled dose. */
   'dose',
-  /** Corrected by hand: the stepper, or an edit to the box. */
+  /**
+   * Taken by hand from the stock list, off any schedule — two vitamin C
+   * because you felt like it. Negative going out, positive putting one back.
+   *
+   * Separate from `adjust` because most of the cabinet is never on a schedule,
+   * so without this the app would report that the plasters and the painkillers
+   * are never used at all. The two were one reason to begin with, and that made
+   * a swallowed tablet indistinguishable from a typo.
+   */
+  'taken',
+  /** The quantity on a box was wrong and got corrected. Not consumption. */
   'adjust',
   /** Left stock — thrown out, expired, or used up. Negative; positive undoes it. */
   'binned',
@@ -128,15 +138,43 @@ export function movementForCount(expected: number, counted: number): Movement | 
   return { delta, reason: 'audit' };
 }
 
+/**
+ * The row needed to keep a box that has already left stock balanced at zero.
+ *
+ * Things still happen to a binned box: its quantity gets corrected because the
+ * original entry was a typo, or a dose taken out of it weeks ago gets undone.
+ * Each of those is a real movement and gets its own row — but the box is not
+ * back in the cupboard, so the running total has to come back to zero or it
+ * starts claiming units that are in the bin.
+ *
+ * Null for a box still in stock, where the movement stands on its own.
+ */
+export function closureMovement(
+  status: LedgerBatchStatus,
+  delta: number,
+): Movement | null {
+  if (!isOutOfStock(status)) return null;
+
+  const rounded = roundUnits(delta);
+  if (rounded === 0) return null;
+
+  return { delta: -rounded, reason: 'binned' };
+}
+
 export interface MovementSummary {
   /** Units that came into the house. */
   received: number;
-  /** Units taken as doses. Positive: it is an amount consumed, not a balance. */
+  /**
+   * Units actually consumed — scheduled doses and hand-taken alike. Positive:
+   * an amount used, not a balance. Putting one back reduces it.
+   */
   used: number;
   /** Units thrown away. Positive, and reduced by anything taken back out of the bin. */
   binned: number;
-  /** Hand corrections and audit differences, signed — this one can go either way. */
-  adjusted: number;
+  /** Quantity corrections, signed. Stock that was never there, or always was. */
+  corrected: number;
+  /** What a physical count could not explain, signed. Usually stock gone missing. */
+  drift: number;
   /** Everything together: how much the cupboard grew or shrank. */
   net: number;
 }
@@ -145,15 +183,20 @@ export interface MovementSummary {
  * What happened over a set of movements — the shape every "between these two
  * dates" and "between these two trips" question reduces to.
  *
- * Deliberately four separate figures rather than one total. Buying thirty and
- * binning thirty is not the same as a quiet six months, and a single net number
- * would report them identically.
+ * Deliberately several separate figures rather than one total. Buying thirty
+ * and binning thirty is not the same as a quiet six months, and a single net
+ * number would report them identically.
+ *
+ * The three ways stock can leave without being thrown out are kept apart on
+ * purpose. Consumed, mis-entered, and unaccounted-for are different facts about
+ * a household, and only the first one answers "how fast do we get through this".
  */
 export function summariseMovements(movements: Movement[]): MovementSummary {
   let received = 0;
   let used = 0;
   let binned = 0;
-  let adjusted = 0;
+  let corrected = 0;
+  let drift = 0;
 
   for (const movement of movements) {
     switch (movement.reason) {
@@ -162,15 +205,19 @@ export function summariseMovements(movements: Movement[]): MovementSummary {
         received += movement.delta;
         break;
       case 'dose':
-        // Undoing a dose is a positive row, so this nets down correctly.
+      case 'taken':
+        // Both are consumption. Undoing either is a positive row, so this nets
+        // down correctly without a separate case.
         used -= movement.delta;
         break;
       case 'binned':
         binned -= movement.delta;
         break;
       case 'adjust':
+        corrected += movement.delta;
+        break;
       case 'audit':
-        adjusted += movement.delta;
+        drift += movement.delta;
         break;
     }
   }
@@ -179,7 +226,8 @@ export function summariseMovements(movements: Movement[]): MovementSummary {
     received: roundUnits(received),
     used: roundUnits(used),
     binned: roundUnits(binned),
-    adjusted: roundUnits(adjusted),
+    corrected: roundUnits(corrected),
+    drift: roundUnits(drift),
     net: netUnits(movements),
   };
 }
