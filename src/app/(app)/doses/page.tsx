@@ -182,6 +182,15 @@ export default async function DosesPage() {
                                          * from a box three weeks past its date should be a visible
                                          * choice, not something the app quietly decided earlier.
                                          */
+                                        /*
+                                         * A course with an end date that has passed produces no
+                                         * rows at all, which read as a broken card: the medicine
+                                         * is there, the dose is there, and nothing to tap. Say
+                                         * that it finished.
+                                         */
+                                        const courseEnded =
+                                            schedule.endDate !== null && schedule.endDate < today;
+
                                         const nextBox = nextBatchToOpen(stock, today);
                                         const pastDateDays = nextBox
                                             ? daysPastDate(
@@ -227,6 +236,34 @@ export default async function DosesPage() {
                                                     {/* Nothing due today is information, not an empty state. */}
                                                     {nextDue !== null ? (
                                                         <span className="shrink-0">next {dayLabel(nextDue, today)}</span>
+                                                    ) : null}
+                                                    {/*
+                                                      Why the pills below cannot be tapped, in
+                                                      writing. The disabled state carried this in a
+                                                      `title`, which a phone never shows — so the
+                                                      board looked broken to anyone who did not
+                                                      already know the rules.
+                                                    */}
+                                                    {courseEnded ? (
+                                                        <span
+                                                            className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                                                            style={{background: 'var(--color-warning)', color: 'black'}}
+                                                            title="This course had an end date and it has passed. Edit the schedule to extend it, or leave it — nothing is due."
+                                                        >
+                              course ended {dayLabel(schedule.endDate!, today)}
+                          </span>
+                                                    ) : outOfStock ? (
+                                                        <span
+                                                            className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                                                            style={{background: 'var(--color-critical)', color: 'white'}}
+                                                            title={
+                                                                onlyPastDate
+                                                                    ? 'There is stock, but all of it is further past its date than this product allows. Bin it from Expiring and add a new box.'
+                                                                    : 'Every box of this is used up or binned. Nothing to take a dose from.'
+                                                            }
+                                                        >
+                              {onlyPastDate ? 'all stock past date' : 'nothing in stock'}
+                          </span>
                                                     ) : null}
                                                     {schedule.productArchivedAt !== null ? (
                                                         <span
