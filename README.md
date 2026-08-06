@@ -218,8 +218,17 @@ now, and anything that only reads it can wait.
 
    Per person, never per household: two people each taking their own paracetamol is not a double
    dose, and flagging it would be both wrong and annoying.
-4. **Alternatives between products.** `product_alternatives` already exists in the schema and is
-   wired to nothing. Feeds "out of this, but you have that".
+4. **Alternatives between products — done.** What else would do when one has run out, on the
+   product page, sorted so anything actually on the shelf comes first. Three relations:
+   same active substance, local equivalent, works instead.
+
+   Stored as one row per pair and read from both ends. Storing a direction and reading only that
+   way is the version that goes half-linked — recorded on the paracetamol, missing from the
+   ibuprofen, which is exactly the page you would be on when you needed it. Adding the same pair
+   the other way round is refused rather than duplicated.
+
+   Stock counts come from the same helpers every other screen uses, so an alternative is never
+   offered out of a box the app would refuse to take a dose from.
 5. **Travel kit.** See below.
 6. **Help view.** What each screen is for and what the words on it mean — grace, FEFO, order-by,
    the difference between binning a box and using it up.

@@ -2,8 +2,10 @@
 
 import { useActionState } from 'react';
 import { toneStyle } from '@/components/tone';
-import { Datalist, ErrorText, Field, TextInput } from '@/components/form';
+import { Datalist, ErrorText, Field, Select, TextInput } from '@/components/form';
+import { ALTERNATIVE_RELATION_LABELS } from '@/lib/labels';
 import {
+  addAlternative,
   addBarcode,
   addSubstanceToProduct,
   addSymptomToProduct,
@@ -140,6 +142,63 @@ export function AddSubstanceForm({
       </div>
       <ErrorText>{state.error}</ErrorText>
       <Submit pending={pending}>Add substance</Submit>
+    </form>
+  );
+}
+
+/**
+ * Link something that could stand in for this.
+ *
+ * A picker rather than free text: an alternative has to be a product the app
+ * already knows, or it could not tell you whether any is on the shelf — which
+ * is the only reason to ask the question.
+ */
+export function AddAlternativeForm({
+  productId,
+  candidates,
+}: {
+  productId: number;
+  candidates: { id: number; label: string }[];
+}) {
+  const [state, formAction, pending] = useActionState(addAlternative, initialState);
+  const prev = state.values ?? {};
+
+  if (candidates.length === 0) return null;
+
+  return (
+    <form action={formAction} className="mt-3 flex flex-col gap-2">
+      <input type="hidden" name="productId" value={productId} />
+
+      <Select name="alternativeId" required defaultValue={prev.alternativeId ?? ''}
+              aria-label="Which product could stand in for this">
+        <option value="">Pick a product…</option>
+        {candidates.map((candidate) => (
+          <option key={candidate.id} value={candidate.id}>
+            {candidate.label}
+          </option>
+        ))}
+      </Select>
+
+      <div className="flex gap-2">
+        <Select name="relation" required defaultValue={prev.relation ?? 'same_substance'}
+                aria-label="How the two are related">
+          {Object.entries(ALTERNATIVE_RELATION_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Select>
+        <Submit pending={pending}>Link</Submit>
+      </div>
+
+      <TextInput
+        name="note"
+        placeholder="half the price, needs a prescription…"
+        aria-label="Note about this alternative"
+        defaultValue={prev.note ?? ''}
+      />
+
+      <ErrorText>{state.error}</ErrorText>
     </form>
   );
 }

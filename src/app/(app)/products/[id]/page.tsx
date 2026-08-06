@@ -8,8 +8,10 @@ import { todayIso } from '@/domain/date';
 import { formatDoseFrequency } from '@/domain/dosing';
 import { formatMoney, formatPricePerUnit, money, pricePerUnit, toEurOrNull } from '@/domain/money';
 import { formatQuantity } from '@/domain/quantity';
-import { batchStatusLabel } from '@/lib/labels';
+import { alternativeRelationLabel, batchStatusLabel } from '@/lib/labels';
 import {
+  getAlternativeCandidates,
+  getAlternatives,
   getProduct,
   getProductPurchases,
   getSubstanceLinks,
@@ -24,22 +26,32 @@ import {
   deleteProduct,
   removeBarcode,
   removeProductPhoto,
+  removeAlternative,
   removeSubstanceFromProduct,
   removeSymptomFromProduct,
   unarchiveProduct,
 } from '../../actions';
-import { AddBarcodeForm, AddPackForm, AddSubstanceForm, AddSymptomForm } from './add-forms';
+import {
+  AddAlternativeForm,
+  AddBarcodeForm,
+  AddPackForm,
+  AddSubstanceForm,
+  AddSymptomForm,
+} from './add-forms';
 import { PhotoForm } from './photo-form';
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [product, substanceNames, symptomNames, purchases, substanceLinks] = await Promise.all([
-    getProduct(Number(id)),
-    getSubstanceNames(),
-    getSymptomNames(),
-    getProductPurchases(Number(id)),
-    getSubstanceLinks(),
-  ]);
+  const [product, substanceNames, symptomNames, purchases, substanceLinks, alternatives, altCandidates] =
+    await Promise.all([
+      getProduct(Number(id)),
+      getSubstanceNames(),
+      getSymptomNames(),
+      getProductPurchases(Number(id)),
+      getSubstanceLinks(),
+      getAlternatives(Number(id)),
+      getAlternativeCandidates(Number(id)),
+    ]);
   if (!product) notFound();
 
   /*
@@ -236,6 +248,69 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             ))}
           </div>
         ) : null}
+      </Section>
+
+      {/*
+        What else would do, when this one has run out. Sorted so anything
+        actually on the shelf comes first — a similar product with nothing in
+        the cupboard answers the question in theory only.
+      */}
+      <Section title="Instead of this">
+        {alternatives.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            Nothing linked. Worth doing for the things bought abroad — when one runs out mid-winter,
+            this is where the answer to “what else have we got” lives.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {alternatives.map((alt) => (
+              <li key={alt.productId} className="flex items-baseline justify-between gap-3">
+                <span className="min-w-0">
+                  <Link
+                    href={`/products/${alt.productId}`}
+                    className="text-sm break-words underline-offset-4 hover:underline"
+                  >
+                    {alt.name}
+                    {alt.strength ? (
+                      <span style={{ color: 'var(--muted)' }}> {alt.strength}</span>
+                    ) : null}
+                  </Link>
+                  <span className="block text-xs" style={{ color: 'var(--muted)' }}>
+                    {alternativeRelationLabel(alt.relation)}
+                    {alt.archived ? ' · archived' : ''}
+                    {alt.note ? ` · ${alt.note}` : ''}
+                  </span>
+                </span>
+
+                <span className="flex shrink-0 items-center gap-2">
+                  <span
+                    className="text-xs tabular-nums"
+                    style={{
+                      color: alt.inStockUnits > 0 ? 'var(--color-ok)' : 'var(--muted)',
+                    }}
+                  >
+                    {alt.inStockUnits > 0
+                      ? formatQuantity(alt.inStockUnits, alt.unitName)
+                      : 'none left'}
+                  </span>
+
+                  <form action={removeAlternative}>
+                    <input type="hidden" name="productId" value={product.id} />
+                    <input type="hidden" name="alternativeId" value={alt.productId} />
+                    <ActionButton
+                      aria-label={`Unlink ${alt.name}`}
+                      tone="critical"
+                      className="rounded-lg border px-2 py-1 text-xs"
+                    >
+                      Unlink
+                    </ActionButton>
+                  </form>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <AddAlternativeForm productId={product.id} candidates={altCandidates} />
       </Section>
 
       <Section title="Used for">
