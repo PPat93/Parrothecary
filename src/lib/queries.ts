@@ -56,6 +56,8 @@ export function toExpiryInput(row: {
 /** One physical box, with everything needed to render it. */
 export interface StockRow {
   batchId: number;
+  /** Set when the product has been archived; its boxes still show. */
+  productArchivedAt?: Date | null;
   quantityRemaining: number;
   expiryDate: string | null;
   expiryPrecision: 'day' | 'month' | null;
@@ -94,6 +96,14 @@ const stockSelection = {
   unitName: products.unitName,
   hasExpiry: products.hasExpiry,
   expiryGraceDays: products.expiryGraceDays,
+  /*
+   * Archiving means "stop keeping this", not "pretend it is gone". Boxes of an
+   * archived product stay on the stock list and in the count, because you
+   * still physically have them and a cupboard that under-reports itself is
+   * worse than one showing something you have decided not to restock. Carried
+   * here so those screens can say so rather than leaving it a mystery.
+   */
+  productArchivedAt: products.archivedAt,
 };
 
 /**
@@ -140,6 +150,8 @@ export interface ProductStock {
   form: string;
   unitName: string;
   hasExpiry: boolean;
+  /** The product is archived, but these boxes are still in the cupboard. */
+  archived: boolean;
   /**
    * Units we would actually be willing to take — the number that answers "do I
    * need to buy this on the next trip". Excludes anything past what its product
@@ -166,6 +178,7 @@ export function groupByProduct(rows: StockRow[], today: IsoDate): ProductStock[]
         form: row.form,
         unitName: row.unitName,
         hasExpiry: row.hasExpiry,
+        archived: (row.productArchivedAt ?? null) !== null,
         totalUnits: 0,
         pastDateUnits: 0,
         boxes: [],

@@ -112,6 +112,23 @@ export default async function StockPage({
                                             <span aria-hidden className="ml-1 text-sm"
                                                   style={{color: 'var(--muted)'}}>›</span>
                                         </Link>
+                                        {/*
+                                          Archived, but still in the cupboard. Marked rather than
+                                          hidden: you own these, and a stock list that quietly
+                                          left them out would be wrong about the one thing it is
+                                          for. The Doses board marks its archived products the
+                                          same way instead of hiding the schedule.
+                                        */}
+                                        {group.archived ? (
+                                            <span
+                                                className="ml-2 inline-flex shrink-0 items-center rounded-md px-2 py-0.5 align-middle text-xs font-medium"
+                                                test-data="archived-product"
+                                                style={{background: 'var(--color-warning)', color: 'black'}}
+                                                title="This product is archived — it is off the products list and cannot be added to a new box. What is here is what is left."
+                                            >
+                                                archived
+                                            </span>
+                                        ) : null}
                                     </h2>
                                     <span className="shrink-0 text-right text-sm tabular-nums"
                                           style={{color: 'var(--muted)'}}>

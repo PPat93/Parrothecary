@@ -83,6 +83,10 @@ Rules that must hold:
   purchase so historical spend does not drift with the exchange rate.
 - **Nothing is hard-deleted.** Products archive; batches get a terminal status. Consumption
   history is what makes the later phases possible.
+- **Archiving a product hides the catalogue entry, not the stock.** Its boxes stay on the stock
+  list and in the count, marked as archived, because you still physically have them — while it
+  disappears from the products list and the "add box" picker. Blocking the archive until the
+  stock ran out would mean binning usable medicine just to stop restocking something.
 - **Every quantity change is recorded.** `stock_movements` holds one signed row per change, with
   a reason. Undo writes an opposite row rather than erasing the first, so a mistake and its
   correction are both on the record. The invariant — `sum(delta)` equals what is in the box, and
