@@ -426,6 +426,13 @@ export async function archiveProduct(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
 
+  /*
+   * Only a course that is actually running blocks this. A week-long course
+   * that finished in the spring is not somebody still taking the thing, and
+   * counting it meant a product could never be archived again once it had
+   * ever had a course against it.
+   */
+  const today = todayIso();
   const activeSchedules = await db
     .select({ id: doseSchedules.id })
     .from(doseSchedules)
@@ -435,6 +442,7 @@ export async function archiveProduct(formData: FormData): Promise<void> {
         eq(doseSchedules.productId, id),
         isNull(doseSchedules.archivedAt),
         isNull(householdMembers.archivedAt),
+        or(isNull(doseSchedules.endDate), sql`${doseSchedules.endDate} >= ${today}`),
       ),
     )
     .limit(1);

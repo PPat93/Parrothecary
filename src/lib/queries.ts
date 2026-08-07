@@ -918,7 +918,29 @@ export async function getProductDailyRates(): Promise<Map<number, number>> {
       rate: sql<number>`sum(${doseSchedules.doseUnits} * ${doseSchedules.timesPerDay} * 1.0 / max(1, ${doseSchedules.intervalDays}))`,
     })
     .from(doseSchedules)
-    .where(isNull(doseSchedules.archivedAt))
+    /*
+     * Joined to the person, because the Doses board excludes an archived
+     * member's schedules and this must agree with it. Without the join,
+     * archiving someone hid their doses from the board while the stock list
+     * carried on projecting the cupboard emptying at their rate.
+     */
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    /*
+     * Only courses actually running today. A finished course consumes nothing,
+     * and counting it projected a run-out date from a rate nobody was taking —
+     * a week-long paracetamol course that ended on Monday still had the stock
+     * list insisting the cupboard would be empty by Thursday.
+     *
+     * One that has not started yet is excluded for the mirror reason.
+     */
+    .where(
+      and(
+        isNull(doseSchedules.archivedAt),
+        isNull(householdMembers.archivedAt),
+        sql`${doseSchedules.startDate} <= ${todayIso()}`,
+        or(isNull(doseSchedules.endDate), sql`${doseSchedules.endDate} >= ${todayIso()}`),
+      ),
+    )
     .groupBy(doseSchedules.productId);
 
   return new Map(rows.map((r) => [r.productId, r.rate]));

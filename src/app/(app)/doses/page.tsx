@@ -6,6 +6,7 @@ import {addDays, todayIso} from '@/domain/date';
 import {
     doseOccurrenceStatus,
     formatDoseCadence,
+    isScheduleRunning,
     nextDueDate,
     recentScheduleDates,
     type DoseStatus,
@@ -78,6 +79,10 @@ export default async function DosesPage() {
     // medication, and the cupboard runs out for both of them at once.
     const productDailyRate = new Map<number, number>();
     for (const schedule of schedules) {
+        // A course that has finished, or has not started, consumes nothing —
+        // including it projects a run-out from a rate nobody is taking.
+        if (!isScheduleRunning(schedule, today)) continue;
+
         productDailyRate.set(
             schedule.productId,
             (productDailyRate.get(schedule.productId) ?? 0) + scheduleDailyRate(schedule),
