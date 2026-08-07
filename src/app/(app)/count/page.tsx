@@ -43,7 +43,11 @@ export default async function CountPage({
   // One line per box; grouped only so the name is not repeated down the page.
   const groups = new Map<string, CountRow[]>();
   for (const row of rows) {
-    const label = [row.name, row.strength].filter(Boolean).join(' ');
+    // Same rule as the stock list: an archived product's boxes are still on the
+    // shelf and still need counting, so they are marked rather than dropped.
+    const label =
+      [row.name, row.strength].filter(Boolean).join(' ') +
+      ((row.productArchivedAt ?? null) !== null ? ' (archived)' : '');
     const entry = groups.get(label) ?? [];
     entry.push({
       batchId: row.batchId,

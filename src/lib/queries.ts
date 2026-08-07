@@ -56,6 +56,8 @@ export function toExpiryInput(row: {
 /** One physical box, with everything needed to render it. */
 export interface StockRow {
   batchId: number;
+  /** Set when the product has been archived; its boxes still show. */
+  productArchivedAt?: Date | null;
   quantityRemaining: number;
   expiryDate: string | null;
   expiryPrecision: 'day' | 'month' | null;
@@ -94,6 +96,14 @@ const stockSelection = {
   unitName: products.unitName,
   hasExpiry: products.hasExpiry,
   expiryGraceDays: products.expiryGraceDays,
+  /*
+   * Archiving means "stop keeping this", not "pretend it is gone". Boxes of an
+   * archived product stay on the stock list and in the count, because you
+   * still physically have them and a cupboard that under-reports itself is
+   * worse than one showing something you have decided not to restock. Carried
+   * here so those screens can say so rather than leaving it a mystery.
+   */
+  productArchivedAt: products.archivedAt,
 };
 
 /**
@@ -140,6 +150,8 @@ export interface ProductStock {
   form: string;
   unitName: string;
   hasExpiry: boolean;
+  /** The product is archived, but these boxes are still in the cupboard. */
+  archived: boolean;
   /**
    * Units we would actually be willing to take — the number that answers "do I
    * need to buy this on the next trip". Excludes anything past what its product
@@ -166,6 +178,7 @@ export function groupByProduct(rows: StockRow[], today: IsoDate): ProductStock[]
         form: row.form,
         unitName: row.unitName,
         hasExpiry: row.hasExpiry,
+        archived: (row.productArchivedAt ?? null) !== null,
         totalUnits: 0,
         pastDateUnits: 0,
         boxes: [],
@@ -450,13 +463,7 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     })
     .from(doseSchedules)
     .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
-    .where(
-      and(
-        eq(doseSchedules.productId, id),
-        isNull(doseSchedules.archivedAt),
-        isNull(householdMembers.archivedAt),
-      ),
-    )
+    .where(and(eq(doseSchedules.productId, id), runningSchedulesOn(todayIso())))
     .orderBy(sql`${householdMembers.name} collate nocase`);
 
   return {
@@ -895,6 +902,28 @@ export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> 
 }
 
 /**
+ * Courses that are actually running today.
+ *
+ * One definition, because there are three places that need it and they had
+ * already drifted apart: the run-out projection counted courses that had
+ * finished, the archive guard refused to archive a product because of one, and
+ * the product page explained that refusal in the present tense — "Piotrek
+ * takes three tablets twice a day" — about a course that ended last week.
+ *
+ * Every caller must already have joined `householdMembers`: an archived person
+ * is not taking anything either, and leaving that to each caller is how the
+ * rate query came to disagree with the dose board.
+ */
+export function runningSchedulesOn(today: IsoDate) {
+  return and(
+    isNull(doseSchedules.archivedAt),
+    isNull(householdMembers.archivedAt),
+    sql`${doseSchedules.startDate} <= ${today}`,
+    or(isNull(doseSchedules.endDate), sql`${doseSchedules.endDate} >= ${today}`),
+  );
+}
+
+/**
  * Batches for a set of products, in the shape domain/fefo already understands.
  * Lets the doses board answer "is there actually anything to confirm this
  * against" using the same rules FEFO itself uses, rather than a second,
@@ -918,7 +947,14 @@ export async function getProductDailyRates(): Promise<Map<number, number>> {
       rate: sql<number>`sum(${doseSchedules.doseUnits} * ${doseSchedules.timesPerDay} * 1.0 / max(1, ${doseSchedules.intervalDays}))`,
     })
     .from(doseSchedules)
-    .where(isNull(doseSchedules.archivedAt))
+    /*
+     * Joined to the person, because the Doses board excludes an archived
+     * member's schedules and this must agree with it. Without the join,
+     * archiving someone hid their doses from the board while the stock list
+     * carried on projecting the cupboard emptying at their rate.
+     */
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(runningSchedulesOn(todayIso()))
     .groupBy(doseSchedules.productId);
 
   return new Map(rows.map((r) => [r.productId, r.rate]));

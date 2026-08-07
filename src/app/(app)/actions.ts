@@ -42,7 +42,7 @@ import {
   type LedgerBatchStatus,
 } from '@/domain/ledger';
 import { deletePhoto, savePhoto } from '@/lib/photos';
-import { findVariantByBarcode, getPreviousCollectionDate } from '@/lib/queries';
+import { findVariantByBarcode, getPreviousCollectionDate, runningSchedulesOn } from '@/lib/queries';
 import { defaultOrderByDate } from '@/domain/trip';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
 import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
@@ -426,17 +426,16 @@ export async function archiveProduct(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
 
+  /*
+   * The same predicate the product page uses to explain this refusal. They
+   * were written separately and disagreed: the page said a product could not
+   * be archived because of a course that had already finished.
+   */
   const activeSchedules = await db
     .select({ id: doseSchedules.id })
     .from(doseSchedules)
     .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
-    .where(
-      and(
-        eq(doseSchedules.productId, id),
-        isNull(doseSchedules.archivedAt),
-        isNull(householdMembers.archivedAt),
-      ),
-    )
+    .where(and(eq(doseSchedules.productId, id), runningSchedulesOn(todayIso())))
     .limit(1);
   if (activeSchedules.length > 0) return;
 
@@ -1882,8 +1881,14 @@ export async function deleteTrip(formData: FormData): Promise<void> {
  * here where it actually counts.
  */
 export async function addAuditSelection(formData: FormData): Promise<void> {
-  const tripId = Number(formData.get('tripId'));
-  if (!Number.isInteger(tripId)) return;
+  /*
+   * Through parseTripId, which checks the trip still exists. A worksheet is
+   * open for a while — long enough for the trip to be deleted on the other
+   * phone — and inserting a shopping line against a trip that has gone failed
+   * on the foreign key and put a crash page in front of a completed audit.
+   */
+  const tripId = await parseTripId(formData.get('tripId'));
+  if (tripId === null) redirect('/trips');
 
   const picked = formData.getAll('pick').map(String);
   if (picked.length === 0) redirect(`/trips/${tripId}`);

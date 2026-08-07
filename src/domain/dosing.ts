@@ -32,9 +32,26 @@ export interface DoseScheduleWindow {
  * Tuesday is due on Tuesdays. Nothing is stored per day — this is derived every
  * read, same as dose status.
  */
-export function isScheduleActiveOn(schedule: DoseScheduleWindow, date: IsoDate): boolean {
+/**
+ * Is this course running on a given day at all?
+ *
+ * Separate from `isScheduleActiveOn`, which additionally asks whether that
+ * particular day is a dosing day. A course taken every third day is still
+ * running on the two days in between — it is consuming stock at an average
+ * rate, which is what a run-out projection needs to know.
+ *
+ * The distinction matters because a course that has finished consumes nothing
+ * at all, and treating it as ongoing projects a run-out date from a rate
+ * nobody is taking.
+ */
+export function isScheduleRunning(schedule: DoseScheduleWindow, date: IsoDate): boolean {
   if (date < schedule.startDate) return false;
   if (schedule.endDate !== null && date > schedule.endDate) return false;
+  return true;
+}
+
+export function isScheduleActiveOn(schedule: DoseScheduleWindow, date: IsoDate): boolean {
+  if (!isScheduleRunning(schedule, date)) return false;
 
   const interval = Math.max(1, Math.trunc(schedule.intervalDays));
   return differenceInDays(schedule.startDate, date) % interval === 0;

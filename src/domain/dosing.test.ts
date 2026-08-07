@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isScheduleRunning,
   doseOccurrenceStatus,
   formatDoseCadence,
   formatDoseFrequency,
@@ -237,5 +238,36 @@ describe('unitsDueBetween', () => {
 
   it('handles fractional doses without drift', () => {
     expect(unitsDueBetween({ ...daily, doseUnits: 0.5, timesPerDay: 1 }, TODAY, '2026-08-04')).toBe(5);
+  });
+});
+
+describe('isScheduleRunning', () => {
+  const course = { startDate: '2026-07-27', endDate: '2026-08-03', intervalDays: 1 };
+
+  it('is running inside its own window', () => {
+    expect(isScheduleRunning(course, '2026-07-27')).toBe(true);
+    expect(isScheduleRunning(course, '2026-08-03')).toBe(true);
+  });
+
+  it('has stopped once the end date has passed', () => {
+    // The live bug: a week-long course that ended on the 3rd still had the
+    // stock list projecting six tablets a day out of the cupboard.
+    expect(isScheduleRunning(course, '2026-08-06')).toBe(false);
+  });
+
+  it('has not started before its start date', () => {
+    expect(isScheduleRunning(course, '2026-07-26')).toBe(false);
+  });
+
+  it('runs forever without an end date', () => {
+    const openEnded = { startDate: '2026-03-06', endDate: null, intervalDays: 1 };
+    expect(isScheduleRunning(openEnded, '2030-01-01')).toBe(true);
+  });
+
+  it('is running on the off days of an every-third-day course', () => {
+    // Running is not the same as due: it still consumes stock on average.
+    const everyThird = { startDate: '2026-08-01', endDate: null, intervalDays: 3 };
+    expect(isScheduleRunning(everyThird, '2026-08-02')).toBe(true);
+    expect(isScheduleActiveOn(everyThird, '2026-08-02')).toBe(false);
   });
 });
