@@ -42,7 +42,7 @@ import {
   type LedgerBatchStatus,
 } from '@/domain/ledger';
 import { deletePhoto, savePhoto } from '@/lib/photos';
-import { findVariantByBarcode, getPreviousCollectionDate } from '@/lib/queries';
+import { findVariantByBarcode, getPreviousCollectionDate, runningSchedulesOn } from '@/lib/queries';
 import { defaultOrderByDate } from '@/domain/trip';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
 import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
@@ -427,24 +427,15 @@ export async function archiveProduct(formData: FormData): Promise<void> {
   if (!Number.isInteger(id)) return;
 
   /*
-   * Only a course that is actually running blocks this. A week-long course
-   * that finished in the spring is not somebody still taking the thing, and
-   * counting it meant a product could never be archived again once it had
-   * ever had a course against it.
+   * The same predicate the product page uses to explain this refusal. They
+   * were written separately and disagreed: the page said a product could not
+   * be archived because of a course that had already finished.
    */
-  const today = todayIso();
   const activeSchedules = await db
     .select({ id: doseSchedules.id })
     .from(doseSchedules)
     .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
-    .where(
-      and(
-        eq(doseSchedules.productId, id),
-        isNull(doseSchedules.archivedAt),
-        isNull(householdMembers.archivedAt),
-        or(isNull(doseSchedules.endDate), sql`${doseSchedules.endDate} >= ${today}`),
-      ),
-    )
+    .where(and(eq(doseSchedules.productId, id), runningSchedulesOn(todayIso())))
     .limit(1);
   if (activeSchedules.length > 0) return;
 
