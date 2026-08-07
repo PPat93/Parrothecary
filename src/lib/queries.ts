@@ -13,9 +13,11 @@ import {
   products,
   shoppingItems,
   stockMovements,
+  TRIP_KINDS,
   TRIP_STATUSES,
   substances,
   symptoms,
+  travelKitItems,
   trips,
   variantBarcodes,
   variants,
@@ -23,9 +25,11 @@ import {
 import type { IsoDate } from '@/domain/date';
 import { todayIso } from '@/domain/date';
 import { isDosable, type ExpiryInput } from '@/domain/expiry';
-import { totalAvailable, type FefoBatch } from '@/domain/fefo';
+import { nextBatchToOpen, totalAvailable, type FefoBatch } from '@/domain/fefo';
 import { money, toEurOrNull, unusedValue } from '@/domain/money';
 import { summariseMovements, type Movement, type MovementSummary } from '@/domain/ledger';
+import { expiresDuringTrip, suggestKit } from '@/domain/travel';
+import { unitsDueBetween } from '@/domain/dosing';
 
 /**
  * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
@@ -332,6 +336,8 @@ export interface ProductDetail extends ProductRow {
   expiryGraceDays: number;
   /** True when any batch exists, including used-up ones. Blocks permanent delete. */
   hasBatches: boolean;
+  /** Always goes in the bag on a holiday, whatever the doses say. */
+  packForTravel: boolean;
   /**
    * True when a dose schedule (active or archived) references this product.
    * doseSchedules.productId is a restrict FK, so deleting the product would
@@ -481,6 +487,7 @@ export async function getProduct(id: number): Promise<ProductDetail | null> {
     photoPath: product.photoPath,
     archivedAt: product.archivedAt,
     hasBatches: batchRows.length > 0,
+    packForTravel: product.packForTravel,
     hasDoseSchedules: scheduleRows.length > 0,
     activeDoses: activeDoseRows,
     variantCount: variantRows.length,
@@ -1030,6 +1037,9 @@ export interface TripRow {
   collectionDate: string;
   orderByDate: string | null;
   status: (typeof TRIP_STATUSES)[number];
+  kind: (typeof TRIP_KINDS)[number];
+  /** Travel only: the day you come home. Null for a restock. */
+  returnDate: string | null;
   notes: string | null;
   /** Shopping lines assigned to this trip, whatever their status. */
   itemCount: number;
@@ -1047,6 +1057,8 @@ export async function getTrips(): Promise<TripRow[]> {
       collectionDate: trips.collectionDate,
       orderByDate: trips.orderByDate,
       status: trips.status,
+      kind: trips.kind,
+      returnDate: trips.returnDate,
       notes: trips.notes,
       itemCount: sql<number>`count(distinct ${shoppingItems.id})`,
       /*
@@ -1141,6 +1153,8 @@ export async function getTrip(id: number): Promise<TripDetail | null> {
     collectionDate: trip.collectionDate,
     orderByDate: trip.orderByDate,
     status: trip.status,
+    kind: trip.kind,
+    returnDate: trip.returnDate,
     notes: trip.notes,
     itemCount: items.length,
     items,
@@ -1543,6 +1557,161 @@ export async function getProductExport() {
     barcodes: (barcodesByProduct.get(row.productId) ?? []).join('; '),
     packs: (packsByProduct.get(row.productId) ?? []).join('; '),
   }));
+}
+
+/* ------------------------------------------------------------------ */
+/* The travel kit                                                      */
+/* ------------------------------------------------------------------ */
+
+export interface KitRow {
+  id: number;
+  productId: number;
+  name: string;
+  strength: string | null;
+  unitName: string;
+  units: number;
+  packed: boolean;
+  note: string | null;
+  /** Usable units on the shelf — you cannot pack what is not there. */
+  available: number;
+  /** The box FEFO would reach for goes off before you get home. */
+  expiresAway: boolean;
+}
+
+/** What is on the packing list for this trip. */
+export async function getTravelKit(tripId: number, returnDate: IsoDate | null): Promise<KitRow[]> {
+  const rows = await db
+    .select({
+      id: travelKitItems.id,
+      productId: travelKitItems.productId,
+      name: products.name,
+      strength: products.strength,
+      unitName: products.unitName,
+      units: travelKitItems.units,
+      packed: travelKitItems.packed,
+      note: travelKitItems.note,
+    })
+    .from(travelKitItems)
+    .innerJoin(products, eq(travelKitItems.productId, products.id))
+    .where(eq(travelKitItems.tripId, tripId))
+    .orderBy(byName);
+
+  if (rows.length === 0) return [];
+
+  const today = todayIso();
+  const stock = await getBatchesForProducts(rows.map((row) => row.productId));
+
+  return rows.map((row) => {
+    const boxes = stock.get(row.productId) ?? [];
+    const next = nextBatchToOpen(boxes, today);
+
+    return {
+      ...row,
+      available: totalAvailable(boxes, today),
+      expiresAway:
+        returnDate !== null && next !== undefined && next !== null
+          ? expiresDuringTrip(next.expiryDate, returnDate)
+          : false,
+    };
+  });
+}
+
+export interface KitSuggestionRow {
+  productId: number;
+  name: string;
+  strength: string | null;
+  unitName: string;
+  units: number;
+  reason: 'scheduled' | 'standing';
+  available: number;
+}
+
+/**
+ * What the app thinks should go in the bag.
+ *
+ * Doses are counted over the days away with `unitsDueBetween`, the same
+ * function the restock worksheet uses — so a course that starts mid-trip or
+ * finishes halfway through contributes exactly the days it covers, and one
+ * that is not running at all contributes nothing.
+ */
+export async function getKitSuggestions(
+  tripId: number,
+  departure: IsoDate,
+  returnDate: IsoDate,
+): Promise<KitSuggestionRow[]> {
+  const [schedules, standing, existing] = await Promise.all([
+    db
+      .select({
+        productId: doseSchedules.productId,
+        doseUnits: doseSchedules.doseUnits,
+        timesPerDay: doseSchedules.timesPerDay,
+        intervalDays: doseSchedules.intervalDays,
+        startDate: doseSchedules.startDate,
+        endDate: doseSchedules.endDate,
+      })
+      .from(doseSchedules)
+      .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+      .innerJoin(products, eq(doseSchedules.productId, products.id))
+      .where(
+        and(
+          isNull(doseSchedules.archivedAt),
+          isNull(householdMembers.archivedAt),
+          isNull(products.archivedAt),
+        ),
+      ),
+    db
+      .select({ id: products.id })
+      .from(products)
+      .where(and(eq(products.packForTravel, true), isNull(products.archivedAt))),
+    db
+      .select({ productId: travelKitItems.productId })
+      .from(travelKitItems)
+      .where(eq(travelKitItems.tripId, tripId)),
+  ]);
+
+  const suggestions = suggestKit(
+    schedules.map((schedule) => ({
+      productId: schedule.productId,
+      units: unitsDueBetween(schedule, departure, returnDate),
+    })),
+    standing.map((row) => row.id),
+    existing.map((row) => row.productId),
+  );
+
+  if (suggestions.length === 0) return [];
+
+  const ids = suggestions.map((row) => row.productId);
+  const [detail, stock] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        name: products.name,
+        strength: products.strength,
+        unitName: products.unitName,
+      })
+      .from(products)
+      .where(inArray(products.id, ids)),
+    getBatchesForProducts(ids),
+  ]);
+
+  const today = todayIso();
+  const byId = new Map(detail.map((row) => [row.id, row]));
+
+  return suggestions
+    .map((suggestion) => {
+      const product = byId.get(suggestion.productId);
+      if (!product) return null;
+      return {
+        productId: suggestion.productId,
+        name: product.name,
+        strength: product.strength,
+        unitName: product.unitName,
+        units: suggestion.units,
+        reason: suggestion.reason,
+        available: totalAvailable(stock.get(suggestion.productId) ?? [], today),
+      };
+    })
+    .filter((row) => row !== null);
 }
 
 /* ------------------------------------------------------------------ */

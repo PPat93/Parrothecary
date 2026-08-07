@@ -13,6 +13,7 @@ import {
   DOSE_FORMS,
   SHOPPING_STATUSES,
   TERMINAL_SHOPPING_STATUSES,
+  TRIP_KINDS,
   TRIP_STATUSES,
   UNIT_NAMES,
   batches,
@@ -26,6 +27,7 @@ import {
   productSymptoms,
   stockMovements,
   substances,
+  travelKitItems,
   symptoms,
   trips,
   variantBarcodes,
@@ -1227,6 +1229,93 @@ export async function removeAlternative(formData: FormData): Promise<void> {
   refreshAll();
 }
 
+/* ------------------------------------------------------------------ */
+/* The travel kit                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Put something in the bag.
+ *
+ * Idempotent on (trip, product): the suggestion list and the kit are on one
+ * screen, and tapping "add" twice before it re-renders should not produce two
+ * lines for the same thing.
+ */
+export async function addKitItem(formData: FormData): Promise<void> {
+  const tripId = await parseTripId(formData.get('tripId'));
+  const productId = Number(formData.get('productId'));
+  if (tripId === null || !Number.isInteger(productId)) return;
+
+  const units = parseUnits(String(formData.get('units') ?? '')) ?? 0;
+  if (units < 0 || (units > 0 && !isTrackableQuantity(units))) return;
+
+  await db
+    .insert(travelKitItems)
+    .values({ tripId, productId, units })
+    .onConflictDoNothing();
+
+  refreshAll();
+}
+
+export async function removeKitItem(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  await db.delete(travelKitItems).where(eq(travelKitItems.id, id));
+  refreshAll();
+}
+
+/** Tick it off, or untick it. Packing a bag is not a one-way process. */
+export async function toggleKitPacked(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  await db
+    .update(travelKitItems)
+    .set({
+      packed: sql`case when ${travelKitItems.packed} then 0 else 1 end`,
+      updatedAt: new Date(),
+    })
+    .where(eq(travelKitItems.id, id));
+
+  refreshAll();
+}
+
+/** Change how much of something to take. */
+export async function setKitUnits(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  const units = parseUnits(String(formData.get('units') ?? ''));
+  if (!Number.isInteger(id) || units === null || units < 0) return;
+  if (units > 0 && !isTrackableQuantity(units)) return;
+
+  await db
+    .update(travelKitItems)
+    .set({ units, updatedAt: new Date() })
+    .where(eq(travelKitItems.id, id));
+
+  refreshAll();
+}
+
+/**
+ * Mark a product as one that always goes in the bag.
+ *
+ * On the product rather than on any trip, because it is a standing decision:
+ * plasters belong in a suitcase in general, not on the trip to Kraków.
+ */
+export async function setPackForTravel(formData: FormData): Promise<void> {
+  const id = Number(formData.get('id'));
+  if (!Number.isInteger(id)) return;
+
+  await db
+    .update(products)
+    .set({
+      packForTravel: sql`case when ${products.packForTravel} then 0 else 1 end`,
+      updatedAt: new Date(),
+    })
+    .where(eq(products.id, id));
+
+  refreshAll();
+}
+
 export async function setBatchStatus(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   const status = String(formData.get('status'));
@@ -1792,15 +1881,53 @@ function emptyToNull(value: string | undefined): string | null {
 async function parseTripFields(
   formData: FormData,
   excludeTripId?: number,
-): Promise<{ fields: { label: string; collectionDate: string; orderByDate: string; notes: string | null } } | { error: string }> {
+): Promise<
+  | {
+      fields: {
+        label: string;
+        kind: (typeof TRIP_KINDS)[number];
+        collectionDate: string;
+        orderByDate: string | null;
+        returnDate: string | null;
+        notes: string | null;
+      };
+    }
+  | { error: string }
+> {
   const label = String(formData.get('label') ?? '').trim();
   const collectionDate = String(formData.get('collectionDate') ?? '').trim();
-  const orderByRaw = String(formData.get('orderByDate') ?? '').trim();
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
+  const kind = TRIP_KINDS.find((k) => k === String(formData.get('kind') ?? '')) ?? 'restock';
 
   if (!label) return { error: 'Give the trip a name — "October 2026" is enough.' };
-  if (!collectionDate) return { error: 'When is everything being collected?' };
 
+  /*
+   * The date means different things for the two kinds, which is why the label
+   * on the form changes with it: a restock is collected on that day, a holiday
+   * begins on it.
+   */
+  if (!collectionDate) {
+    return {
+      error: kind === 'travel' ? 'When do you leave?' : 'When is everything being collected?',
+    };
+  }
+
+  if (kind === 'travel') {
+    const returnDate = String(formData.get('returnDate') ?? '').trim();
+    if (!returnDate) {
+      return {
+        error: 'When do you come back? Without that there is no way to work out how much to pack.',
+      };
+    }
+    if (returnDate < collectionDate) {
+      return { error: 'The return date is before you leave.' };
+    }
+
+    // A holiday has nothing to order ahead, so it carries no deadline.
+    return { fields: { label, kind, collectionDate, orderByDate: null, returnDate, notes } };
+  }
+
+  const orderByRaw = String(formData.get('orderByDate') ?? '').trim();
   const previous = await getPreviousCollectionDate(collectionDate, excludeTripId);
   const orderByDate = orderByRaw || defaultOrderByDate(collectionDate, previous);
 
@@ -1808,7 +1935,7 @@ async function parseTripFields(
     return { error: 'The order deadline is after the collection date — orders would arrive too late.' };
   }
 
-  return { fields: { label, collectionDate, orderByDate, notes } };
+  return { fields: { label, kind, collectionDate, orderByDate, returnDate: null, notes } };
 }
 
 export async function createTrip(_prev: FormResult, formData: FormData): Promise<FormResult> {

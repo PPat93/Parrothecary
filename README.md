@@ -233,7 +233,7 @@ now, and anything that only reads it can wait.
 
    Stock counts come from the same helpers every other screen uses, so an alternative is never
    offered out of a box the app would refuse to take a dose from.
-5. **Travel kit.** See below.
+5. **Travel kit — done.** See below.
 6. **Help view.** What each screen is for and what the words on it mean — grace, FEFO, order-by,
    the difference between binning a box and using it up.
 7. **CSV export — done.** Three downloads from the Money page: boxes, stock movements, and the
@@ -307,11 +307,19 @@ audit worksheet uses, so twelve days away with one tablet daily packs twelve and
 holds nine. Expiry is checked so nothing packed dies mid-trip. Symptom coverage is checked so the
 bag is not missing a whole category.
 
-**Open, to settle before development starts:** whether the suggested list is editable as a
-*default* — a standing "always pack something for stomach, headache and allergy" that the user
-maintains, rather than a suggestion recomputed from scratch each time. It is the difference
-between a template and an algorithm, and probably wants both: computed doses that cannot be
-forgotten, plus a saved list of standing items.
+**Settled:** it wants both, and it has both. Doses are recomputed from the trip length every
+time — a course running while you are away contributes exactly the days it covers, worked out by
+`unitsDueBetween`, the same function the restock worksheet uses. Standing items are a
+`pack_for_travel` flag on the product, set once, because nothing can deduce that plasters belong
+in a suitcase.
+
+A product that is both appears once, with the computed number: that is the more specific claim.
+A standing item still appears in a week when none of its doses happen to be due, because "always
+take the antihistamines" does not stop being true. Nothing is on the list until it is added — the
+suggestions are offers, not decisions.
+
+Two things the list says before the bag closes: when the amount wanted exceeds what is in the
+cupboard, and when the box FEFO would reach for goes off before you get home.
 
 ### Deferred
 

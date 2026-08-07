@@ -11,6 +11,7 @@ import { formatQuantity } from '@/domain/quantity';
 import { unitsDueBetween } from '@/domain/dosing';
 import { unitsShort } from '@/domain/runout';
 import { daysUntilOrderBy } from '@/domain/trip';
+import { daysAway } from '@/domain/travel';
 import {
   getBatchesForProducts,
   getScheduledProducts,
@@ -74,6 +75,32 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         </Link>
       </header>
 
+      {/*
+        A holiday and a restock ask opposite questions, so the page leads with
+        the one that applies: what goes in the bag, or what has to be ordered.
+      */}
+      {trip.kind === 'travel' ? (
+        <Section title="Dates">
+          <Row label="Away" value={`${trip.collectionDate} to ${trip.returnDate ?? '—'}`} />
+          {trip.returnDate ? (
+            <Row
+              label="Days"
+              value={`${daysAway(trip.collectionDate, trip.returnDate)} — both the day you leave and the day you return`}
+            />
+          ) : null}
+          {trip.notes ? <Row label="Notes" value={trip.notes} /> : null}
+          <p className="pt-3">
+            <Link
+              href={`/trips/${trip.id}/kit`}
+              className={LINK_BUTTON}
+              test-data="packing-list-btn"
+              style={toneStyle('accent')}
+            >
+              Packing list
+            </Link>
+          </p>
+        </Section>
+      ) : (
       <Section title="Dates">
         <Row label="Collection" value={trip.collectionDate} />
         <Row
@@ -94,6 +121,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         )}
         {trip.notes ? <Row label="Notes" value={trip.notes} /> : null}
       </Section>
+      )}
 
       <Section title="What it cost">
         {spend.spentBoxes === 0 &&

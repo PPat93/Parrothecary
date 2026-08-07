@@ -29,6 +29,7 @@ import {
   removeAlternative,
   removeSubstanceFromProduct,
   removeSymptomFromProduct,
+  setPackForTravel,
   unarchiveProduct,
 } from '../../actions';
 import {
@@ -178,6 +179,29 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           }
         />
         {product.notes ? <Row label="Notes" value={product.notes} /> : null}
+
+        {/*
+          The standing half of a packing list. Nothing can deduce that plasters
+          belong in a suitcase, so it is decided once here rather than
+          remembered on the morning of every holiday.
+        */}
+        <div className="flex items-center justify-between gap-3 py-1 text-sm">
+          <span style={{ color: 'var(--muted)' }}>Always pack for travel</span>
+          <form action={setPackForTravel}>
+            <input type="hidden" name="id" value={product.id} />
+            <ActionButton
+              tone={product.packForTravel ? 'ok' : 'neutral'}
+              variant={product.packForTravel ? 'solid' : 'outline'}
+              aria-label={
+                product.packForTravel
+                  ? `Stop always packing ${product.name}`
+                  : `Always pack ${product.name}`
+              }
+            >
+              {product.packForTravel ? 'yes' : 'no'}
+            </ActionButton>
+          </form>
+        </div>
       </Section>
 
       <Section title="What it costs">

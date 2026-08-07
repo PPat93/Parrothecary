@@ -75,7 +75,10 @@ function Section({
                             <div className="min-w-0 flex-1">
                                 <p className="truncate font-medium">{trip.label}</p>
                                 <p className="text-xs tabular-nums" style={{color: 'var(--muted)'}}>
-                                    collect {trip.collectionDate}
+                                    {/* A restock is collected on a day; a holiday spans them. */}
+                                    {trip.kind === 'travel'
+                                        ? `away ${trip.collectionDate} → ${trip.returnDate ?? '?'}`
+                                        : `collect ${trip.collectionDate}`}
                                     {trip.itemCount > 0
                                         ? ` · ${trip.itemCount} ${trip.itemCount === 1 ? 'item' : 'items'}`
                                         : ' · nothing on the list yet'}
@@ -93,7 +96,8 @@ function Section({
                                 </p>
                             </div>
 
-                            {trip.status === 'planned' ? (
+                            {/* Only a restock has an order deadline to miss. */}
+                            {trip.status === 'planned' && trip.kind !== 'travel' ? (
                                 <TripUrgencyBadge orderByDate={trip.orderByDate} today={today}/>
                             ) : null}
 
