@@ -1248,6 +1248,27 @@ export async function addKitItem(formData: FormData): Promise<void> {
   const units = parseUnits(String(formData.get('units') ?? '')) ?? 0;
   if (units < 0 || (units > 0 && !isTrackableQuantity(units))) return;
 
+  /*
+   * Both ends checked before writing, because both were reachable and neither
+   * failed usefully: a packing line against a restock trip was accepted and
+   * then invisible — the kit page sends restocks away, so the row existed and
+   * nothing could ever show or remove it — and an unknown product broke the
+   * foreign key and put a crash page in front of the list.
+   */
+  const trip = await db
+    .select({ kind: trips.kind })
+    .from(trips)
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  if (trip[0]?.kind !== 'travel') return;
+
+  const product = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+  if (product.length === 0) return;
+
   await db
     .insert(travelKitItems)
     .values({ tripId, productId, units })
