@@ -1881,8 +1881,14 @@ export async function deleteTrip(formData: FormData): Promise<void> {
  * here where it actually counts.
  */
 export async function addAuditSelection(formData: FormData): Promise<void> {
-  const tripId = Number(formData.get('tripId'));
-  if (!Number.isInteger(tripId)) return;
+  /*
+   * Through parseTripId, which checks the trip still exists. A worksheet is
+   * open for a while — long enough for the trip to be deleted on the other
+   * phone — and inserting a shopping line against a trip that has gone failed
+   * on the foreign key and put a crash page in front of a completed audit.
+   */
+  const tripId = await parseTripId(formData.get('tripId'));
+  if (tripId === null) redirect('/trips');
 
   const picked = formData.getAll('pick').map(String);
   if (picked.length === 0) redirect(`/trips/${tripId}`);
