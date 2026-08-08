@@ -44,7 +44,12 @@ import {
   type LedgerBatchStatus,
 } from '@/domain/ledger';
 import { deletePhoto, savePhoto } from '@/lib/photos';
-import { findVariantByBarcode, getPreviousCollectionDate, runningSchedulesOn } from '@/lib/queries';
+import {
+  findVariantByBarcode,
+  getBatchCapacities,
+  getPreviousCollectionDate,
+  runningSchedulesOn,
+} from '@/lib/queries';
 import { defaultOrderByDate } from '@/domain/trip';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
 import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
@@ -1001,7 +1006,13 @@ export async function adjustBatch(formData: FormData): Promise<void> {
    * tablet, not a whole one, and recording the button press instead of the
    * movement would put the two out of step immediately.
    */
-  const { next, applied } = applyAdjustment(current.quantityRemaining, delta, current.packSize);
+  /*
+   * The ceiling is what this box has ever held, not its pack size — a line for
+   * three packs arrives as one batch of three packs, and capping at one meant
+   * ten taken out of it could never be put back.
+   */
+  const capacity = (await getBatchCapacities([id])).get(id) ?? current.packSize;
+  const { next, applied } = applyAdjustment(current.quantityRemaining, delta, capacity);
   // Nothing moved: an empty box asked to give, or a full one asked to take back.
   if (applied === 0) return;
 

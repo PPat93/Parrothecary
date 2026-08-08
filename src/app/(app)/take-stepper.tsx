@@ -21,12 +21,13 @@ export function TakeStepper({
   batchId,
   unitName,
   remaining,
-  packSize,
+  capacity,
 }: {
   batchId: number;
   unitName: string;
   remaining: number;
-  packSize: number;
+  /** The most this box has ever held — not its pack size. See getBatchCapacities. */
+  capacity: number;
 }) {
   const [amount, setAmount] = useState('1');
 
@@ -54,9 +55,9 @@ export function TakeStepper({
    * form, which exists to correct records rather than move stock.
    */
   const shortBy = usable && parsed > remaining ? remaining : null;
-  const room = Math.max(0, Math.round((packSize - remaining) * 100) / 100);
-  const overfills = usable && remaining < packSize && parsed > room;
-  const alreadyFull = remaining >= packSize;
+  const room = Math.max(0, Math.round((capacity - remaining) * 100) / 100);
+  const overfills = usable && remaining < capacity && parsed > room;
+  const alreadyFull = remaining >= capacity;
 
   return (
     <span className="flex shrink-0 items-center gap-1">
@@ -104,9 +105,9 @@ export function TakeStepper({
           aria-label={isOne ? 'Add one' : `Put back ${magnitude} ${unitName}`}
           title={
             alreadyFull
-              ? `This box is already full at ${packSize} ${unitName}.`
+              ? `This box is already full at ${capacity} ${unitName}.`
               : overfills
-                ? `Only room for ${room} more — a ${packSize} ${unitName} pack cannot hold more than that. Use the pencil to correct a wrong quantity.`
+                ? `Only room for ${room} more — this box has never held more than ${capacity} ${unitName}. Use the pencil to correct a wrong quantity.`
                 : undefined
           }
           tone="ok"

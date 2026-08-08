@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type AnyColumn } from 'drizzle-orm';
 import { db } from '@/db';
 import {
   batches,
@@ -117,7 +117,7 @@ const stockSelection = {
  */
 export async function getStock(search?: string): Promise<StockRow[]> {
   const query = search?.trim();
-  const pattern = query ? `%${query}%` : null;
+  const pattern = query ? containsPattern(query) : null;
 
   // Same predicate as the products list, rather than a second copy of it: the
   // two searches used to be written out separately and had already drifted —
@@ -240,16 +240,34 @@ export interface ProductRow {
  * label and the digits get typed in by hand — the app could already scan a code
  * but could not find one, which is a gap you only discover holding the box.
  */
+/**
+ * A "contains" pattern for LIKE, with the wildcards defused.
+ *
+ * `%` and `_` are LIKE metacharacters, and the search box hands them straight
+ * through: typing `_` matched every product because it means "any character",
+ * and searching for `0,9%` behaved as a prefix match rather than a literal.
+ * Escaped here, with the escape character declared on every comparison.
+ */
+function containsPattern(query: string): string {
+  const escaped = query.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  return `%${escaped}%`;
+}
+
+/** `col LIKE pattern ESCAPE ''` — drizzle's like() cannot declare the escape. */
+function likeEscaped(column: AnyColumn, pattern: string) {
+  return sql`${column} like ${pattern} escape '\\'`;
+}
+
 function matchesSearch(pattern: string) {
   return or(
-    like(products.name, pattern),
-    like(products.nameAlt, pattern),
-    like(products.manufacturer, pattern),
+    likeEscaped(products.name, pattern),
+    likeEscaped(products.nameAlt, pattern),
+    likeEscaped(products.manufacturer, pattern),
     sql`exists (
       select 1 from product_substances ps
       join substances s on s.id = ps.substance_id
       where ps.product_id = ${products.id}
-        and (s.name like ${pattern} or s.name_pl like ${pattern})
+        and (s.name like ${pattern} escape '\\' or s.name_pl like ${pattern} escape '\\')
     )`,
     // "what do we have for a sore throat" — the question you actually ask at
     // 2am, when you cannot remember what the box is called.
@@ -257,19 +275,19 @@ function matchesSearch(pattern: string) {
       select 1 from product_symptoms psy
       join symptoms sy on sy.id = psy.symptom_id
       where psy.product_id = ${products.id}
-        and (sy.name_en like ${pattern} or sy.name_pl like ${pattern})
+        and (sy.name_en like ${pattern} escape '\\' or sy.name_pl like ${pattern} escape '\\')
     )`,
     sql`exists (
       select 1 from variant_barcodes vb
       join variants vv on vv.id = vb.variant_id
-      where vv.product_id = ${products.id} and vb.code like ${pattern}
+      where vv.product_id = ${products.id} and vb.code like ${pattern} escape '\\'
     )`,
   );
 }
 
 export async function getProducts(includeArchived = false, search?: string): Promise<ProductRow[]> {
   const query = search?.trim();
-  const pattern = query ? `%${query}%` : null;
+  const pattern = query ? containsPattern(query) : null;
   const archiveFilter = includeArchived
     ? isNotNull(products.archivedAt)
     : isNull(products.archivedAt);
@@ -1434,6 +1452,44 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
       onListPacks: onList.get(product.productId) ?? null,
     };
   });
+}
+
+/**
+ * The most a box could hold — its pack size, or more if more went into it.
+ *
+ * A shopping line for three packs is received as one batch of three times the
+ * pack size, so a pack size is not a ceiling. Using it as one meant that after
+ * taking ten out of such a box you could not put them back: the cap was
+ * "pack size or what is left", and what is left falls every time you take some.
+ *
+ * Measured as everything that ever went in, which never blocks a legitimate
+ * put-back and still catches a typed 1000.
+ */
+export async function getBatchCapacities(batchIds: number[]): Promise<Map<number, number>> {
+  if (batchIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      batchId: batches.id,
+      packSize: variants.packSize,
+      /*
+       * Only stock that genuinely came in: what the box opened with, what was
+       * received into it, and any correction upward. Counting put-backs here
+       * ratcheted the ceiling up by ten every time ten went back, so the guard
+       * loosened a little with every ordinary use.
+       */
+      everIn: sql<number>`coalesce((
+        select sum(m.delta) from ${stockMovements} m
+        where m.batch_id = ${batches.id}
+          and m.delta > 0
+          and m.reason in ('opening', 'received', 'adjust', 'audit')
+      ), 0)`,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .where(inArray(batches.id, batchIds));
+
+  return new Map(rows.map((row) => [row.batchId, Math.max(row.packSize, row.everIn)]));
 }
 
 /* ------------------------------------------------------------------ */
