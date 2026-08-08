@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { ActionButton } from '@/components/action-button';
 import { AuditPick } from './audit-pick';
 import { BackLink } from '@/components/back-link';
@@ -25,6 +25,14 @@ export default async function TripAuditPage({ params }: { params: Promise<{ id: 
   const tripId = Number(id);
   const trip = await getTrip(tripId);
   if (!trip) notFound();
+
+  /*
+   * Restocks only, the mirror of the packing list sending them away. Nothing
+   * links here for a holiday, but the URL still worked — and the worksheet
+   * ends by writing shopping lines, so a holiday could quietly acquire a list
+   * of things to order that nothing would ever collect.
+   */
+  if (trip.kind !== 'restock') redirect(`/trips/${tripId}`);
 
   const today = todayIso();
   const rows = await getAuditRows(tripId);

@@ -1110,10 +1110,16 @@ export async function getPreviousCollectionDate(
   const rows = await db
     .select({ collectionDate: trips.collectionDate })
     .from(trips)
+    /*
+     * Restocks only. The order deadline is the midpoint since the last time
+     * stock came in, and a holiday in between is not that — counting one would
+     * drag the deadline forward to the middle of a fortnight in Greece.
+     */
     .where(
       excludeTripId === undefined
-        ? sql`${trips.collectionDate} < ${collectionDate}`
+        ? and(eq(trips.kind, 'restock'), sql`${trips.collectionDate} < ${collectionDate}`)
         : and(
+            eq(trips.kind, 'restock'),
             sql`${trips.collectionDate} < ${collectionDate}`,
             sql`${trips.id} <> ${excludeTripId}`,
           ),
@@ -1248,7 +1254,9 @@ export async function getTripOptions(): Promise<TripOption[]> {
   return db
     .select({ id: trips.id, label: trips.label, collectionDate: trips.collectionDate })
     .from(trips)
-    .where(eq(trips.status, 'planned'))
+    // Things get bought for a restock. Offering a holiday as somewhere to send
+    // a shopping line invites a list nothing will ever collect.
+    .where(and(eq(trips.status, 'planned'), eq(trips.kind, 'restock')))
     .orderBy(asc(trips.collectionDate));
 }
 
@@ -2163,7 +2171,9 @@ export async function getRestockWindows(): Promise<RestockWindow[]> {
   const completed = await db
     .select({ label: trips.label, collectionDate: trips.collectionDate })
     .from(trips)
-    .where(eq(trips.status, 'completed'))
+    // The section is called "between restocks" and has to mean it: a holiday
+    // in the middle would split one supply cycle into two meaningless halves.
+    .where(and(eq(trips.status, 'completed'), eq(trips.kind, 'restock')))
     .orderBy(asc(trips.collectionDate));
 
   if (completed.length < 2) return [];

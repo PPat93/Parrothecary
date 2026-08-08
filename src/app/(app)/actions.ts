@@ -2038,6 +2038,18 @@ export async function addAuditSelection(formData: FormData): Promise<void> {
   const tripId = await parseTripId(formData.get('tripId'));
   if (tripId === null) redirect('/trips');
 
+  /*
+   * And it has to be a restock. This writes shopping lines, and a holiday with
+   * a shopping list is a list nothing will ever collect — the same reason the
+   * packing list refuses to attach itself to a restock.
+   */
+  const kind = await db
+    .select({ kind: trips.kind })
+    .from(trips)
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  if (kind[0]?.kind !== 'restock') redirect(`/trips/${tripId}`);
+
   const picked = formData.getAll('pick').map(String);
   if (picked.length === 0) redirect(`/trips/${tripId}`);
 

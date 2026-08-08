@@ -313,6 +313,13 @@ time — a course running while you are away contributes exactly the days it cov
 `pack_for_travel` flag on the product, set once, because nothing can deduce that plasters belong
 in a suitcase.
 
+The two kinds share the trips table and nothing else. Everything about buying — the cost summary,
+the cabinet audit, attaching shopping lines — belongs to a restock and is hidden from a holiday,
+and the packing list is hidden from a restock; each worksheet redirects if reached by URL, and
+each write refuses the wrong kind. The order-by midpoint and the "between restocks" windows both
+count restocks only, so a holiday in the middle neither drags a deadline forward nor splits one
+supply cycle into two meaningless halves.
+
 A product that is both appears once, with the computed number: that is the more specific claim.
 A standing item still appears in a week when none of its doses happen to be due, because "always
 take the antihistamines" does not stop being true. Nothing is on the list until it is added — the

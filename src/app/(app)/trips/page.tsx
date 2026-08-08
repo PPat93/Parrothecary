@@ -24,8 +24,9 @@ export default async function TripsPage() {
             </header>
 
             <p className="mb-5 text-sm" style={{color: 'var(--muted)'}} test-data="trips-description">
-                Two or three restocks a year. What matters is the order deadline, not the flight — most of
-                it is bought online and shipped ahead, to be collected on arrival.
+                Two or three restocks a year, where what matters is the order deadline rather than the
+                flight — most of it is bought online and shipped ahead, to be collected on arrival.
+                Ordinary travel lives here too, for the packing list.
             </p>
 
             {trips.length === 0 ? (
