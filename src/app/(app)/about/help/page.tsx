@@ -46,8 +46,9 @@ export default function HelpPage() {
         </Term>
         <Term term="FEFO">
           First expiry, first out. A dose comes from the box that goes off soonest, even if a
-          different one is already open. It is why the box you are handed is not always the one you
-          used yesterday.
+          different one is already open — which is why the box you are handed is not always the one
+          you used yesterday. Only when two boxes share an expiry date does the already-open one
+          win, so seals are not broken for nothing.
         </Term>
         <Term term="Used up vs binned">
           A box that ran out was used. A box thrown away was not. They are counted separately
@@ -121,7 +122,8 @@ export default function HelpPage() {
         <p>
           Boxes going off in the next six months, in the order they need attention: past their date
           and past what they tolerate; past the date but still in use; going before the next
-          restock; and worth watching.
+          restock; worth watching; and last, any box whose date was never written down. That last
+          group cannot be warned about until someone fills the date in.
         </p>
         <p>
           Binning a box records it as waste and takes it out of the cupboard. The quantity stays on
