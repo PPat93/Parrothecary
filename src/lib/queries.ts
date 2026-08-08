@@ -2135,6 +2135,13 @@ export function summariseWaste(rows: WasteRow[]): WasteSummary {
   };
 
   for (const row of rows) {
+    /*
+     * A box binned with nothing left in it was used up, not wasted. It costs
+     * zero either way, but counting it inflates the box count next to the
+     * figure — "€2.76 left in 2 opened packs" when only one pack had anything
+     * in it reads as if the money were spread over both.
+     */
+    if (row.quantityRemaining <= 0) continue;
     if (row.priceMinor === null || row.currency === null) continue;
 
     const unused = unusedValue(

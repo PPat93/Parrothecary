@@ -21,7 +21,7 @@ function formatExpiryInput(box: BatchDetail): string {
   return box.expiryPrecision === 'month' ? `${month}.${year}` : `${day}.${month}.${year}`;
 }
 
-export function BatchEditForm({ box }: { box: BatchDetail }) {
+export function BatchEditForm({ box, from }: { box: BatchDetail; from: string | null }) {
   const [state, formAction, pending] = useActionState(updateBatch, initialState);
 
   // On a rejected submit show what they typed; otherwise what is stored.
@@ -32,6 +32,7 @@ export function BatchEditForm({ box }: { box: BatchDetail }) {
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={box.batchId} />
+      {from ? <input type="hidden" name="from" value={from} /> : null}
 
       <Field
         label="Quantity"

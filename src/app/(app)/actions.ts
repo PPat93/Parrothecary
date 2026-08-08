@@ -703,6 +703,18 @@ export async function receiveShoppingItem(
  * minus button ninety times, which would also record ninety doses as consumed —
  * turning a typo into fabricated consumption history.
  */
+/**
+ * Where to land after correcting or deleting a box.
+ *
+ * The same edit screen is reached from Stock and from Expiring, and being
+ * dumped on the other one afterwards means hunting for the row again. Only
+ * these two names are honoured — a redirect target is never taken from the
+ * client as a URL.
+ */
+function backTo(formData: FormData): string {
+  return formData.get('from') === 'expiring' ? '/expiring' : '/';
+}
+
 export async function updateBatch(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const id = Number(formData.get('id'));
   const fail = (error: string): FormResult => ({ error, values: snapshot(formData) });
@@ -752,7 +764,7 @@ export async function updateBatch(_prev: FormResult, formData: FormData): Promis
   });
 
   refreshAll();
-  redirect('/');
+  redirect(backTo(formData));
 }
 
 /**
@@ -782,7 +794,7 @@ export async function deleteBatch(formData: FormData): Promise<void> {
 
   await db.delete(batches).where(eq(batches.id, id));
   refreshAll();
-  redirect('/');
+  redirect(backTo(formData));
 }
 
 export interface ScanResult {
