@@ -34,8 +34,9 @@ import {
   variants,
 } from '@/db/schema';
 import { isValidEan13, parseScan } from '@/domain/barcode';
-import { todayIso } from '@/domain/date';
+import { addDays, todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
+import { isScheduleActiveOn } from '@/domain/dosing';
 import {
   applyAdjustment,
   closureMovement,
@@ -1604,8 +1605,14 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
       `Doses are tracked to ${UNIT_PRECISION} of a unit. ${doseUnits} is finer than that — round it, or record the dose in a smaller unit.`,
     );
   }
-  if (!Number.isInteger(timesPerDay) || timesPerDay < 1) {
-    return fail('Times per day must be a whole number, at least 1.');
+  /*
+   * Capped at hourly. The lower bound was there from the start; the upper one
+   * was not, and the board renders a pill per occurrence per day — a typed 9999
+   * produced 38 MB of HTML and a page no phone could open. Nothing is taken
+   * more than a few times a day, so 24 is already far past generous.
+   */
+  if (!Number.isInteger(timesPerDay) || timesPerDay < 1 || timesPerDay > 24) {
+    return fail('Times per day must be a whole number from 1 to 24.');
   }
   /*
    * Capped at a year for the same reason the expiry grace period is: past that
@@ -1618,6 +1625,29 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
   }
   if (!startDate) return fail('Pick a start date.');
   if (endDate && endDate < startDate) return fail('The end date is before the start date.');
+
+  /*
+   * Both ends must exist, and the product must still be kept. Neither was
+   * checked: an unknown id broke the foreign key and returned a crash page
+   * instead of a form error, and nothing stopped a schedule being started
+   * against something already archived — which would then block un-archiving
+   * it and show as a contradiction on the board.
+   */
+  const member = await db
+    .select({ id: householdMembers.id })
+    .from(householdMembers)
+    .where(and(eq(householdMembers.id, memberId), isNull(householdMembers.archivedAt)))
+    .limit(1);
+  if (member.length === 0) return fail('That person is no longer on the list.');
+
+  const scheduled = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(and(eq(products.id, productId), isNull(products.archivedAt)))
+    .limit(1);
+  if (scheduled.length === 0) {
+    return fail('That product is archived or no longer exists — restore it first.');
+  }
 
   await db.insert(doseSchedules).values({
     memberId,
@@ -1705,6 +1735,10 @@ export async function confirmDose(formData: FormData): Promise<void> {
   const scheduleRows = await db
     .select({
       doseUnits: doseSchedules.doseUnits,
+      timesPerDay: doseSchedules.timesPerDay,
+      intervalDays: doseSchedules.intervalDays,
+      startDate: doseSchedules.startDate,
+      endDate: doseSchedules.endDate,
       productId: doseSchedules.productId,
       hasExpiry: products.hasExpiry,
       expiryGraceDays: products.expiryGraceDays,
@@ -1715,6 +1749,21 @@ export async function confirmDose(formData: FormData): Promise<void> {
     .limit(1);
   const schedule = scheduleRows[0];
   if (!schedule) return;
+
+  /*
+   * The occurrence and the day both have to be ones this schedule actually has.
+   *
+   * Neither was checked, and the board only ever renders valid ones — but a
+   * page left open across an edit does not. Dropping a schedule from three
+   * times a day to one leaves the old page offering occurrences two and three,
+   * and each tap deducted a real tablet into an event no screen would ever show
+   * again, so it could not even be undone.
+   */
+  if (occurrence < 1 || occurrence > schedule.timesPerDay) return;
+  if (!isScheduleActiveOn(schedule, date)) return;
+  // Tomorrow is offered on the board — taking the evening dose early is real.
+  // Anything beyond that is a stale form or a crafted one.
+  if (date > addDays(todayIso(), 1)) return;
 
   const batchRows = await db
     .select({
