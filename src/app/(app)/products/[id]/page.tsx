@@ -29,6 +29,7 @@ import {
   removeAlternative,
   removeSubstanceFromProduct,
   removeSymptomFromProduct,
+  setBatchStatus,
   setPackForTravel,
   unarchiveProduct,
 } from '../../actions';
@@ -456,6 +457,34 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                             .filter(Boolean)
                             .join(' · ')}
                         </span>
+
+                        {/*
+                          Binning was a one-way door. The bin button lives on
+                          Expiring, its dialog promises "nothing is deleted",
+                          and the ledger has always written the reverse row —
+                          but no screen ever asked for it, so a mistyped tap on
+                          a phone cost a full box until someone opened the
+                          database. This is where those boxes are already
+                          listed, so this is where they come back.
+
+                          Not offered for a used-up box: it holds nothing, and
+                          "consumed" is derived from the quantity reaching zero
+                          rather than chosen by anyone.
+                        */}
+                        {box.status === 'expired' || box.status === 'discarded' ? (
+                          <form action={setBatchStatus} className="ml-auto">
+                            <input type="hidden" name="id" value={box.id} />
+                            <input type="hidden" name="status" value="in_stock" />
+                            <ConfirmButton
+                              label="Put back"
+                              title="Put this box back?"
+                              message={`${formatQuantity(box.quantityRemaining, product.unitName, pack.packSize)} returns to your stock, and it stops counting as waste. Use this if it was binned by mistake.`}
+                              confirmLabel="Yes, put it back"
+                              tone="ok"
+                              className="rounded-lg border px-2.5 py-1 text-xs font-medium"
+                            />
+                          </form>
+                        ) : null}
                       </li>
                     ))
                   )}

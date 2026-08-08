@@ -1,10 +1,11 @@
+import Link from 'next/link';
 import {ConfirmButton} from '@/components/confirm-button';
 import {ExpiryBadge} from '@/components/expiry-badge';
-import {todayIso} from '@/domain/date';
-import {daysUntilExpiry, expiryStatus, type ExpiryStatus} from '@/domain/expiry';
+import {differenceInDays, todayIso} from '@/domain/date';
+import {DEFAULT_THRESHOLDS, daysUntilExpiry, expiryStatus, type ExpiryStatus} from '@/domain/expiry';
 import {formatQuantity} from '@/domain/quantity';
 import {formatMoney, money} from '@/domain/money';
-import {getExpiringStock, getWaste, summariseWaste, toExpiryInput, type StockRow} from '@/lib/queries';
+import {getExpiringStock, getTripOptions, getWaste, summariseWaste, toExpiryInput, type StockRow, type TripOption} from '@/lib/queries';
 import {setBatchStatus} from '../actions';
 
 const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
@@ -22,20 +23,48 @@ const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
     {
         status: 'critical',
         title: 'Going soon',
-        blurb: 'Will not survive until the next restock trip.',
+        // Replaced at render time: the sentence depends on when the next
+        // restock actually is. See criticalBlurb.
+        blurb: 'Less than two months left.',
     },
     {status: 'warning', title: 'Watch', blurb: 'Use these before buying more.'},
     {
         status: 'unknown',
         title: 'No date recorded',
         blurb:
-            'These expire, but nobody wrote down when. Until a date is added they cannot be warned about — open the box and correct it with the pencil on the stock list.',
+            'These expire, but nobody wrote down when. Until a date is added they cannot be warned about — the pencil adds one.',
     },
 ];
 
+/**
+ * "Going soon" is a fixed sixty days, but the sentence under it used to claim
+ * these boxes would not survive until the next restock trip — which the
+ * threshold knows nothing about. With a trip twenty days out, a box with fifty
+ * days left survives it comfortably and the page was simply wrong.
+ *
+ * The threshold stays fixed; only the claim is checked. Naming the trip is
+ * worth more than the generic line, so it is named whenever it is true.
+ */
+function criticalBlurb(nextRestock: TripOption | null, today: string): string {
+    if (nextRestock === null) return 'Less than two months left, and no restock trip is planned.';
+
+    const days = differenceInDays(today, nextRestock.collectionDate);
+    return days > DEFAULT_THRESHOLDS.criticalDays
+        ? `Will not last until ${nextRestock.label} on ${nextRestock.collectionDate}.`
+        : `Less than two months left — though ${nextRestock.label} on ${nextRestock.collectionDate} comes first.`;
+}
+
 export default async function ExpiringPage() {
     const today = todayIso();
-    const [rows, waste] = await Promise.all([getExpiringStock(), getWaste()]);
+    const [rows, waste, tripOptions] = await Promise.all([
+        getExpiringStock(),
+        getWaste(),
+        getTripOptions(),
+    ]);
+
+    // The soonest restock still ahead of us. Past planned trips are somebody
+    // forgetting to close one out, and cannot be what stock is measured against.
+    const nextRestock = tripOptions.find((t) => t.collectionDate >= today) ?? null;
 
     /*
      * Two different things, deliberately not added together.
@@ -90,7 +119,7 @@ export default async function ExpiringPage() {
                             <section key={section.status} test-data={section.title.replace(/\s/g, "").toLowerCase()}>
                                 <h2 className="text-sm font-semibold uppercase tracking-wide" test-data="section-title">{section.title}</h2>
                                 <p className="mb-2 text-xs" style={{color: 'var(--muted)'}} test-data="section-description">
-                                    {section.blurb}
+                                    {section.status === 'critical' ? criticalBlurb(nextRestock, today) : section.blurb}
                                 </p>
 
                                 <ul className="flex flex-col gap-2">
@@ -107,12 +136,34 @@ export default async function ExpiringPage() {
 
                                                 <div className="min-w-0 flex-1">
                                                     <p className="truncate text-sm font-medium">
-                                                        {row.name}
+                                                        {/* This screen used to be a dead end: it could
+                              only bin. But "should I throw this away" is
+                              usually answered somewhere else — how much is
+                              left elsewhere, whether anything is still
+                              scheduled on it. So the name goes where the
+                              rest of the app sends it. */}
+                                                        <Link href={`/products/${row.productId}`}
+                                                              className="hover:underline">
+                                                            {row.name}
+                                                        </Link>
                                                         {row.strength ? (
                                                             <span className="font-normal"
                                                                   style={{color: 'var(--muted)'}}>
                                 {' '}
                                                                 {row.strength}
+                              </span>
+                                                        ) : null}
+                                                        {row.productArchivedAt !== null ? (
+                                                            <span
+                                                                className="ml-2 inline-flex shrink-0 items-center rounded-md px-2 py-0.5 align-middle text-xs font-medium"
+                                                                test-data="archived-product"
+                                                                style={{
+                                                                    background: 'var(--color-warning)',
+                                                                    color: 'black'
+                                                                }}
+                                                                title="This product is archived — what is here is what is left. It still expires."
+                                                            >
+                                archived
                               </span>
                                                         ) : null}
                                                     </p>
@@ -126,6 +177,34 @@ export default async function ExpiringPage() {
                                                     </p>
                                                 </div>
 
+                                                {/* The date is the whole reason a row is here, and a
+                            wrong or missing one is corrected on the box.
+                            Without this the "No date recorded" section could
+                            only tell you to go and find the box yourself. */}
+                                                <Link
+                                                    href={`/stock/${row.batchId}/edit?from=expiring`}
+                                                    aria-label={`Correct the date on this box of ${row.name}`}
+                                                    title="Correct this box"
+                                                    className="is-action flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border"
+                                                    style={{borderColor: 'var(--border)', color: 'var(--muted)'}}
+                                                >
+                                                    <svg
+                                                        aria-hidden
+                                                        viewBox="0 0 24 24"
+                                                        width="16"
+                                                        height="16"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        strokeWidth="1.9"
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                    >
+                                                        <path d="M12 20h9"/>
+                                                        <path
+                                                            d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                                                    </svg>
+                                                </Link>
+
                                                 <form action={setBatchStatus}>
                                                     <input type="hidden" name="id" value={row.batchId}/>
                                                     <input
@@ -136,7 +215,7 @@ export default async function ExpiringPage() {
                                                     <ConfirmButton
                                                         label="Binned"
                                                         title="Bin this box?"
-                                                        message={`${row.name} — ${formatQuantity(row.quantityRemaining, row.unitName, row.packSize)} will leave your stock and be recorded as waste. Nothing is deleted.`}
+                                                        message={`${row.name} — ${formatQuantity(row.quantityRemaining, row.unitName, row.packSize)} will leave your stock and be recorded as waste. Nothing is deleted: if this was a mistake, the product page can put the box back.`}
                                                         confirmLabel="Yes, bin it"
                                                         tone="critical"
                                                     />

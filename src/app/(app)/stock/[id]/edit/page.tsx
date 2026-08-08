@@ -7,16 +7,28 @@ import { getBatch } from '@/lib/queries';
 import { deleteBatch } from '../../../actions';
 import { BatchEditForm } from './batch-edit-form';
 
-export default async function EditBatchPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditBatchPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
+}) {
   const { id } = await params;
+  const { from } = await searchParams;
   const box = await getBatch(Number(id));
   if (!box) notFound();
+
+  // Reached from two screens; cancelling and saving should both go back to
+  // whichever one it was.
+  const cameFromExpiring = from === 'expiring';
+  const back = cameFromExpiring ? '/expiring' : '/';
 
   return (
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-1 flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Correct this box</h1>
-        <Link href="/" className={LINK_BUTTON} style={toneStyle('warning')}>
+        <Link href={back} className={LINK_BUTTON} style={toneStyle('warning')}>
           Cancel
         </Link>
       </header>
@@ -27,7 +39,7 @@ export default async function EditBatchPage({ params }: { params: Promise<{ id: 
         {formatQuantity(box.quantityRemaining, box.unitName, box.packSize)}
       </p>
 
-      <BatchEditForm box={box} />
+      <BatchEditForm box={box} from={cameFromExpiring ? 'expiring' : null} />
 
       <div className="mt-8 flex flex-col items-center gap-2">
         {box.hasDoseEvents ? (
@@ -43,6 +55,7 @@ export default async function EditBatchPage({ params }: { params: Promise<{ id: 
             </p>
             <form action={deleteBatch}>
               <input type="hidden" name="id" value={box.batchId} />
+              {cameFromExpiring ? <input type="hidden" name="from" value="expiring" /> : null}
               <ConfirmButton
                 label="Delete this box"
                 title="Delete this box?"

@@ -1,5 +1,6 @@
 import {
   daysPastDate,
+  daysUntilExpiry,
   expiryStatus,
   formatExpiry,
   type ExpiryInput,
@@ -31,6 +32,33 @@ const STYLES: Record<ExpiryStatus, { bg: string; fg: string; label?: string }> =
   expired: { bg: 'var(--color-critical)', fg: 'white', label: 'expired' },
 };
 
+/**
+ * What the badge says when you hover or long-press it.
+ *
+ * Two states used to explain themselves and the rest fell through to the raw
+ * status name, so a box in date announced itself as "critical" — the internal
+ * enum, shown to the only two people who will ever read it.
+ */
+function describe(
+  input: ExpiryInput,
+  today: string,
+  status: ExpiryStatus,
+  past: number | null,
+): string | undefined {
+  if (status === 'in_grace') {
+    return `${formatExpiry(input)} — ${past} days past date, still inside this product's ${input.graceDays}-day window, so doses are taken from it`;
+  }
+  if (status === 'expired') {
+    return `${formatExpiry(input)} — ${past} days past date, beyond what this product allows. Nothing is taken from it.`;
+  }
+  if (status === 'unknown') {
+    return 'This product expires, but no date was recorded for this box, so it cannot be warned about.';
+  }
+  // 'none' already reads as "no expiry" on the badge itself.
+  const days = daysUntilExpiry(input, today);
+  return days === null ? undefined : `${formatExpiry(input)} — ${days} days left`;
+}
+
 export function ExpiryBadge({ input, today }: { input: ExpiryInput; today: string }) {
   const status = expiryStatus(input, today);
   const style = STYLES[status];
@@ -48,13 +76,7 @@ export function ExpiryBadge({ input, today }: { input: ExpiryInput; today: strin
         color: style.fg,
         boxShadow: glowing ? `var(--glow) color-mix(in oklch, ${style.fg} 30%, transparent)` : undefined,
       }}
-      title={
-        status === 'in_grace'
-          ? `${formatExpiry(input)} — ${past} days past date, still inside this product's ${input.graceDays}-day window, so doses are taken from it`
-          : status === 'expired'
-            ? `${formatExpiry(input)} — ${past} days past date, beyond what this product allows. Nothing is taken from it.`
-            : status
-      }
+      title={describe(input, today, status, past)}
     >
       {style.label ?? formatExpiry(input)}
     </span>

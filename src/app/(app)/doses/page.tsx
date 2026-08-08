@@ -177,6 +177,16 @@ export default async function DosesPage() {
                                          * confusing of the two — the box is right there in the
                                          * cupboard. Say which it is.
                                          */
+                                        /*
+                                         * Some, but not a whole dose. FEFO hands over whatever is
+                                         * there and the event records that smaller number, which is
+                                         * the honest thing for the ledger to do — but the pill still
+                                         * renders as taken, so a two-tablet dose met with one tablet
+                                         * looked exactly like a full one. Nothing else on the board
+                                         * distinguishes the two, so say it before the tap.
+                                         */
+                                        const shortDose = !outOfStock && available < schedule.doseUnits;
+
                                         const onlyPastDate =
                                             outOfStock &&
                                             stock.some((b) => b.status === 'in_stock' && b.quantityRemaining > 0);
@@ -268,6 +278,16 @@ export default async function DosesPage() {
                                                             }
                                                         >
                               {onlyPastDate ? 'all stock past date' : 'nothing in stock'}
+                          </span>
+                                                    ) : shortDose ? (
+                                                        <span
+                                                            className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums"
+                                                            test-data="short-dose"
+                                                            style={{background: 'var(--color-warning)', color: 'black'}}
+                                                            title="Confirming takes everything that is left, which is less than a full dose — the tap will not tell you it came up short. Top this up before the next one."
+                                                        >
+                              only {formatQuantity(available, schedule.unitName)} left of a{' '}
+                                                            {formatQuantity(schedule.doseUnits, schedule.unitName)} dose
                           </span>
                                                     ) : null}
                                                     {schedule.productArchivedAt !== null ? (

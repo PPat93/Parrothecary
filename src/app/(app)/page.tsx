@@ -13,6 +13,7 @@ import {
     getBatchesForProducts,
     getProductDailyRates,
     getProductSymptoms,
+    getBatchCapacities,
     getStock,
     getStockValue,
     groupByProduct,
@@ -35,6 +36,9 @@ export default async function StockPage({
         getStockValue(),
     ]);
     const groups = groupByProduct(rows, today);
+    // What each box could hold — see getBatchCapacities. Not the pack size: a
+    // multi-pack line arrives as one batch holding several packs.
+    const capacities = await getBatchCapacities(rows.map((r) => r.batchId));
 
     // Only products with an active dose schedule get projected — a rate we
     // do not have is not a rate of zero, so this stays a separate lookup rather
@@ -182,7 +186,7 @@ export default async function StockPage({
 
                                             <TakeStepper batchId={box.batchId} unitName={box.unitName}
                                                           remaining={box.quantityRemaining}
-                                                          packSize={box.packSize}/>
+                                                          capacity={capacities.get(box.batchId) ?? box.packSize}/>
 
                                             {/* Correcting a mistyped quantity belongs here, not on the
                         stepper. Taking ninety out says ninety were used; this

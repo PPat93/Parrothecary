@@ -104,6 +104,12 @@ export default function HelpPage() {
           recorded is the same tap arriving late, not a second dose.
         </p>
         <p>
+          When there is stock but not enough for a whole dose, the card says so before the tap.
+          Confirming takes whatever is left and records that smaller amount — which is true to the
+          cupboard, but the pill looks the same as any other, so the warning is the only thing that
+          tells you the dose came up short.
+        </p>
+        <p>
           Schedules can be daily, several times a day, or every N days, and can have an end date. A
           course that has finished says so and stops projecting: it no longer counts towards how
           fast the cupboard is emptying.
@@ -121,13 +127,15 @@ export default function HelpPage() {
       <Panel title="Expiring" id="expiring">
         <p>
           Boxes going off in the next six months, in the order they need attention: past their date
-          and past what they tolerate; past the date but still in use; going before the next
-          restock; worth watching; and last, any box whose date was never written down. That last
-          group cannot be warned about until someone fills the date in.
+          and past what they tolerate; past the date but still in use; under two months left; worth
+          watching; and last, any box whose date was never written down. That last group cannot be
+          warned about until someone fills the date in — the pencil on the row does that.
         </p>
         <p>
           Binning a box records it as waste and takes it out of the cupboard. The quantity stays on
-          the record, because what was left in it is what the waste figure costs.
+          the record, because what was left in it is what the waste figure costs. A box binned by
+          mistake can be put back from the product page, which returns the units to stock and stops
+          them counting as waste.
         </p>
         <p>
           The two money figures are deliberately never added together. A sealed box that expired is
