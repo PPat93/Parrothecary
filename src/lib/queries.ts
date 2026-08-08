@@ -1814,20 +1814,47 @@ export async function getAlternatives(productId: number): Promise<AlternativeRow
     .sort((a, b) => b.inStockUnits - a.inStockUnits || a.name.localeCompare(b.name));
 }
 
-/** Products this one could be linked to: everything else still kept. */
+/**
+ * Products this one could be linked to: everything else still kept, minus the
+ * ones it is linked to already.
+ *
+ * Offering an existing pair put an option in the list whose only possible
+ * outcome was the error "these two are already linked" — a dead choice, which
+ * is the thing this app tries not to hand anybody.
+ */
 export async function getAlternativeCandidates(
   productId: number,
 ): Promise<{ id: number; label: string }[]> {
+  const linked = await db
+    .select({
+      forward: productAlternatives.productId,
+      backward: productAlternatives.alternativeProductId,
+    })
+    .from(productAlternatives)
+    .where(
+      or(
+        eq(productAlternatives.productId, productId),
+        eq(productAlternatives.alternativeProductId, productId),
+      ),
+    );
+
+  // Both ends, because the pair is stored once and read from either side.
+  const already = new Set(
+    linked.map((row) => (row.forward === productId ? row.backward : row.forward)),
+  );
+
   const rows = await db
     .select({ id: products.id, name: products.name, strength: products.strength })
     .from(products)
     .where(and(isNull(products.archivedAt), sql`${products.id} <> ${productId}`))
     .orderBy(byName);
 
-  return rows.map((row) => ({
-    id: row.id,
-    label: [row.name, row.strength].filter(Boolean).join(' '),
-  }));
+  return rows
+    .filter((row) => !already.has(row.id))
+    .map((row) => ({
+      id: row.id,
+      label: [row.name, row.strength].filter(Boolean).join(' '),
+    }));
 }
 
 /* ------------------------------------------------------------------ */
