@@ -104,6 +104,12 @@ export default function HelpPage() {
           recorded is the same tap arriving late, not a second dose.
         </p>
         <p>
+          When there is stock but not enough for a whole dose, the card says so before the tap.
+          Confirming takes whatever is left and records that smaller amount — which is true to the
+          cupboard, but the pill looks the same as any other, so the warning is the only thing that
+          tells you the dose came up short.
+        </p>
+        <p>
           Schedules can be daily, several times a day, or every N days, and can have an end date. A
           course that has finished says so and stops projecting: it no longer counts towards how
           fast the cupboard is emptying.

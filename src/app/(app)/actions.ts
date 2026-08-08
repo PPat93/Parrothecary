@@ -1764,7 +1764,16 @@ export async function confirmDose(formData: FormData): Promise<void> {
     })
     .from(doseSchedules)
     .innerJoin(products, eq(doseSchedules.productId, products.id))
-    .where(eq(doseSchedules.id, scheduleId))
+    /*
+     * `runningSchedulesOn` is the same predicate the board itself is built
+     * from, so a schedule the board will not show cannot be confirmed against
+     * either. Stopping a course or archiving the person who takes it used to
+     * leave the old page working: each tap took a real tablet out of the
+     * cupboard and wrote it to an event no screen renders, which also means
+     * nobody could undo it. The member join is what that predicate needs.
+     */
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(and(eq(doseSchedules.id, scheduleId), runningSchedulesOn(date)))
     .limit(1);
   const schedule = scheduleRows[0];
   if (!schedule) return;
