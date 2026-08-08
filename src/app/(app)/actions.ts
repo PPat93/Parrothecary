@@ -1366,6 +1366,13 @@ export async function setBatchStatus(formData: FormData): Promise<void> {
   const status = String(formData.get('status'));
   if (!Number.isInteger(id)) return;
   if (!BATCH_STATUSES.some((s) => s === status)) return;
+  /*
+   * "Used up" is derived from the quantity reaching zero, never chosen. Setting
+   * it by hand on a box that still holds something would close the box out of
+   * the ledger with a `binned` row — reporting units that were never thrown
+   * away as waste.
+   */
+  if (status === 'consumed') return;
 
   const rows = await db
     .select({ status: batches.status, quantityRemaining: batches.quantityRemaining })

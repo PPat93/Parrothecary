@@ -126,6 +126,11 @@ export default function FlowsPage() {
           That remaining quantity is what the waste figures cost, split between boxes never opened
           and part-used ones, on both <b>Expiring</b> and <b>Statistics → Money</b>.
         </Step>
+        <Step>
+          A box binned by mistake is still listed on its <b>product</b> page, where{' '}
+          <b>Put back</b> returns it to the cupboard. The ledger gains the opposite movement, so the
+          units come back and stop counting as waste.
+        </Step>
       </Panel>
 
       <Panel title="Going away">

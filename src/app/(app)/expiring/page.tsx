@@ -215,7 +215,7 @@ export default async function ExpiringPage() {
                                                     <ConfirmButton
                                                         label="Binned"
                                                         title="Bin this box?"
-                                                        message={`${row.name} — ${formatQuantity(row.quantityRemaining, row.unitName, row.packSize)} will leave your stock and be recorded as waste. Nothing is deleted.`}
+                                                        message={`${row.name} — ${formatQuantity(row.quantityRemaining, row.unitName, row.packSize)} will leave your stock and be recorded as waste. Nothing is deleted: if this was a mistake, the product page can put the box back.`}
                                                         confirmLabel="Yes, bin it"
                                                         tone="critical"
                                                     />
