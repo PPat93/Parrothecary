@@ -234,8 +234,20 @@ now, and anything that only reads it can wait.
    Stock counts come from the same helpers every other screen uses, so an alternative is never
    offered out of a box the app would refuse to take a dose from.
 5. **Travel kit — done.** See below.
-6. **Help view.** What each screen is for and what the words on it mean — grace, FEFO, order-by,
-   the difference between binning a box and using it up.
+6. **Help view — done.** Two tabs alongside About, so the header gains no fourth icon.
+
+   *Help* is a glossary, then one panel per screen, then two sections that matter more than the
+   per-screen ones: **why won't it let me** — an index of every disabled control and the reason
+   behind it, because from the outside each one reads as a fault — and **what it deliberately
+   does not do**, because a decision looks identical to a gap unless somebody says otherwise.
+
+   *Flows* is what happens between screens, which is where the surprises live: a tap in one place
+   changes a number in another.
+
+   Written as mechanisms rather than click-by-click instructions. A walkthrough is a lie waiting
+   to happen — the first button that moves makes it wrong — while "doses come out of the box that
+   expires first" survives any redesign. The audience is the person who was not in the room when
+   these decisions were made.
 7. **CSV export — done.** Three downloads from the Money page: boxes, stock movements, and the
    product catalogue. Together they are enough to rebuild the cabinet by hand if this app ever
    stops running. No dependencies; formatting is two clicks in a spreadsheet, which is why xlsx

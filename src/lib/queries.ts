@@ -140,9 +140,21 @@ export async function getStock(search?: string): Promise<StockRow[]> {
 /** Everything in stock that actually has an expiry date, soonest first. */
 export async function getExpiringStock(): Promise<StockRow[]> {
   const rows = await getStock();
+  /*
+   * Boxes with no date recorded stay in. Their product expires, so the box
+   * does too — nobody just does not know when. Dropping them made the one
+   * screen whose job is to warn you the only screen that could not see them,
+   * and nothing else ever asked for the missing date.
+   *
+   * Sorted with those last, since a date you have beats a date you do not.
+   */
   return rows
-    .filter((r) => r.hasExpiry && r.expiryDate !== null)
-    .sort((a, b) => (a.expiryDate! < b.expiryDate! ? -1 : a.expiryDate! > b.expiryDate! ? 1 : 0));
+    .filter((r) => r.hasExpiry)
+    .sort((a, b) => {
+      if (a.expiryDate === null) return b.expiryDate === null ? 0 : 1;
+      if (b.expiryDate === null) return -1;
+      return a.expiryDate < b.expiryDate ? -1 : a.expiryDate > b.expiryDate ? 1 : 0;
+    });
 }
 
 /** Group boxes under their product, the way the stock list reads on screen. */

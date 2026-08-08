@@ -25,6 +25,12 @@ const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
         blurb: 'Will not survive until the next restock trip.',
     },
     {status: 'warning', title: 'Watch', blurb: 'Use these before buying more.'},
+    {
+        status: 'unknown',
+        title: 'No date recorded',
+        blurb:
+            'These expire, but nobody wrote down when. Until a date is added they cannot be warned about — open the box and correct it with the pencil on the stock list.',
+    },
 ];
 
 export default async function ExpiringPage() {

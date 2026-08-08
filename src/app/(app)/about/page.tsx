@@ -1,4 +1,5 @@
 import { BackLink } from '@/components/back-link';
+import { AboutTabs } from './tabs';
 
 /**
  * Reached from the bar at the top of every screen.
@@ -33,6 +34,8 @@ export default function AboutPage() {
           Domowa apteczka
         </p>
       </div>
+
+      <AboutTabs active="about" />
 
       <Section>
         <p>
