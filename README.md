@@ -9,13 +9,32 @@ order before the deadline".
 
 ## Status
 
-**Phases 1 to 3 are done.** The cabinet is usable end to end: products, packs and boxes; stock
-and expiry; barcode scanning; dose schedules; run-out projection; trips with an order deadline;
-the audit worksheet; prices, waste and cupboard value.
+**Phases 1 to 4 are done.** The cabinet is usable end to end: products, packs and boxes; stock and
+expiry; barcode scanning; dose schedules and run-out projection; a stock ledger behind every
+quantity that changes; counting the shelf; duplicate-ingredient warnings; alternatives; restock
+trips with an order deadline and a cabinet audit; holidays with a packing list; prices, waste and
+usage statistics; CSV export; and a help view that explains the lot.
 
-Phase 4 is next — a stock ledger and the features that stand on it — and deployment is
-deliberately last, after end-to-end coverage. See "Roadmap" below. The app still runs locally
-against test data, which gets wiped for a clean start when it is deployed.
+**Phase 5 is deployment**, deliberately last — the app should be tested before it becomes the
+thing the household relies on. Until then it runs locally against test data, which gets wiped for
+a clean start on the day it is deployed.
+
+## What it looks like
+
+Phone-first, because that is where it gets used — standing at a cupboard, one hand free.
+
+<p>
+  <img src="docs/screenshots/stock.png" width="240" alt="Stock list: boxes grouped by product, with expiry badges, symptom tags and a take/put-back stepper" />
+  <img src="docs/screenshots/doses.png" width="240" alt="Doses board: one card per person, with a warning that two scheduled medicines share an active ingredient" />
+  <img src="docs/screenshots/expiring.png" width="240" alt="Expiring: boxes grouped by how urgent they are, and what the binned ones cost" />
+</p>
+<p>
+  <img src="docs/screenshots/trips.png" width="240" alt="Trips: restocks with an order deadline, and ordinary travel with a packing list" />
+  <img src="docs/screenshots/statistics.png" width="240" alt="Statistics: cupboard value, spend by year and by trip, and the waste split" />
+  <img src="docs/screenshots/help.png" width="240" alt="Help: a glossary and a section per screen, including why the app refuses things" />
+</p>
+
+Shot against `npm run db:seed`, not real data.
 
 ## Getting started
 
@@ -52,7 +71,7 @@ Open http://localhost:3000.
 | `npm run db:generate` | Generate a migration after editing `src/db/schema.ts` |
 | `npm run db:studio` | Browse the database |
 | `npm run db:symptoms` | Load the symptom tag vocabulary (run before any seed) |
-| `npm run db:seed` | Load demo data |
+| `npm run db:seed` | Load demo data (run `db:symptoms` first) |
 | `npm run db:reset` | **Delete all data**, keep the schema (`-- --force` to skip the prompt) |
 | `npm run db:check-ledger` | Verify every box agrees with its stock movements |
 | `npm run auth:hash -- "…"` | Generate a master-password hash |
@@ -103,7 +122,8 @@ src/
   components/ Shared UI.
 e2e/          Playwright — owned by the repo owner. Page objects, fixtures, smoke and
               functional specs, with a setup project that logs in once and stores the session.
-scripts/      Password hashing, seed, reset.
+scripts/      Password hashing, seed, reset, ledger check.
+docs/         Screenshots for this file.
 ```
 
 `src/domain` deliberately imports nothing from Next. If the framework ever becomes a liability,
@@ -171,11 +191,11 @@ they run.
   present. It reports binned-unopened separately from what was left in opened packs — the first is
   money wasted, the second is the cost of having something available, and adding them together
   would flatter one and slander the other.
-### Phase 4 — before deployment
+### Phase 4 — before deployment — done
 
-Ordered. The database is still disposable, and it stops being disposable the day the app is
-deployed and real stock is entered — so anything that changes *what gets recorded* is cheapest
-now, and anything that only reads it can wait.
+Ordered as it was built. The database was still disposable, and stops being so the day the app is
+deployed and real stock is entered — so anything that changed *what gets recorded* was cheapest
+first, and anything that only reads it could wait.
 
 1. **Stock ledger — done.** Every quantity change is an immutable row: batch, signed delta,
    reason (`received` / `dose` / `taken` / `adjust` / `binned` / `audit` / `opening`),
