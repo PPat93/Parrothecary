@@ -11,6 +11,7 @@ import { formatQuantity } from '@/domain/quantity';
 import { unitsDueBetween } from '@/domain/dosing';
 import { unitsShort } from '@/domain/runout';
 import { daysUntilOrderBy } from '@/domain/trip';
+import { daysAway } from '@/domain/travel';
 import {
   getBatchesForProducts,
   getScheduledProducts,
@@ -74,6 +75,32 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         </Link>
       </header>
 
+      {/*
+        A holiday and a restock ask opposite questions, so the page leads with
+        the one that applies: what goes in the bag, or what has to be ordered.
+      */}
+      {trip.kind === 'travel' ? (
+        <Section title="Dates">
+          <Row label="Away" value={`${trip.collectionDate} to ${trip.returnDate ?? '—'}`} />
+          {trip.returnDate ? (
+            <Row
+              label="Days"
+              value={`${daysAway(trip.collectionDate, trip.returnDate)} — both the day you leave and the day you return`}
+            />
+          ) : null}
+          {trip.notes ? <Row label="Notes" value={trip.notes} /> : null}
+          <p className="pt-3">
+            <Link
+              href={`/trips/${trip.id}/kit`}
+              className={LINK_BUTTON}
+              test-data="packing-list-btn"
+              style={toneStyle('accent')}
+            >
+              Packing list
+            </Link>
+          </p>
+        </Section>
+      ) : (
       <Section title="Dates">
         <Row label="Collection" value={trip.collectionDate} />
         <Row
@@ -94,7 +121,17 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         )}
         {trip.notes ? <Row label="Notes" value={trip.notes} /> : null}
       </Section>
+      )}
 
+      {/*
+        Everything below here is about buying: what it cost, what will run out
+        before it, and what still needs attaching to it. A holiday buys nothing
+        — it takes a kit out of a cupboard that is already stocked — so none of
+        it applies, and showing empty versions would be three sections of
+        answers to questions nobody asked.
+      */}
+      {trip.kind === 'restock' ? (
+        <>
       <Section title="What it cost">
         {spend.spentBoxes === 0 &&
         spend.uncostedBoxes === 0 &&
@@ -332,6 +369,8 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
           </ul>
         </Section>
       ) : null}
+        </>
+      ) : null}
 
       <div className="mt-6 flex flex-col items-center gap-3">
         <form action={setTripStatus}>
@@ -342,8 +381,20 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
             value={trip.status === 'planned' ? 'completed' : 'planned'}
           />
           <ConfirmButton
-            label={trip.status === 'planned' ? 'Mark as collected' : 'Reopen this trip'}
-            title={trip.status === 'planned' ? 'Mark this trip collected?' : 'Reopen this trip?'}
+            label={
+              trip.status === 'planned'
+                ? trip.kind === 'travel'
+                  ? 'Mark as back home'
+                  : 'Mark as collected'
+                : 'Reopen this trip'
+            }
+            title={
+              trip.status === 'planned'
+                ? trip.kind === 'travel'
+                  ? 'Mark this trip finished?'
+                  : 'Mark this trip collected?'
+                : 'Reopen this trip?'
+            }
             message={
               trip.status === 'planned'
                 ? `${trip.label} moves to the done list. Its shopping lines stay exactly as they are — receiving a box is still what records what actually arrived.`

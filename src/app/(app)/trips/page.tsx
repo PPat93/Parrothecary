@@ -24,8 +24,9 @@ export default async function TripsPage() {
             </header>
 
             <p className="mb-5 text-sm" style={{color: 'var(--muted)'}} test-data="trips-description">
-                Two or three restocks a year. What matters is the order deadline, not the flight — most of
-                it is bought online and shipped ahead, to be collected on arrival.
+                Two or three restocks a year, where what matters is the order deadline rather than the
+                flight — most of it is bought online and shipped ahead, to be collected on arrival.
+                Ordinary travel lives here too, for the packing list.
             </p>
 
             {trips.length === 0 ? (
@@ -75,7 +76,10 @@ function Section({
                             <div className="min-w-0 flex-1">
                                 <p className="truncate font-medium">{trip.label}</p>
                                 <p className="text-xs tabular-nums" style={{color: 'var(--muted)'}}>
-                                    collect {trip.collectionDate}
+                                    {/* A restock is collected on a day; a holiday spans them. */}
+                                    {trip.kind === 'travel'
+                                        ? `away ${trip.collectionDate} → ${trip.returnDate ?? '?'}`
+                                        : `collect ${trip.collectionDate}`}
                                     {trip.itemCount > 0
                                         ? ` · ${trip.itemCount} ${trip.itemCount === 1 ? 'item' : 'items'}`
                                         : ' · nothing on the list yet'}
@@ -93,7 +97,8 @@ function Section({
                                 </p>
                             </div>
 
-                            {trip.status === 'planned' ? (
+                            {/* Only a restock has an order deadline to miss. */}
+                            {trip.status === 'planned' && trip.kind !== 'travel' ? (
                                 <TripUrgencyBadge orderByDate={trip.orderByDate} today={today}/>
                             ) : null}
 

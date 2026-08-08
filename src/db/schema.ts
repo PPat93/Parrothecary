@@ -130,6 +130,17 @@ export const products = sqliteTable(
      */
     expiryGraceDays: integer('expiry_grace_days').notNull().default(0),
 
+    /**
+     * Goes in the bag on every holiday, whatever the maths says.
+     *
+     * The computed half of a packing list can only speak for things on a dose
+     * schedule — four of fifteen here. Nothing can deduce that plasters and
+     * something for an upset stomach belong in a suitcase; that is a standing
+     * decision a person makes once. So the kit is both: doses worked out from
+     * the trip length, plus whatever is marked here.
+     */
+    packForTravel: integer('pack_for_travel', { mode: 'boolean' }).notNull().default(false),
+
     /** Photo of the box front, relative to the uploads directory. */
     photoPath: text('photo_path'),
     notes: text('notes'),
@@ -342,6 +353,19 @@ export const batches = sqliteTable(
 export const TRIP_STATUSES = ['planned', 'completed'] as const;
 
 /**
+ * Two quite different journeys share this table because they share everything
+ * structural: a label, a date, a status, and a list of things attached to it.
+ *
+ *   restock — the twice-yearly buying trip. Stock comes IN.
+ *   travel  — an ordinary holiday. A kit goes OUT and mostly comes back.
+ *
+ * The lists themselves are not shared. A shopping line has a purchase
+ * lifecycle; a packing line is "N units of this, from this cupboard, coming
+ * home again". Same journey, different nouns.
+ */
+export const TRIP_KINDS = ['restock', 'travel'] as const;
+
+/**
  * Most stock is ordered online and shipped ahead of the visit to be picked up
  * on arrival, so the date that actually constrains us is orderByDate, not the
  * collection date. Audits and shopping-list reminders hang off orderByDate.
@@ -351,12 +375,60 @@ export const trips = sqliteTable('trips', {
   label: text('label').notNull(),
   /** When we physically collect everything. Typically mid-October and Feb/March. */
   collectionDate: text('collection_date').notNull(),
-  /** Deadline for placing online orders. Defaults to the midpoint since the last trip. */
+  /**
+   * Deadline for placing online orders. Defaults to the midpoint since the last
+   * trip. Restocks only — a holiday has nothing to order ahead.
+   */
   orderByDate: text('order_by_date'),
+  /**
+   * When we come home. Travel only, and what makes a packing list possible:
+   * without it there is no trip length, and no way to say how many tablets to
+   * put in the bag. For a travel trip `collection_date` is the day you leave.
+   */
+  returnDate: text('return_date'),
+  kind: text('kind', { enum: TRIP_KINDS }).notNull().default('restock'),
   status: text('status', { enum: TRIP_STATUSES }).notNull().default('planned'),
   notes: text('notes'),
   ...timestamps,
 });
+
+/**
+ * One line of a packing list.
+ *
+ * Deliberately does NOT move stock. Taking a box out of the cupboard and
+ * bringing most of it home again needs a "what came back" step that nobody
+ * performs while actually travelling, and a forgotten return leaves the numbers
+ * worse than never having tried. The ledger makes that upgrade a pair of
+ * reasons whenever the drift starts to matter.
+ *
+ * Keyed on the product rather than a box: you pack "the paracetamol", and which
+ * box it comes out of is decided at the cupboard door.
+ */
+export const travelKitItems = sqliteTable(
+  'travel_kit_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tripId: integer('trip_id')
+      .notNull()
+      .references(() => trips.id, { onDelete: 'cascade' }),
+    productId: integer('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+
+    /** Base units to take. Suggested where the maths can, typed where it cannot. */
+    units: real('units').notNull(),
+    /** Ticked off once it is physically in the bag. */
+    packed: integer('packed', { mode: 'boolean' }).notNull().default(false),
+    note: text('note'),
+    ...timestamps,
+  },
+  (t) => [
+    index('travel_kit_trip_idx').on(t.tripId),
+    // One line per product per trip: packing the same thing twice is a mistake,
+    // not an intention.
+    uniqueIndex('travel_kit_trip_product_unique').on(t.tripId, t.productId),
+  ],
+);
 
 export const SHOPPING_STATUSES = [
   'to_buy',
