@@ -1415,11 +1415,14 @@ export async function setBatchStatus(formData: FormData): Promise<void> {
 /* Shopping list                                                       */
 /* ------------------------------------------------------------------ */
 
+/** Packs on a single shopping line. Generous for a household, still a number. */
+const MAX_PACKS_PER_LINE = 999;
+
 export async function addShoppingItem(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const variantId = Number(formData.get('variantId'));
   const quantityPacks = Number(formData.get('quantityPacks') ?? 1);
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
-  const tripId = await parseTripId(formData.get('tripId'));
+  const tripId = await parseTripId(formData.get('tripId'), 'restock');
 
   if (!Number.isInteger(variantId)) {
     return { error: 'Pick which pack to buy.', values: snapshot(formData) };
@@ -1427,6 +1430,42 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
   if (!Number.isInteger(quantityPacks) || quantityPacks < 1) {
     return {
       error: 'Number of packs must be a whole number, at least 1.',
+      values: snapshot(formData),
+    };
+  }
+  /*
+   * Only a lower bound was checked. A thousand million packs went on the list
+   * happily and turned the trip's estimate into €5,780,000,033.87, which is
+   * not a number anyone can read past.
+   */
+  if (quantityPacks > MAX_PACKS_PER_LINE) {
+    return {
+      error: `${quantityPacks} packs on one line is more than this is meant for — ${MAX_PACKS_PER_LINE} is the most. Add a second line if you really need more.`,
+      values: snapshot(formData),
+    };
+  }
+
+  /*
+   * The pack has to still be there. `variant_id` is a real foreign key, so a
+   * form left open while the other phone deletes that pack size threw
+   * SQLITE_CONSTRAINT_FOREIGNKEY and put a crash page in front of the list.
+   * An archived product is refused for the same reason it cannot take a new
+   * box: buying more of something you have retired is not a thing to plan.
+   */
+  const variantRows = await db
+    .select({ id: variants.id, productName: products.name, archivedAt: products.archivedAt })
+    .from(variants)
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(eq(variants.id, variantId))
+    .limit(1);
+
+  const variant = variantRows[0];
+  if (!variant) {
+    return { error: 'That pack size no longer exists. Pick another one.', values: snapshot(formData) };
+  }
+  if (variant.archivedAt !== null) {
+    return {
+      error: `${variant.productName} is archived. Restore it first if you mean to buy more.`,
       values: snapshot(formData),
     };
   }
@@ -1447,14 +1486,27 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
  * back to "no trip" loses only the association, which the trip page can restore
  * in one tap.
  */
-async function parseTripId(raw: FormDataEntryValue | null): Promise<number | null> {
+async function parseTripId(
+  raw: FormDataEntryValue | null,
+  kind?: (typeof TRIP_KINDS)[number],
+): Promise<number | null> {
   const value = String(raw ?? '').trim();
   if (value === '') return null;
 
   const id = Number(value);
   if (!Number.isInteger(id)) return null;
 
-  const rows = await db.select({ id: trips.id }).from(trips).where(eq(trips.id, id)).limit(1);
+  /*
+   * Optionally the right sort of trip, too. The picker only ever offers planned
+   * restocks for a shopping line, but nothing enforced it, so a line could end
+   * up on a holiday — where the trip page has no shopping section at all and
+   * would never show it again.
+   */
+  const rows = await db
+    .select({ id: trips.id })
+    .from(trips)
+    .where(kind === undefined ? eq(trips.id, id) : and(eq(trips.id, id), eq(trips.kind, kind)))
+    .limit(1);
   return rows[0]?.id ?? null;
 }
 
@@ -1465,7 +1517,7 @@ export async function setShoppingTrip(formData: FormData): Promise<void> {
 
   await db
     .update(shoppingItems)
-    .set({ tripId: await parseTripId(formData.get('tripId')), updatedAt: new Date() })
+    .set({ tripId: await parseTripId(formData.get('tripId'), 'restock'), updatedAt: new Date() })
     .where(eq(shoppingItems.id, id));
   refreshAll();
 }
@@ -1475,6 +1527,14 @@ export async function setShoppingStatus(formData: FormData): Promise<void> {
   const status = String(formData.get('status'));
   if (!Number.isInteger(id)) return;
   if (!SHOPPING_STATUSES.some((s) => s === status)) return;
+  /*
+   * "In the cupboard" is not a status anyone gets to set: it is what
+   * `receiveShoppingItem` writes in the same transaction that creates the box.
+   * Setting it here marked a line as bought with no box behind it — and since
+   * it is also terminal, the line could not be walked back afterwards, so a
+   * list that said something false could only be cleared, never corrected.
+   */
+  if (status === 'in_stock') return;
 
   /*
    * Settled lines do not move. The list already stops offering the arrows once
@@ -2065,6 +2125,26 @@ export async function updateTrip(_prev: FormResult, formData: FormData): Promise
 
   const parsed = await parseTripFields(formData, id);
   if ('error' in parsed) return { error: parsed.error, values: snapshot(formData) };
+
+  /*
+   * A holiday has no shopping section, so turning a restock into one hides
+   * every line attached to it: still on the shopping list, but orphaned from
+   * the only page that shows a trip's list, its costs and its audit. Say what
+   * is in the way instead of quietly stranding them.
+   */
+  if (parsed.fields.kind === 'travel') {
+    const attached = await db
+      .select({ id: shoppingItems.id })
+      .from(shoppingItems)
+      .where(eq(shoppingItems.tripId, id));
+
+    if (attached.length > 0) {
+      return {
+        error: `This trip has ${attached.length} shopping ${attached.length === 1 ? 'line' : 'lines'} on it, and a holiday cannot carry a shopping list. Move them to another restock first, or take them off the trip.`,
+        values: snapshot(formData),
+      };
+    }
+  }
 
   await db
     .update(trips)
