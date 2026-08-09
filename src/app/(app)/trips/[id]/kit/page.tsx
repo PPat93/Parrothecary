@@ -92,6 +92,18 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
                         </span>
                       ) : null}
                     </Link>
+                    {/* Suggestions skip archived products, but one added before
+                        being archived stays in the bag. Mark it. */}
+                    {row.archived ? (
+                      <span
+                        className="ml-2 inline-flex shrink-0 items-center rounded-md px-2 py-0.5 align-middle text-xs font-medium"
+                        test-data="archived-product"
+                        style={{ background: 'var(--color-warning)', color: 'black' }}
+                        title="This product is archived — it is no longer suggested for a trip. What is in the cupboard is what is left."
+                      >
+                        archived
+                      </span>
+                    ) : null}
                   </p>
 
                   <p className="text-xs" style={{ color: 'var(--muted)' }}>

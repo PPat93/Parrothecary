@@ -730,6 +730,8 @@ export interface ShoppingRow {
   strength: string | null;
   unitName: string;
   hasExpiry: boolean;
+  /** Set when the product was archived after this line was put on the list. */
+  productArchivedAt: Date | null;
   receivedBatchId: number | null;
 }
 
@@ -749,6 +751,13 @@ const shoppingSelection = {
   strength: products.strength,
   unitName: products.unitName,
   hasExpiry: products.hasExpiry,
+  /*
+   * Archived, but still on the list. Archiving does not clear open lines, and
+   * nothing said so — you would buy two packs of something you had decided to
+   * stop using. The stock list, the dose board and Expiring all mark it, so
+   * this does too.
+   */
+  productArchivedAt: products.archivedAt,
   receivedBatchId: shoppingItems.receivedBatchId,
 };
 
@@ -1672,6 +1681,8 @@ export interface KitRow {
   available: number;
   /** The box FEFO would reach for goes off before you get home. */
   expiresAway: boolean;
+  /** Retired, but still in the bag. Same reason the shopping list says so. */
+  archived: boolean;
 }
 
 /** What is on the packing list for this trip. */
@@ -1686,6 +1697,7 @@ export async function getTravelKit(tripId: number, returnDate: IsoDate | null): 
       units: travelKitItems.units,
       packed: travelKitItems.packed,
       note: travelKitItems.note,
+      archivedAt: products.archivedAt,
     })
     .from(travelKitItems)
     .innerJoin(products, eq(travelKitItems.productId, products.id))
@@ -1708,6 +1720,7 @@ export async function getTravelKit(tripId: number, returnDate: IsoDate | null): 
         returnDate !== null && next !== undefined && next !== null
           ? expiresDuringTrip(next.expiryDate, returnDate)
           : false,
+      archived: row.archivedAt !== null,
     };
   });
 }

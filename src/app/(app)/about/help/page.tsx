@@ -266,6 +266,11 @@ export default function HelpPage() {
         <Term term="The − on a box is disabled">
           The box is empty, or the amount typed is not a number the app can use.
         </Term>
+        <Term term="“Expires” will not switch off">
+          Boxes of it have dates written on them. Turning expiry off would make those dates mean
+          nothing — past-date stock would count as usable again and doses would be taken from it.
+          Clear the dates on those boxes first if the thing genuinely does not expire.
+        </Term>
         <Term term="No “Archive this product” button">
           Someone is still on a course of it. Stop the dose first — archiving would take it off the
           board while it was still being taken.

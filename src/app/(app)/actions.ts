@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
 import {
@@ -403,6 +403,34 @@ export async function updateProduct(_prev: FormResult, formData: FormData): Prom
    * with no hint that the work had gone nowhere.
    */
   if (!(await productIsThere(id))) return { error: PRODUCT_GONE, values: snapshot(formData) };
+
+  /*
+   * Turning expiry off is not a labelling change — it decides whether dates
+   * already written on boxes mean anything.
+   *
+   * `isDosable` answers true for a product that does not expire, whatever the
+   * box says. So unticking this on a product holding long-expired stock made
+   * that stock usable again: the boxes dropped off Expiring, the dose board
+   * stopped refusing, and a dose came out of a box 221 days past its date. One
+   * checkbox, no warning, nothing in the ledger to show why.
+   *
+   * The grace-days field beside it already refuses to quietly extend how long
+   * something counts as safe to take. This is the same rule at a larger scale.
+   */
+  if (!parsed.data.hasExpiry) {
+    const dated = await db
+      .select({ id: batches.id })
+      .from(batches)
+      .innerJoin(variants, eq(batches.variantId, variants.id))
+      .where(and(eq(variants.productId, id), isNotNull(batches.expiryDate)));
+
+    if (dated.length > 0) {
+      return {
+        error: `${dated.length} ${dated.length === 1 ? 'box' : 'boxes'} of this have an expiry date recorded. Turning expiry off would ignore those dates and treat past-date stock as usable — clear the dates on those boxes first if this really does not expire.`,
+        values: snapshot(formData),
+      };
+    }
+  }
 
   await db
     .update(products)

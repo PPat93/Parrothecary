@@ -112,6 +112,18 @@ export default async function ShoppingPage() {
                                                         {item.strength}
                           </span>
                                                 ) : null}
+                                                {/* Archiving does not clear open lines — say so rather
+                            than let a retired product be bought again. */}
+                                                {item.productArchivedAt !== null ? (
+                                                    <span
+                                                        className="ml-2 inline-flex shrink-0 items-center rounded-md px-2 py-0.5 align-middle text-xs font-medium"
+                                                        test-data="archived-product"
+                                                        style={{background: 'var(--color-warning)', color: 'black'}}
+                                                        title="This product is archived. It cannot be added to the list any more, and this line was here before that — clear it, or restore the product."
+                                                    >
+                            archived
+                          </span>
+                                                ) : null}
                                             </p>
                                             <p className="text-xs" style={{color: 'var(--muted)'}}>
                                                 {item.packLabel ?? `${item.packSize} ${item.unitName}`}
