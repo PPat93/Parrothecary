@@ -2296,9 +2296,23 @@ export async function getRestockWindows(): Promise<RestockWindow[]> {
   const completed = await db
     .select({ label: trips.label, collectionDate: trips.collectionDate })
     .from(trips)
-    // The section is called "between restocks" and has to mean it: a holiday
-    // in the middle would split one supply cycle into two meaningless halves.
-    .where(and(eq(trips.status, 'completed'), eq(trips.kind, 'restock')))
+    /*
+     * The section is called "between restocks" and has to mean it: a holiday
+     * in the middle would split one supply cycle into two meaningless halves.
+     *
+     * And not a trip dated in the future, however it got marked completed —
+     * ticking one off early made a window from the last real restock to a date
+     * two months out, reported as "223 days · 18 taken" when sixty-six of those
+     * days had not happened. Every per-day figure read from it was diluted.
+     * Nothing was collected tomorrow, so nothing can be bounded by tomorrow.
+     */
+    .where(
+      and(
+        eq(trips.status, 'completed'),
+        eq(trips.kind, 'restock'),
+        sql`${trips.collectionDate} <= ${todayIso()}`,
+      ),
+    )
     .orderBy(asc(trips.collectionDate));
 
   if (completed.length < 2) return [];
@@ -2683,7 +2697,10 @@ export async function getStockValue(): Promise<StockValue> {
       currency: batches.purchaseCurrency,
       fxRateToEur: batches.fxRateToEur,
       quantityRemaining: batches.quantityRemaining,
-      packSize: variants.packSize,
+      // Not the pack size: a box received from a three-pack line holds three
+      // packs, and a third of it left counted as the whole price still sitting
+      // in the drawer.
+      unitsWhenFull,
     })
     .from(batches)
     .innerJoin(variants, eq(batches.variantId, variants.id))
@@ -2698,7 +2715,8 @@ export async function getStockValue(): Promise<StockValue> {
       uncostedBoxes++;
       continue;
     }
-    const fraction = row.packSize > 0 ? Math.min(1, row.quantityRemaining / row.packSize) : 0;
+    const fraction =
+      row.unitsWhenFull > 0 ? Math.min(1, row.quantityRemaining / row.unitsWhenFull) : 0;
     minorEur += Math.round(eur * fraction);
   }
 

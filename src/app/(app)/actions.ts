@@ -2248,12 +2248,20 @@ export async function addAuditSelection(formData: FormData): Promise<void> {
    * a shopping list is a list nothing will ever collect — the same reason the
    * packing list refuses to attach itself to a restock.
    */
-  const kind = await db
-    .select({ kind: trips.kind })
+  const trip = await db
+    .select({ kind: trips.kind, status: trips.status })
     .from(trips)
     .where(eq(trips.id, tripId))
     .limit(1);
-  if (kind[0]?.kind !== 'restock') redirect(`/trips/${tripId}`);
+  if (trip[0]?.kind !== 'restock') redirect(`/trips/${tripId}`);
+  /*
+   * And a trip still ahead of us. The shopping form only ever offers planned
+   * restocks for exactly this reason, but the worksheet checked the kind and
+   * not the status, so a trip already collected could still be added to —
+   * lines nobody will ever pick up, on the one page that no longer shows what
+   * is running out.
+   */
+  if (trip[0].status !== 'planned') redirect(`/trips/${tripId}`);
 
   const picked = formData.getAll('pick').map(String);
   if (picked.length === 0) redirect(`/trips/${tripId}`);
