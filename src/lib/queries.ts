@@ -1167,6 +1167,11 @@ export async function getPreviousCollectionDate(
  */
 export interface TripDetail extends Omit<TripRow, 'spentMinorEur' | 'uncostedBoxes'> {
   items: ShoppingRow[];
+  /**
+   * Things on the packing list. Deleting the trip deletes them with it, so the
+   * confirmation has to be able to say how many are about to go.
+   */
+  kitCount: number;
 }
 
 export async function getTrip(id: number): Promise<TripDetail | null> {
@@ -1183,6 +1188,11 @@ export async function getTrip(id: number): Promise<TripDetail | null> {
     .where(eq(shoppingItems.tripId, id))
     .orderBy(byName);
 
+  const kit = await db
+    .select({ id: travelKitItems.id })
+    .from(travelKitItems)
+    .where(eq(travelKitItems.tripId, id));
+
   return {
     id: trip.id,
     label: trip.label,
@@ -1194,6 +1204,7 @@ export async function getTrip(id: number): Promise<TripDetail | null> {
     notes: trip.notes,
     itemCount: items.length,
     items,
+    kitCount: kit.length,
   };
 }
 
@@ -2554,8 +2565,13 @@ export async function getTripMoney(tripId: number): Promise<TripMoney> {
 
   // Still to buy: everything on the trip that has not produced a box yet.
   const outstanding = await db
-    .select({ variantId: shoppingItems.variantId, quantityPacks: shoppingItems.quantityPacks })
+    .select({
+      variantId: shoppingItems.variantId,
+      quantityPacks: shoppingItems.quantityPacks,
+      packSize: variants.packSize,
+    })
     .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
     .where(
       and(
         eq(shoppingItems.tripId, tripId),
@@ -2573,8 +2589,12 @@ export async function getTripMoney(tripId: number): Promise<TripMoney> {
         priceMinor: batches.purchasePriceMinor,
         currency: batches.purchaseCurrency,
         fxRateToEur: batches.fxRateToEur,
+        // What that price actually bought. A box received from a three-pack
+        // line holds three packs, so its price is not the price of one.
+        unitsWhenFull,
       })
       .from(batches)
+      .innerJoin(variants, eq(batches.variantId, variants.id))
       /*
        * The most recent price that can actually be converted, not simply the
        * most recent. Taking the newest and finding it had no rate against it
@@ -2592,13 +2612,24 @@ export async function getTripMoney(tripId: number): Promise<TripMoney> {
       .limit(1);
 
     const price = lastPaid[0];
-    const eur = price ? inEur(price.priceMinor!, price.currency, price.fxRateToEur) : null;
+    if (!price) {
+      uncostedLines++;
+      continue;
+    }
+
+    const eur = inEur(price.priceMinor!, price.currency, price.fxRateToEur);
     if (eur === null) {
       uncostedLines++;
       continue;
     }
 
-    estimatedMinorEur += eur * line.quantityPacks;
+    /*
+     * Scaled from what that box held to what this line asks for. Multiplying
+     * the whole price of a 180-unit box by the number of packs wanted priced a
+     * single 60-pack at thirty euro instead of ten.
+     */
+    const packsInReference = price.unitsWhenFull > 0 ? price.unitsWhenFull / line.packSize : 1;
+    estimatedMinorEur += Math.round((eur / Math.max(1, packsInReference)) * line.quantityPacks);
     estimatedLines++;
   }
 

@@ -408,7 +408,8 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
 
         <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
           Deleting a trip keeps every box bought on it — purchase dates and prices live on the boxes
-          themselves. Shopping lines assigned to it are put back on the unassigned list.
+          themselves. Shopping lines assigned to it are put back on the unassigned list. A packing
+          list is part of the trip and goes with it.
         </p>
         <form action={deleteTrip}>
           <input type="hidden" name="id" value={trip.id} />
@@ -418,6 +419,11 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
             message={`${trip.label} will be removed.${
               trip.itemCount > 0
                 ? ` Its ${trip.itemCount} shopping ${trip.itemCount === 1 ? 'line' : 'lines'} are not deleted — they go back to being unassigned.`
+                : ''
+            }${
+              /* Unlike the shopping lines, these do go — say so before, not after. */
+              trip.kitCount > 0
+                ? ` Its packing list of ${trip.kitCount} ${trip.kitCount === 1 ? 'thing' : 'things'} goes with it.`
                 : ''
             }`}
             confirmLabel="Yes, delete it"

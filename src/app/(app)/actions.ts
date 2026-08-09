@@ -34,7 +34,7 @@ import {
   variants,
 } from '@/db/schema';
 import { isValidEan13, parseScan } from '@/domain/barcode';
-import { addDays, todayIso } from '@/domain/date';
+import { addDays, isIsoDate, todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { isScheduleActiveOn } from '@/domain/dosing';
 import {
@@ -2081,12 +2081,26 @@ async function parseTripFields(
     };
   }
 
+  /*
+   * A real date, not merely a non-empty string. The field is a date picker, so
+   * this only shows up on a stale or hand-made submit — but everything below
+   * does arithmetic on it, and "tomorrow" threw `Not an ISO date` out of the
+   * date helpers, which reaches the browser as a crash page rather than as the
+   * one-line correction the rest of this form gives.
+   */
+  if (!isIsoDate(collectionDate)) {
+    return { error: 'That date did not come through as a date. Pick it again.' };
+  }
+
   if (kind === 'travel') {
     const returnDate = String(formData.get('returnDate') ?? '').trim();
     if (!returnDate) {
       return {
         error: 'When do you come back? Without that there is no way to work out how much to pack.',
       };
+    }
+    if (!isIsoDate(returnDate)) {
+      return { error: 'That return date did not come through as a date. Pick it again.' };
     }
     if (returnDate < collectionDate) {
       return { error: 'The return date is before you leave.' };
@@ -2097,6 +2111,9 @@ async function parseTripFields(
   }
 
   const orderByRaw = String(formData.get('orderByDate') ?? '').trim();
+  if (orderByRaw && !isIsoDate(orderByRaw)) {
+    return { error: 'That order deadline did not come through as a date. Pick it again.' };
+  }
   const previous = await getPreviousCollectionDate(collectionDate, excludeTripId);
   const orderByDate = orderByRaw || defaultOrderByDate(collectionDate, previous);
 
@@ -2141,6 +2158,26 @@ export async function updateTrip(_prev: FormResult, formData: FormData): Promise
     if (attached.length > 0) {
       return {
         error: `This trip has ${attached.length} shopping ${attached.length === 1 ? 'line' : 'lines'} on it, and a holiday cannot carry a shopping list. Move them to another restock first, or take them off the trip.`,
+        values: snapshot(formData),
+      };
+    }
+  }
+
+  /*
+   * And the same the other way round. A restock has no packing list, so turning
+   * a holiday into one leaves its bag behind: rows still pointing at the trip,
+   * on a page with nowhere to show them. Kit items are deleted with their trip,
+   * never orphaned, and this keeps that true.
+   */
+  if (parsed.fields.kind === 'restock') {
+    const packed = await db
+      .select({ id: travelKitItems.id })
+      .from(travelKitItems)
+      .where(eq(travelKitItems.tripId, id));
+
+    if (packed.length > 0) {
+      return {
+        error: `This trip has ${packed.length} ${packed.length === 1 ? 'thing' : 'things'} on its packing list, and a restock does not have one. Clear the list first if this really is a restock.`,
         values: snapshot(formData),
       };
     }
@@ -2245,6 +2282,8 @@ export async function addAuditSelection(formData: FormData): Promise<void> {
     const variantId = Number(formData.get(`variant-${key}`) ?? 0);
     const packs = Number(formData.get(`packs-${key}`) ?? 0);
     if (!Number.isInteger(variantId) || !Number.isInteger(packs) || packs < 1) continue;
+    // The same ceiling the shopping form applies. This writes the same rows.
+    if (packs > MAX_PACKS_PER_LINE) continue;
 
     /*
      * The pack has to belong to the product that was ticked. Nothing in the UI
