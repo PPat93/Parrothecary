@@ -158,6 +158,13 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
       values: snapshot(formData),
     };
   }
+  // The same ceiling the add-a-pack form applies. This creates the first pack.
+  if (packSize > MAX_PACK_SIZE) {
+    return {
+      error: `${packSize} is too large for a pack. ${MAX_PACK_SIZE} is the most — check the number on the box.`,
+      values: snapshot(formData),
+    };
+  }
 
   const inserted = await db
     .insert(products)
@@ -192,6 +199,32 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
   refreshAll();
   redirect(`/products/${productId}`);
 }
+
+/**
+ * Does this product still exist?
+ *
+ * Everything that hangs something off a product — a substance, a symptom, a
+ * pack, an alternative — writes a real foreign key. A product page is open on a
+ * phone for a long time, and if the other phone deletes that product in the
+ * meantime, every one of those writes failed with
+ * `SQLITE_CONSTRAINT_FOREIGNKEY` and a crash page, on a form that answers
+ * everything else with one line of plain English.
+ */
+/** Units in one pack. A ten-litre bottle of anything is 10 000 ml. */
+const MAX_PACK_SIZE = 100_000;
+
+async function productIsThere(id: number): Promise<boolean> {
+  const rows = await db.select({ id: products.id }).from(products).where(eq(products.id, id)).limit(1);
+  return rows.length > 0;
+}
+
+/** The same, for a pack. Barcodes hang off the pack rather than the product. */
+async function variantIsThere(id: number): Promise<boolean> {
+  const rows = await db.select({ id: variants.id }).from(variants).where(eq(variants.id, id)).limit(1);
+  return rows.length > 0;
+}
+
+const PRODUCT_GONE = 'That product is no longer there — it may have been deleted on another phone.';
 
 /**
  * Attach an active substance, creating it if this is the first product to use
@@ -249,6 +282,8 @@ export async function addSubstanceToProduct(
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter a substance name.', values: snapshot(formData) };
 
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
+
   await linkSubstance(productId, name, amount);
   refreshAll();
   return { error: null, ok: true };
@@ -288,6 +323,8 @@ export async function addSymptomToProduct(
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter what it is used for.', values: snapshot(formData) };
+
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
 
   await linkSymptom(productId, name);
   refreshAll();
@@ -360,6 +397,13 @@ export async function updateProduct(_prev: FormResult, formData: FormData): Prom
     };
   }
 
+  /*
+   * Saving a product that has since been deleted updated nothing and then
+   * redirected to its page, which 404s — so a careful edit ended at "not found"
+   * with no hint that the work had gone nowhere.
+   */
+  if (!(await productIsThere(id))) return { error: PRODUCT_GONE, values: snapshot(formData) };
+
   await db
     .update(products)
     .set({ ...parsed.data, updatedAt: new Date() })
@@ -408,8 +452,24 @@ export async function deleteProduct(formData: FormData): Promise<void> {
 
   if (scheduleRows.length > 0) return;
 
+  /*
+   * The photo is a file, not a row, so nothing cascades it. Deleting the
+   * product used to leave the picture of its box on disk for good — invisible
+   * to the app, and a photograph of somebody's medication outliving the record
+   * it belonged to. Read the path before the row goes.
+   */
+  const photoRows = await db
+    .select({ photoPath: products.photoPath })
+    .from(products)
+    .where(eq(products.id, id))
+    .limit(1);
+
   // Variants, substance links and shopping lines cascade from the schema.
   await db.delete(products).where(eq(products.id, id));
+
+  const photo = photoRows[0]?.photoPath;
+  if (photo) await deletePhoto(photo);
+
   refreshAll();
   redirect('/products?archived=1');
 }
@@ -462,8 +522,20 @@ export async function createVariant(_prev: FormResult, formData: FormData): Prom
   const packLabel = emptyToNull(String(formData.get('packLabel') ?? '').trim());
 
   if (!Number.isInteger(productId)) return { error: 'Pick a product.' };
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
   if (packSize === null || packSize <= 0) {
     return { error: 'Pack size must be a positive number.', values: snapshot(formData) };
+  }
+  /*
+   * And a believable one. Only a lower bound was checked, and the pack size is
+   * now what every money figure divides by — a mistyped pack of a billion made
+   * each box's share of its own price round to nothing.
+   */
+  if (packSize > MAX_PACK_SIZE) {
+    return {
+      error: `${packSize} is too large for a pack. ${MAX_PACK_SIZE} is the most — check the number on the box.`,
+      values: snapshot(formData),
+    };
   }
 
   // Two identical pack sizes would appear as indistinguishable options in every
@@ -895,6 +967,7 @@ export async function addBarcode(_prev: FormResult, formData: FormData): Promise
   const code = String(formData.get('code') ?? '').trim();
 
   if (!Number.isInteger(variantId)) return { error: 'Unknown pack.' };
+  if (!(await variantIsThere(variantId))) return { error: 'That pack is no longer there.' };
   if (!code) return { error: 'Enter a barcode.', values: snapshot(formData) };
 
   const error = await attachBarcode(variantId, code, String(formData.get('barcodeType') ?? 'ean13'));
@@ -913,6 +986,9 @@ export async function setProductPhoto(
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!(file instanceof File)) return { error: 'Choose a photo first.' };
+  // Before writing the file, not after: saving one for a product that has gone
+  // updates no row and leaves the image on disk with nothing pointing at it.
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
 
   const saved = await savePhoto(file);
   if ('error' in saved) return { error: saved.error };
@@ -1195,6 +1271,10 @@ export async function addAlternative(
   }
   if (!ALTERNATIVE_RELATIONS.some((r) => r === relation)) {
     return { error: 'Pick how the two are related.', values: snapshot(formData) };
+  }
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
+  if (!(await productIsThere(alternativeId))) {
+    return { error: 'That alternative is no longer there.', values: snapshot(formData) };
   }
 
   const existing = await db
