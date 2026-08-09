@@ -1465,31 +1465,40 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
  * Measured as everything that ever went in, which never blocks a legitimate
  * put-back and still catches a typed 1000.
  */
+/*
+ * Only stock that genuinely came in: what the box opened with, what was
+ * received into it, and any correction upward. Counting put-backs here
+ * ratcheted the ceiling up by ten every time ten went back, so the guard
+ * loosened a little with every ordinary use.
+ */
+const unitsEverIn = sql<number>`coalesce((
+  select sum(m.delta) from ${stockMovements} m
+  where m.batch_id = ${batches.id}
+    and m.delta > 0
+    and m.reason in ('opening', 'received', 'adjust', 'audit')
+), 0)`;
+
+/**
+ * How much a full box of this holds — which is not the pack size.
+ *
+ * A shopping line can be for three packs, and receiving it makes one box: the
+ * form itself defaults the quantity to packs × pack size. Every money figure
+ * that divided by the pack size therefore read a multi-pack box as three times
+ * more valuable per unit than it was, and costed a third of it left over as the
+ * whole price wasted.
+ */
+const unitsWhenFull = sql<number>`max(${variants.packSize}, ${unitsEverIn})`;
+
 export async function getBatchCapacities(batchIds: number[]): Promise<Map<number, number>> {
   if (batchIds.length === 0) return new Map();
 
   const rows = await db
-    .select({
-      batchId: batches.id,
-      packSize: variants.packSize,
-      /*
-       * Only stock that genuinely came in: what the box opened with, what was
-       * received into it, and any correction upward. Counting put-backs here
-       * ratcheted the ceiling up by ten every time ten went back, so the guard
-       * loosened a little with every ordinary use.
-       */
-      everIn: sql<number>`coalesce((
-        select sum(m.delta) from ${stockMovements} m
-        where m.batch_id = ${batches.id}
-          and m.delta > 0
-          and m.reason in ('opening', 'received', 'adjust', 'audit')
-      ), 0)`,
-    })
+    .select({ batchId: batches.id, capacity: unitsWhenFull })
     .from(batches)
     .innerJoin(variants, eq(batches.variantId, variants.id))
     .where(inArray(batches.id, batchIds));
 
-  return new Map(rows.map((row) => [row.batchId, Math.max(row.packSize, row.everIn)]));
+  return new Map(rows.map((row) => [row.batchId, row.capacity]));
 }
 
 /* ------------------------------------------------------------------ */
@@ -2050,6 +2059,7 @@ export async function getPriceTrends(): Promise<PriceTrend[]> {
       strength: products.strength,
       unitName: products.unitName,
       packSize: variants.packSize,
+      unitsWhenFull,
       purchaseDate: batches.purchaseDate,
       priceMinor: batches.purchasePriceMinor,
       currency: batches.purchaseCurrency,
@@ -2068,11 +2078,13 @@ export async function getPriceTrends(): Promise<PriceTrend[]> {
 
   for (const row of rows) {
     const eur = inEur(row.priceMinor!, row.currency, row.fxRateToEur);
-    // Nothing to compare against if it cannot be put in euro, or if the pack
-    // size is unusable as a denominator.
-    if (eur === null || row.packSize <= 0) continue;
+    // Nothing to compare against if it cannot be put in euro, or if there is
+    // no usable denominator. Not the pack size: a box received from a
+    // three-pack line holds three packs, and dividing by one made it look
+    // like the price had tripled that month.
+    if (eur === null || row.unitsWhenFull <= 0) continue;
 
-    const perUnit = eur / row.packSize;
+    const perUnit = eur / row.unitsWhenFull;
     const date = row.purchaseDate!;
     const existing = byProduct.get(row.productId);
 
@@ -2146,7 +2158,7 @@ export function summariseWaste(rows: WasteRow[]): WasteSummary {
 
     const unused = unusedValue(
       money(row.priceMinor, row.currency),
-      row.packSize,
+      row.unitsWhenFull,
       row.quantityRemaining,
     );
     const eur = toEurOrNull(unused, row.fxRateToEur);
@@ -2382,8 +2394,13 @@ export interface PurchaseRow {
   currency: 'PLN' | 'EUR';
   /** Rate recorded at purchase. Null for a euro buy, which needs none. */
   fxRateToEur: number | null;
-  /** What was bought: one pack of this size. The denominator for unit cost. */
+  /** The pack this box is of. Not the denominator for unit cost — see below. */
   packSize: number;
+  /**
+   * Units a full one of these boxes holds. A line for three packs becomes one
+   * box of three packs' worth, so this is what unit cost divides by.
+   */
+  unitsWhenFull: number;
   packLabel: string | null;
   /** Set once the box has left stock, so waste can be costed. */
   status: string;
@@ -2407,6 +2424,7 @@ export async function getProductPurchases(productId: number): Promise<PurchaseRo
       currency: batches.purchaseCurrency,
       fxRateToEur: batches.fxRateToEur,
       packSize: variants.packSize,
+      unitsWhenFull,
       packLabel: variants.packLabel,
       status: batches.status,
       tripLabel: trips.label,
@@ -2440,6 +2458,8 @@ export interface WasteRow {
   quantityRemaining: number;
   unitName: string;
   packSize: number;
+  /** Units a full one of these holds — three packs on one line is one box. */
+  unitsWhenFull: number;
   priceMinor: number | null;
   currency: 'PLN' | 'EUR' | null;
   fxRateToEur: number | null;
@@ -2468,6 +2488,8 @@ export async function getWaste(): Promise<WasteRow[]> {
       quantityRemaining: batches.quantityRemaining,
       unitName: products.unitName,
       packSize: variants.packSize,
+      // What a full one of these boxes holds; a line for three packs is one box.
+      unitsWhenFull,
       priceMinor: batches.purchasePriceMinor,
       currency: batches.purchaseCurrency,
       fxRateToEur: batches.fxRateToEur,

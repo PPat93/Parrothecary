@@ -632,9 +632,11 @@ function PurchaseHistory({
       ...purchase,
       paid,
       eur,
-      perUnit: pricePerUnit(paid, purchase.packSize),
+      // Not the pack size: a box received from a three-pack line holds three
+      // packs, and dividing by one pack tripled every per-unit price.
+      perUnit: pricePerUnit(paid, purchase.unitsWhenFull),
       // Per unit in euro, so rows in different currencies are comparable.
-      perUnitEur: eur === null ? null : pricePerUnit(eur, purchase.packSize),
+      perUnitEur: eur === null ? null : pricePerUnit(eur, purchase.unitsWhenFull),
     };
   });
 

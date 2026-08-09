@@ -154,12 +154,17 @@ export function formatPricePerUnit(minorPerUnit: number, currency: Currency): st
  * figure, and the number this feeds is meant to be the honest cost of throwing
  * things away — inflating it would make it easy to dismiss.
  *
+ * `unitsWhenFull` is what the box held when it arrived, which is not always one
+ * pack: a shopping line for three packs is received as a single box of three
+ * packs' worth. Passing the pack size here costed a two-thirds-full box as the
+ * entire price thrown away.
+ *
  * Rounded to whole minor units: it is money, and fractions of a grosz are not.
  */
-export function unusedValue(total: Money, packSize: number, unitsRemaining: number): Money {
-  if (packSize <= 0) return money(0, total.currency);
+export function unusedValue(total: Money, unitsWhenFull: number, unitsRemaining: number): Money {
+  if (unitsWhenFull <= 0) return money(0, total.currency);
 
-  const fraction = Math.min(1, Math.max(0, unitsRemaining / packSize));
+  const fraction = Math.min(1, Math.max(0, unitsRemaining / unitsWhenFull));
   return money(Math.round(total.amountMinor * fraction), total.currency);
 }
 
