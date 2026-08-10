@@ -650,11 +650,29 @@ export async function getProductSymptoms(): Promise<Map<number, string[]>> {
   return byProduct;
 }
 
+/*
+ * Both of these say "in use", and neither checked it.
+ *
+ * A substance or a symptom tag is created by typing one, so a mistyped
+ * "Paracetmol" became a row of its own and then sat in the suggestion list on
+ * every product form for good. Taking it off the product it was typed on did
+ * not help: nothing else referenced it, and nothing removed it, so the typo
+ * outlived the mistake and was offered back every time.
+ *
+ * Filtered rather than deleted. Once nothing offers the row it is harmless, and
+ * a substance carries notes and a Polish name that a cleanup would throw away
+ * for tidiness nobody can see. This also covers the ones already orphaned.
+ *
+ * Manufacturers never had the problem — they are read straight off the product
+ * column, so correcting the spelling there is the whole fix.
+ */
+
 /** Every symptom tag in use, so the picker suggests rather than demands typing. */
 export async function getSymptomNames(): Promise<string[]> {
   const rows = await db
-    .select({ nameEn: symptoms.nameEn })
+    .selectDistinct({ nameEn: symptoms.nameEn })
     .from(symptoms)
+    .innerJoin(productSymptoms, eq(productSymptoms.symptomId, symptoms.id))
     .orderBy(sql`${symptoms.nameEn} collate nocase`);
   return rows.map((r) => r.nameEn);
 }
@@ -662,8 +680,9 @@ export async function getSymptomNames(): Promise<string[]> {
 /** Substance names already in use, for the product form's suggestions. */
 export async function getSubstanceNames(): Promise<string[]> {
   const rows = await db
-    .select({ name: substances.name })
+    .selectDistinct({ name: substances.name })
     .from(substances)
+    .innerJoin(productSubstances, eq(productSubstances.substanceId, substances.id))
     .orderBy(sql`${substances.name} collate nocase`);
   return rows.map((r) => r.name);
 }
