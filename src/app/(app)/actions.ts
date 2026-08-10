@@ -691,6 +691,36 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
 
   if (!Number.isInteger(variantId)) return fail('Pick which pack this is.');
 
+  /*
+   * The pack has to exist, and its product must not be retired.
+   *
+   * The picker already leaves archived products out and the archive dialog
+   * promises exactly that — but nothing enforced it, so the two ordinary ways
+   * of arriving here with a stale pack both worked: a form left open while the
+   * other phone archives, and scanning an old box, which resolves its barcode
+   * without caring that the product was retired. Either one quietly put stock
+   * back into a cupboard someone had just cleared out.
+   *
+   * Receiving a shopping line is deliberately not held to this: that order was
+   * placed before the product was retired and the boxes are physically here, so
+   * refusing would leave real stock unrecordable. The list marks those lines
+   * as archived instead.
+   */
+  const packRows = await db
+    .select({ id: variants.id, productName: products.name, archivedAt: products.archivedAt })
+    .from(variants)
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(eq(variants.id, variantId))
+    .limit(1);
+
+  const pack = packRows[0];
+  if (!pack) return fail('That pack no longer exists. Pick another one.');
+  if (pack.archivedAt !== null) {
+    return fail(
+      `${pack.productName} is archived, so it takes no new boxes. Restore it first if this is going back in the cupboard.`,
+    );
+  }
+
   const parsed = parseBatchFields(formData);
   if ('error' in parsed) return fail(parsed.error);
 
