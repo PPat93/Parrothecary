@@ -1735,10 +1735,23 @@ export interface KitRow {
   expiresAway: boolean;
   /** Retired, but still in the bag. Same reason the shopping list says so. */
   archived: boolean;
+  /**
+   * What the courses actually need over the trip as it stands now.
+   *
+   * The number in the bag was worked out when the item was added. Trips get
+   * longer afterwards, and nothing recomputed: a ten-day trip packed with ten
+   * tablets stayed at ten when it became twenty days, silently half-packed.
+   * Zero for anything not on a schedule — a standing item has no "enough".
+   */
+  dueUnits: number;
 }
 
 /** What is on the packing list for this trip. */
-export async function getTravelKit(tripId: number, returnDate: IsoDate | null): Promise<KitRow[]> {
+export async function getTravelKit(
+  tripId: number,
+  departure: IsoDate,
+  returnDate: IsoDate | null,
+): Promise<KitRow[]> {
   const rows = await db
     .select({
       id: travelKitItems.id,
@@ -1761,6 +1774,41 @@ export async function getTravelKit(tripId: number, returnDate: IsoDate | null): 
   const today = todayIso();
   const stock = await getBatchesForProducts(rows.map((row) => row.productId));
 
+  /*
+   * What each course needs over this trip, worked out now rather than when the
+   * item was added. Same window and same rules the suggestions use, so a bagged
+   * item and a suggested one cannot disagree about the same ten days.
+   */
+  const due = new Map<number, number>();
+  if (returnDate !== null) {
+    const schedules = await db
+      .select({
+        productId: doseSchedules.productId,
+        doseUnits: doseSchedules.doseUnits,
+        timesPerDay: doseSchedules.timesPerDay,
+        intervalDays: doseSchedules.intervalDays,
+        startDate: doseSchedules.startDate,
+        endDate: doseSchedules.endDate,
+      })
+      .from(doseSchedules)
+      .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+      .where(
+        and(
+          isNull(doseSchedules.archivedAt),
+          isNull(householdMembers.archivedAt),
+          inArray(
+            doseSchedules.productId,
+            rows.map((row) => row.productId),
+          ),
+        ),
+      );
+
+    for (const schedule of schedules) {
+      const units = unitsDueBetween(schedule, departure, returnDate);
+      due.set(schedule.productId, (due.get(schedule.productId) ?? 0) + units);
+    }
+  }
+
   return rows.map((row) => {
     const boxes = stock.get(row.productId) ?? [];
     const next = nextBatchToOpen(boxes, today);
@@ -1773,6 +1821,7 @@ export async function getTravelKit(tripId: number, returnDate: IsoDate | null): 
           ? expiresDuringTrip(next.expiryDate, returnDate)
           : false,
       archived: row.archivedAt !== null,
+      dueUnits: Math.round((due.get(row.productId) ?? 0) * 100) / 100,
     };
   });
 }
