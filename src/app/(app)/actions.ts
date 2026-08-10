@@ -631,6 +631,16 @@ function parseBatchFields(formData: FormData): { fields: BatchFields } | { error
     }
   }
 
+  /*
+   * Stored raw before, so "soon" went straight into the column and came back
+   * out of Statistics as a year: a bar labelled "soon" sitting between 2025 and
+   * 2026, because the year is the first four characters of this string.
+   */
+  const purchaseDate = emptyToNull(String(formData.get('purchaseDate') ?? '').trim());
+  if (purchaseDate !== null && !isIsoDate(purchaseDate)) {
+    return { error: `Could not read "${purchaseDate}" as a purchase date. Pick it from the calendar.` };
+  }
+
   let purchasePriceMinor: number | null = null;
   let purchaseCurrency: (typeof CURRENCIES)[number] | null = null;
   /*
@@ -666,7 +676,7 @@ function parseBatchFields(formData: FormData): { fields: BatchFields } | { error
       expiryPrecision,
       lotNumber: emptyToNull(String(formData.get('lotNumber') ?? '').trim()),
       location: emptyToNull(String(formData.get('location') ?? '').trim()),
-      purchaseDate: emptyToNull(String(formData.get('purchaseDate') ?? '').trim()),
+      purchaseDate,
       purchasePriceMinor,
       purchaseCurrency,
       fxRateToEur,
@@ -1811,6 +1821,19 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
     return fail('Repeat every how many days? A whole number from 1 (daily) to 365.');
   }
   if (!startDate) return fail('Pick a start date.');
+  /*
+   * Real dates, not merely non-empty strings.
+   *
+   * A start date of "soon" was stored happily and then broke three pages with
+   * `Not an ISO date` — the dose board, the trip page and the audit worksheet
+   * all walk every schedule and do arithmetic on these. One row from one stale
+   * form took out the screen this app exists for, and the only way back was
+   * deleting the schedule.
+   */
+  if (!isIsoDate(startDate)) return fail('That start date did not come through as a date. Pick it again.');
+  if (endDate !== null && !isIsoDate(endDate)) {
+    return fail('That end date did not come through as a date. Pick it again.');
+  }
   if (endDate && endDate < startDate) return fail('The end date is before the start date.');
 
   /*
