@@ -471,14 +471,27 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                           "consumed" is derived from the quantity reaching zero
                           rather than chosen by anyone.
                         */}
-                        {box.status === 'expired' || box.status === 'discarded' ? (
+                        {box.status !== 'in_stock' ? (
                           <form action={setBatchStatus} className="ml-auto">
                             <input type="hidden" name="id" value={box.id} />
                             <input type="hidden" name="status" value="in_stock" />
                             <ConfirmButton
                               label="Put back"
                               title="Put this box back?"
-                              message={`${formatQuantity(box.quantityRemaining, product.unitName, pack.packSize)} returns to your stock, and it stops counting as waste. Use this if it was binned by mistake.`}
+                              /*
+                                Two ways a box leaves the cupboard, and both
+                                needed a way back. Binning had none until the
+                                Expiring round; emptying it with the stepper
+                                still had none — take one too many and the box
+                                drops off the stock list, taking the + button
+                                with it, so the mistake could not be undone
+                                from anywhere.
+                              */
+                              message={
+                                box.status === 'consumed'
+                                  ? `This box was emptied. Putting it back returns it to the stock list with nothing in it, so − and + can correct the amount.`
+                                  : `${formatQuantity(box.quantityRemaining, product.unitName, pack.packSize)} returns to your stock, and it stops counting as waste. Use this if it was binned by mistake.`
+                              }
                               confirmLabel="Yes, put it back"
                               tone="ok"
                               className="rounded-lg border px-2.5 py-1 text-xs font-medium"
