@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { ErrorText, Field, SubmitButton, TextInput } from '@/components/form';
+import { todayIso } from '@/domain/date';
 import { PriceFields } from '@/components/price-fields';
 import { receiveShoppingItem, type FormResult } from '../../../actions';
 import type { ShoppingRow } from '@/lib/queries';
@@ -46,8 +47,26 @@ export function ReceiveForm({ item }: { item: ShoppingRow }) {
         fxRate={prev.fxRate ?? ''}
       />
 
-      <Field label="Purchase date">
-        <TextInput name="purchaseDate" type="date" defaultValue={prev.purchaseDate ?? ''} />
+      {/*
+        Filled in from the trip, because the app already knows the answer and
+        leaving it blank is not harmless: a box with a price and no date counts
+        towards the trip's total and towards the cupboard's value, but belongs
+        to no year on Statistics and to no price trend. Every ordinary restock
+        produced one — tick, order, arrive, receive, and never think about a
+        date nobody asked you for.
+
+        Still editable: something collected late, or bought a week early, has
+        its own date and this is where to say so.
+      */}
+      <Field
+        label="Purchase date"
+        hint={item.tripCollectionDate !== null ? 'From the trip. Change it if it was really another day.' : undefined}
+      >
+        <TextInput
+          name="purchaseDate"
+          type="date"
+          defaultValue={prev.purchaseDate ?? item.tripCollectionDate ?? todayIso()}
+        />
       </Field>
 
       <Field label="Batch / lot number" hint="Optional.">

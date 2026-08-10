@@ -19,7 +19,7 @@ import {
   getTripMoney,
   getUnassignedShoppingItems,
 } from '@/lib/queries';
-import { shoppingStatusLabel } from '@/lib/labels';
+import { shoppingStatusLabel, shortDeliveryNote } from '@/lib/labels';
 import { deleteTrip, setShoppingTrip, setTripStatus } from '../../actions';
 import { ActionButton } from '@/components/action-button';
 
@@ -298,6 +298,23 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                     {item.quantityPacks} × {item.packLabel ?? `${item.packSize} ${item.unitName}`} ·{' '}
                     {shoppingStatusLabel(item.status)}
                   </p>
+                  {/* This is the page that stopped counting the rest, so this
+                      is where it has to admit not all of it came. */}
+                  {shortDeliveryNote(
+                    item.quantityPacks,
+                    item.packSize,
+                    item.receivedUnits,
+                    item.unitName,
+                  ) ? (
+                    <p className="text-xs" style={{ color: 'var(--color-warning)' }}>
+                      {shortDeliveryNote(
+                        item.quantityPacks,
+                        item.packSize,
+                        item.receivedUnits,
+                        item.unitName,
+                      )}
+                    </p>
+                  ) : null}
                 </div>
 
                 <form action={setShoppingTrip} className="shrink-0">
@@ -350,6 +367,23 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                     {item.quantityPacks} × {item.packLabel ?? `${item.packSize} ${item.unitName}`} ·{' '}
                     {shoppingStatusLabel(item.status)}
                   </p>
+                  {/* This is the page that stopped counting the rest, so this
+                      is where it has to admit not all of it came. */}
+                  {shortDeliveryNote(
+                    item.quantityPacks,
+                    item.packSize,
+                    item.receivedUnits,
+                    item.unitName,
+                  ) ? (
+                    <p className="text-xs" style={{ color: 'var(--color-warning)' }}>
+                      {shortDeliveryNote(
+                        item.quantityPacks,
+                        item.packSize,
+                        item.receivedUnits,
+                        item.unitName,
+                      )}
+                    </p>
+                  ) : null}
                 </div>
 
                 <form action={setShoppingTrip} className="shrink-0">

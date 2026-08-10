@@ -6,6 +6,7 @@ import { BarcodeScanner } from '@/components/barcode-scanner';
 import { ErrorText, Field, Select, SubmitButton, TextInput } from '@/components/form';
 import { PriceFields } from '@/components/price-fields';
 import { toneStyle } from '@/components/tone';
+import { todayIso } from '@/domain/date';
 import { addBatch, linkBarcode, resolveScan, type FormResult, type ScanResult } from '../../actions';
 import type { VariantRow } from '@/lib/queries';
 
@@ -124,8 +125,13 @@ export function BatchForm({ variants }: { variants: VariantRow[] }) {
           fxRate={prev.fxRate ?? ''}
         />
 
+        {/*
+          Today, not blank. A price with no date behind it counts towards the
+          cupboard's value but belongs to no year on Statistics and to no price
+          trend — and nothing about an empty date field says that.
+        */}
         <Field label="Purchase date">
-          <TextInput name="purchaseDate" type="date" defaultValue={prev.purchaseDate ?? ''} />
+          <TextInput name="purchaseDate" type="date" defaultValue={prev.purchaseDate ?? todayIso()} />
         </Field>
 
         <Field label="Batch / lot number" hint="Filled in automatically by a DataMatrix scan.">

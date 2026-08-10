@@ -3,6 +3,7 @@ import {ActionButton, type Tone} from '@/components/action-button';
 import {ConfirmButton} from '@/components/confirm-button';
 import {SHOPPING_STATUSES, TERMINAL_SHOPPING_STATUSES} from '@/db/schema';
 import {getShoppingList, getTripOptions, getVariantOptions, type ShoppingRow} from '@/lib/queries';
+import {shortDeliveryNote} from '@/lib/labels';
 import {removeShoppingItem, setShoppingStatus} from '../actions';
 import {AddShoppingForm} from './add-form';
 
@@ -143,6 +144,17 @@ export default async function ShoppingPage() {
                                                     ' · no trip'
                                                 )}
                                             </p>
+                                            {/* Said, not hidden: the line is settled, but not all of
+                          it turned up, and the trip stopped counting the rest. */}
+                                            {shortDeliveryNote(item.quantityPacks, item.packSize, item.receivedUnits, item.unitName) ? (
+                                                <p
+                                                    className="text-xs"
+                                                    test-data="short-delivery"
+                                                    style={{color: 'var(--color-warning)'}}
+                                                >
+                                                    {shortDeliveryNote(item.quantityPacks, item.packSize, item.receivedUnits, item.unitName)}
+                                                </p>
+                                            ) : null}
                                             {/* Own line, wrapping: notes are free text and get long. */}
                                             {item.notes ? (
                                                 <p

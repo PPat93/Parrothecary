@@ -721,6 +721,8 @@ export interface ShoppingRow {
   notes: string | null;
   tripId: number | null;
   tripLabel: string | null;
+  /** The trip's collection date, or null when the line is not on a trip. */
+  tripCollectionDate: string | null;
   variantId: number;
   packSize: number;
   packLabel: string | null;
@@ -733,6 +735,8 @@ export interface ShoppingRow {
   /** Set when the product was archived after this line was put on the list. */
   productArchivedAt: Date | null;
   receivedBatchId: number | null;
+  /** Units the received box came with, or null if this line never became one. */
+  receivedUnits: number | null;
 }
 
 const shoppingSelection = {
@@ -742,6 +746,11 @@ const shoppingSelection = {
   notes: shoppingItems.notes,
   tripId: shoppingItems.tripId,
   tripLabel: trips.label,
+  /*
+   * When the trip collects. The receive form uses it as the purchase date, so a
+   * box bought on a restock lands in the right year without anyone typing it.
+   */
+  tripCollectionDate: trips.collectionDate,
   variantId: variants.id,
   packSize: variants.packSize,
   packLabel: variants.packLabel,
@@ -759,6 +768,20 @@ const shoppingSelection = {
    */
   productArchivedAt: products.archivedAt,
   receivedBatchId: shoppingItems.receivedBatchId,
+  /*
+   * What actually turned up, read from the `received` movement rather than the
+   * box's quantity — the box empties as doses come out of it, and this has to
+   * stay the amount that arrived.
+   *
+   * Ordering two packs and receiving one closed the line as "in the cupboard"
+   * and dropped both packs off the trip's still-to-buy, with nothing anywhere
+   * saying the second never came. Both numbers were on the line the whole time;
+   * nothing compared them.
+   */
+  receivedUnits: sql<number | null>`(
+    select sum(m.delta) from ${stockMovements} m
+    where m.batch_id = ${shoppingItems.receivedBatchId} and m.reason = 'received'
+  )`,
 };
 
 export async function getShoppingList(): Promise<ShoppingRow[]> {
