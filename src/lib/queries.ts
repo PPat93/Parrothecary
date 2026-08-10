@@ -2016,13 +2016,31 @@ export interface YearSpend {
 }
 
 /**
+ * The yearly totals plus what they had to leave out.
+ *
+ * Every other figure on the Money page counts what it cannot include — "plus
+ * four boxes with no price it can use", "two binned boxes have a złoty price
+ * with no rate". This one did the same arithmetic and then showed the totals
+ * alone, so a box priced but never dated dropped out of every year and out of
+ * sight: twenty-five euro of real spend that no line on the page accounted for.
+ */
+export interface SpendSummary {
+  years: YearSpend[];
+  /** Priced, but with no purchase date — real money belonging to no year. */
+  undatedBoxes: number;
+  undatedMinorEur: number;
+  /** Priced in złoty with no rate recorded, so not in any total. */
+  uncostedBoxes: number;
+}
+
+/**
  * What was spent each year.
  *
  * By purchase date rather than by trip: boxes bought locally belong to a year
  * but to no trip, and leaving them out would make the yearly figure quietly
  * smaller than the money that actually left the account.
  */
-export async function getSpendByYear(): Promise<YearSpend[]> {
+export async function getSpendByYear(): Promise<SpendSummary> {
   const rows = await db
     .select({
       purchaseDate: batches.purchaseDate,
@@ -2031,19 +2049,34 @@ export async function getSpendByYear(): Promise<YearSpend[]> {
       fxRateToEur: batches.fxRateToEur,
     })
     .from(batches)
-    .where(and(isNotNull(batches.purchasePriceMinor), isNotNull(batches.purchaseDate)));
+    // Dateless rows stay in: they are counted separately below rather than
+    // dropped, which is what made twenty-five euro invisible.
+    .where(isNotNull(batches.purchasePriceMinor));
 
   const byYear = new Map<string, YearSpend>();
+  let undatedBoxes = 0;
+  let undatedMinorEur = 0;
+  let uncostedBoxes = 0;
 
   for (const row of rows) {
     const year = (row.purchaseDate ?? '').slice(0, 4);
-    if (year.length !== 4) continue;
+    if (year.length !== 4) {
+      const eur = inEur(row.priceMinor!, row.currency, row.fxRateToEur);
+      if (eur === null) uncostedBoxes++;
+      else {
+        undatedBoxes++;
+        undatedMinorEur += eur;
+      }
+      continue;
+    }
 
     const entry = byYear.get(year) ?? { year, minorEur: 0, boxes: 0, uncostedBoxes: 0 };
     const eur = inEur(row.priceMinor!, row.currency, row.fxRateToEur);
 
-    if (eur === null) entry.uncostedBoxes++;
-    else {
+    if (eur === null) {
+      entry.uncostedBoxes++;
+      uncostedBoxes++;
+    } else {
       entry.minorEur += eur;
       entry.boxes++;
     }
@@ -2051,7 +2084,12 @@ export async function getSpendByYear(): Promise<YearSpend[]> {
     byYear.set(year, entry);
   }
 
-  return [...byYear.values()].sort((a, b) => a.year.localeCompare(b.year));
+  return {
+    years: [...byYear.values()].sort((a, b) => a.year.localeCompare(b.year)),
+    undatedBoxes,
+    undatedMinorEur,
+    uncostedBoxes,
+  };
 }
 
 export interface PriceTrend {

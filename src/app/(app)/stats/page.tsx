@@ -32,7 +32,7 @@ export default async function StatsPage() {
 
   const wasted = summariseWaste(waste);
   const spentTrips = trips.filter((trip) => trip.spentMinorEur > 0);
-  const peakYear = Math.max(1, ...byYear.map((year) => year.minorEur));
+  const peakYear = Math.max(1, ...byYear.years.map((year) => year.minorEur));
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -58,10 +58,10 @@ export default async function StatsPage() {
         </Section>
       ) : null}
 
-      {byYear.length > 0 ? (
+      {byYear.years.length > 0 ? (
         <Section title="Spent by year">
           <ul className="flex flex-col gap-2" test-data="stats-by-year">
-            {byYear.map((year) => (
+            {byYear.years.map((year) => (
               <li key={year.year} className="flex items-center gap-3">
                 <span className="w-10 shrink-0 text-sm tabular-nums" style={{ color: 'var(--muted)' }}>
                   {year.year}
@@ -88,6 +88,27 @@ export default async function StatsPage() {
             By purchase date, so boxes bought locally count too — they belong to a year but to no
             trip.
           </p>
+
+          {/*
+            What the bars had to leave out. Without this the totals looked
+            complete: a box priced but never dated belongs to no year at all,
+            and its money simply was not on the page anywhere.
+          */}
+          {byYear.undatedBoxes > 0 ? (
+            <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }} test-data="stats-undated">
+              {eur(byYear.undatedMinorEur)} sits outside these bars, in {byYear.undatedBoxes}{' '}
+              {byYear.undatedBoxes === 1 ? 'box' : 'boxes'} with a price but no purchase date. Add
+              the date on the box and it joins its year.
+            </p>
+          ) : null}
+
+          {byYear.uncostedBoxes > 0 ? (
+            <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }} test-data="stats-uncosted-year">
+              {byYear.uncostedBoxes} {byYear.uncostedBoxes === 1 ? 'box has' : 'boxes have'} a złoty
+              price with no exchange rate, so {byYear.uncostedBoxes === 1 ? 'it is' : 'they are'} in
+              no year either.
+            </p>
+          ) : null}
         </Section>
       ) : null}
 

@@ -29,7 +29,18 @@ const rows = db
             b.status,
             b.quantity_remaining as quantity,
             coalesce((select sum(m.delta) from stock_movements m where m.batch_id = b.id), 0) as ledger,
-            (select count(*) from stock_movements m where m.batch_id = b.id) as movements
+            (select count(*) from stock_movements m where m.batch_id = b.id) as movements,
+            /*
+             * What a full one of these holds — the pack, or more if more ever
+             * came in. A box cannot hold more than that, and the sum check
+             * above cannot notice when it does: a one-piece blanket recorded
+             * as 1.5 has a ledger adding up to 1.5 too, so both agree and both
+             * are wrong. Put-backs beyond capacity are refused now, but rows
+             * written before that are still sitting there.
+             */
+            max(v.pack_size, coalesce((select sum(m.delta) from stock_movements m
+                 where m.batch_id = b.id and m.delta > 0
+                   and m.reason in ('opening','received','adjust','audit')), 0)) as capacity
      from batches b
      join variants v on v.id = b.variant_id
      join products p on p.id = v.product_id
@@ -45,6 +56,13 @@ for (const row of rows) {
     problems.push(
       `  batch ${row.id} (${row.name}, ${row.status}): ledger ${row.ledger}, expected ${expected}` +
         ` — ${row.movements} movement${row.movements === 1 ? '' : 's'}`,
+    );
+  }
+
+  if (row.status === 'in_stock' && row.quantity - row.capacity > TOLERANCE) {
+    problems.push(
+      `  batch ${row.id} (${row.name}): holds ${row.quantity} but only ${row.capacity} ever came in` +
+        ` — more was put back than was taken out`,
     );
   }
 }
