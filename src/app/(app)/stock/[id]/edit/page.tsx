@@ -47,6 +47,12 @@ export default async function EditBatchPage({
             This box cannot be deleted because a dose was confirmed straight from it — that
             confirmation is real consumption history. Adjust the quantity above instead.
           </p>
+        ) : box.cameFromAnOrder ? (
+          <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
+            This box cannot be deleted because it arrived against a shopping line — it is the record
+            of that purchase, and the trip counts its cost through it. Bin it from Expiring if it is
+            gone, or clear the shopping line first.
+          </p>
         ) : (
           <>
             <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>

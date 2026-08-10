@@ -560,6 +560,8 @@ export interface BatchDetail extends StockRow {
   packLabelOrSize: string;
   /** A dose was confirmed straight from this box — deleting it would violate the FK. */
   hasDoseEvents: boolean;
+  /** Received against a shopping line, so it is a purchase record. */
+  cameFromAnOrder: boolean;
 }
 
 /** One box, with everything its edit form needs. */
@@ -588,10 +590,18 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
     .where(eq(doseEvents.batchId, id))
     .limit(1);
 
+  /* The purchase this box arrived against, if any — it blocks deleting. */
+  const lineRows = await db
+    .select({ id: shoppingItems.id })
+    .from(shoppingItems)
+    .where(eq(shoppingItems.receivedBatchId, id))
+    .limit(1);
+
   return {
     ...row,
     packLabelOrSize: row.packLabel ?? `${row.packSize} ${row.unitName}`,
     hasDoseEvents: eventRows.length > 0,
+    cameFromAnOrder: lineRows.length > 0,
   };
 }
 

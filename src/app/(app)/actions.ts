@@ -932,6 +932,25 @@ export async function deleteBatch(formData: FormData): Promise<void> {
     .limit(1);
   if (eventRows.length > 0) return;
 
+  /*
+   * And not a box that a shopping line became. That line is the record of a
+   * purchase: the trip reads its spend through it, and the pointer is
+   * `set null`, so deleting the box left the line still saying "in the
+   * cupboard" while pointing at nothing, and quietly took the money off the
+   * trip — €30.70 became €25.77 with nothing to show why.
+   *
+   * Same reasoning as the dose-event guard above. Binning is the way to say a
+   * box is gone; deleting is only for one entered by mistake, and a box that
+   * arrived against an order was not.
+   */
+  const lineRows = await db
+    .select({ id: shoppingItems.id })
+    .from(shoppingItems)
+    .where(eq(shoppingItems.receivedBatchId, id))
+    .limit(1);
+
+  if (lineRows.length > 0) return;
+
   await db.delete(batches).where(eq(batches.id, id));
   refreshAll();
   redirect(backTo(formData));
