@@ -3,6 +3,7 @@ import {ExpiryBadge} from '@/components/expiry-badge';
 import {RunOutBadge} from '@/components/run-out-badge';
 import {LINK_BUTTON, toneStyle} from '@/components/tone';
 import {SearchBox} from '@/components/search-box';
+import {Thumbnail} from '@/components/thumbnail';
 import {SymptomTags} from '@/components/symptom-tags';
 import {todayIso} from '@/domain/date';
 import {totalAvailable} from '@/domain/fefo';
@@ -95,7 +96,26 @@ export default async function StockPage({
                                 test-data="main-box-list-item"
                                 style={{background: 'var(--surface)', borderColor: 'var(--border)'}}
                             >
-                                <div className="flex items-baseline justify-between gap-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    {/*
+                                      A picture of the box, where the name is.
+
+                                      Half of this cupboard is packaged in a
+                                      language neither of us reads at a glance,
+                                      and the thumbnail settles "is this the
+                                      one" before the name has been read —
+                                      which is most of what searching is for.
+                                      Decorative: the name beside it already
+                                      says what this is, so a screen reader
+                                      gains nothing from repeating it.
+                                    */}
+                                    {group.photoPath ? (
+                                        <Thumbnail
+                                            photoPath={group.photoPath}
+                                            className="mt-0.5 h-10 w-10 shrink-0 rounded-lg border object-cover"
+                                        />
+                                    ) : null}
+
                                     {/*
                                       The name only, not the whole card: the steppers live inside
                                       this card and a tap target wrapped round them would send you
@@ -103,7 +123,7 @@ export default async function StockPage({
                                       pixels. The heading sits two rows above them, which is far
                                       enough for a thumb.
                                     */}
-                                    <h2 className="min-w-0 font-medium">
+                                    <h2 className="min-w-0 flex-1 font-medium">
                                         <Link href={`/products/${group.productId}`}
                                               className="break-words hover:underline underline-offset-4">
                                             {group.name}
