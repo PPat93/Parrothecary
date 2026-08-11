@@ -661,17 +661,19 @@ export async function getProductSymptoms(): Promise<Map<number, string[]>> {
 }
 
 /*
- * Both of these say "in use", and neither checked it.
+ * What belongs in a suggestion list.
  *
- * A substance or a symptom tag is created by typing one, so a mistyped
- * "Paracetmol" became a row of its own and then sat in the suggestion list on
- * every product form for good. Taking it off the product it was typed on did
- * not help: nothing else referenced it, and nothing removed it, so the typo
- * outlived the mistake and was offered back every time.
+ * Two kinds of row live in these tables. The seed ships a starter catalogue —
+ * "sore throat", "cough", "heartburn" — each with a Polish search alias, so the
+ * feature is useful on day one rather than demanding somebody type the whole
+ * vocabulary first. The other kind is created by typing a name into the product
+ * form, and a mistyped "Paracetmol" becomes a row exactly like a real one.
  *
- * Filtered rather than deleted. Once nothing offers the row it is harmless, and
- * a substance carries notes and a Polish name that a cleanup would throw away
- * for tidiness nobody can see. This also covers the ones already orphaned.
+ * So the test is not "is it used" — that hid the entire starter catalogue the
+ * moment it was written — but "is it a catalogue entry, or is it still in use".
+ * A typed name stops being offered once nothing references it; a seeded one is
+ * vocabulary and stays. Nothing is deleted either way: the Polish alias cannot
+ * be typed back in through any form in the app.
  *
  * Manufacturers never had the problem — they are read straight off the product
  * column, so correcting the spelling there is the whole fix.
@@ -682,7 +684,12 @@ export async function getSymptomNames(): Promise<string[]> {
   const rows = await db
     .selectDistinct({ nameEn: symptoms.nameEn })
     .from(symptoms)
-    .innerJoin(productSymptoms, eq(productSymptoms.symptomId, symptoms.id))
+    .where(
+      or(
+        isNotNull(symptoms.namePl),
+        sql`exists (select 1 from ${productSymptoms} ps where ps.symptom_id = ${symptoms.id})`,
+      ),
+    )
     .orderBy(sql`${symptoms.nameEn} collate nocase`);
   return rows.map((r) => r.nameEn);
 }
@@ -692,7 +699,12 @@ export async function getSubstanceNames(): Promise<string[]> {
   const rows = await db
     .selectDistinct({ name: substances.name })
     .from(substances)
-    .innerJoin(productSubstances, eq(productSubstances.substanceId, substances.id))
+    .where(
+      or(
+        isNotNull(substances.namePl),
+        sql`exists (select 1 from ${productSubstances} ps where ps.substance_id = ${substances.id})`,
+      ),
+    )
     .orderBy(sql`${substances.name} collate nocase`);
   return rows.map((r) => r.name);
 }

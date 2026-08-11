@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
 import {
@@ -341,6 +341,89 @@ export async function removeSymptomFromProduct(formData: FormData): Promise<void
     .where(
       and(eq(productSymptoms.productId, productId), eq(productSymptoms.symptomId, symptomId)),
     );
+  refreshAll();
+}
+
+/**
+ * Correct the spelling of a substance, everywhere it is used.
+ *
+ * Renaming rather than re-typing matters beyond tidiness: a misspelling is a
+ * *different* substance as far as the database is concerned, so "Paracetmol"
+ * and "Paracetamol" never trigger the double-dose warning against each other.
+ * Fixing it on one product fixes it on all of them.
+ *
+ * Renaming onto a name that already exists merges the two: every product
+ * carrying the misspelling is moved onto the real one, and the empty row goes.
+ * A product already carrying both keeps the amount recorded against the name it
+ * is being merged into — one of the two has to win, and that is the one whose
+ * spelling was right.
+ */
+export async function renameSubstance(formData: FormData): Promise<void> {
+  const id = Number(formData.get('substanceId'));
+  const name = String(formData.get('name') ?? '').trim();
+  if (!Number.isInteger(id) || !name) return;
+
+  const targetRows = await db
+    .select({ id: substances.id })
+    .from(substances)
+    .where(and(sql`lower(${substances.name}) = lower(${name})`, ne(substances.id, id)))
+    .limit(1);
+
+  const target = targetRows[0]?.id;
+
+  db.transaction((tx) => {
+    if (target === undefined) {
+      tx.update(substances).set({ name }).where(eq(substances.id, id)).run();
+      return;
+    }
+
+    // Move the links that will not collide, drop the ones that would, then the
+    // now-empty row. Doing it in this order keeps the unique pair intact.
+    tx.run(sql`
+      update ${productSubstances} set substance_id = ${target}
+      where substance_id = ${id}
+        and product_id not in (
+          select product_id from ${productSubstances} where substance_id = ${target}
+        )
+    `);
+    tx.delete(productSubstances).where(eq(productSubstances.substanceId, id)).run();
+    tx.delete(substances).where(eq(substances.id, id)).run();
+  });
+
+  refreshAll();
+}
+
+/** The same for a symptom tag, for the same reason: one spelling, one tag. */
+export async function renameSymptom(formData: FormData): Promise<void> {
+  const id = Number(formData.get('symptomId'));
+  const name = String(formData.get('name') ?? '').trim();
+  if (!Number.isInteger(id) || !name) return;
+
+  const targetRows = await db
+    .select({ id: symptoms.id })
+    .from(symptoms)
+    .where(and(sql`lower(${symptoms.nameEn}) = lower(${name})`, ne(symptoms.id, id)))
+    .limit(1);
+
+  const target = targetRows[0]?.id;
+
+  db.transaction((tx) => {
+    if (target === undefined) {
+      tx.update(symptoms).set({ nameEn: name }).where(eq(symptoms.id, id)).run();
+      return;
+    }
+
+    tx.run(sql`
+      update ${productSymptoms} set symptom_id = ${target}
+      where symptom_id = ${id}
+        and product_id not in (
+          select product_id from ${productSymptoms} where symptom_id = ${target}
+        )
+    `);
+    tx.delete(productSymptoms).where(eq(productSymptoms.symptomId, id)).run();
+    tx.delete(symptoms).where(eq(symptoms.id, id)).run();
+  });
+
   refreshAll();
 }
 

@@ -41,6 +41,7 @@ import {
   AddSymptomForm,
 } from './add-forms';
 import { PhotoForm } from './photo-form';
+import { RenameTag } from './rename-tag';
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -217,9 +218,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         ) : (
           product.substances.map((s) => (
             <div key={s.id} className="flex items-center justify-between gap-3 py-1 text-sm">
-              <span className="min-w-0 break-words">
-                {s.namePl && s.namePl !== s.name ? `${s.name} (${s.namePl})` : s.name}
-              </span>
+              <RenameTag
+                kind="substance"
+                id={s.id}
+                name={s.name}
+                label={s.namePl && s.namePl !== s.name ? `${s.name} (${s.namePl})` : s.name}
+              />
               <span className="flex shrink-0 items-center gap-2">
                 <span style={{ color: 'var(--muted)' }}>
                   {s.amountText ?? (s.amountMg !== null ? `${s.amountMg} mg` : '—')}
@@ -348,14 +352,19 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           <ul className="flex flex-wrap gap-2">
             {product.symptoms.map((s) => (
               <li key={s.id}>
-                <form action={removeSymptomFromProduct} className="flex">
-                  <input type="hidden" name="productId" value={product.id} />
-                  <input type="hidden" name="symptomId" value={s.id} />
-                  <span
-                    className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
-                    style={{ borderColor: 'var(--border)' }}
-                  >
-                    {s.nameEn}
+                {/*
+                  Two forms side by side rather than one wrapping the other:
+                  renaming and removing are separate submits, and a form inside
+                  a form is not valid markup.
+                */}
+                <span
+                  className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  <RenameTag kind="symptom" id={s.id} name={s.nameEn} label={s.nameEn} />
+                  <form action={removeSymptomFromProduct} className="flex">
+                    <input type="hidden" name="productId" value={product.id} />
+                    <input type="hidden" name="symptomId" value={s.id} />
                     <button
                       type="submit"
                       aria-label={`Remove ${s.nameEn}`}
@@ -364,8 +373,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                     >
                       ×
                     </button>
-                  </span>
-                </form>
+                  </form>
+                </span>
               </li>
             ))}
           </ul>
