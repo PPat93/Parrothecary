@@ -389,10 +389,19 @@ export async function renameSubstance(
   const id = Number(formData.get('substanceId'));
   const name = String(formData.get('name') ?? '').trim();
   const namePl = emptyToNull(String(formData.get('namePl') ?? '').trim());
+  /*
+   * "Left blank" and "not asked" are different answers, and only the form knows
+   * which happened. Emptying the field on purpose has to be able to clear an
+   * alias, while a submit that never carried the field must not wipe one.
+   */
+  const aliasWasAsked = formData.has('namePl');
   if (!Number.isInteger(id)) return { error: 'That substance is no longer there.', merge: null };
   if (!name) return { error: 'Give it a name.', merge: null };
   if (name.length > MAX_TAG_NAME) {
     return { error: `That name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
+  }
+  if (namePl !== null && namePl.length > MAX_TAG_NAME) {
+    return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
   }
 
   const targetRows = await db
@@ -436,8 +445,10 @@ export async function renameSubstance(
       return;
     }
 
-    // Merging: an alias typed here wins, otherwise the survivor inherits below.
-    if (namePl !== null) {
+    // Merging: whatever the form said wins, including an empty box. Only a
+    // submit that never carried the field falls through to the inheritance
+    // below, which is there to stop a merge quietly destroying an alias.
+    if (aliasWasAsked) {
       tx.update(substances).set({ namePl }).where(eq(substances.id, target)).run();
     }
 
@@ -452,12 +463,21 @@ export async function renameSubstance(
      * no form in this app can type back in. The surviving row inherits it,
      * whichever direction the merge went.
      */
-    tx.run(sql`
-      update ${substances} set
-        name_pl = coalesce(name_pl, (select name_pl from ${substances} where id = ${id})),
-        notes   = coalesce(notes,   (select notes   from ${substances} where id = ${id}))
-      where id = ${target}
-    `);
+    if (!aliasWasAsked) {
+      tx.run(sql`
+        update ${substances} set
+          name_pl = coalesce(name_pl, (select name_pl from ${substances} where id = ${id})),
+          notes   = coalesce(notes,   (select notes   from ${substances} where id = ${id}))
+        where id = ${target}
+      `);
+    } else {
+      // Notes are never edited here, so they are rescued either way.
+      tx.run(sql`
+        update ${substances} set
+          notes = coalesce(notes, (select notes from ${substances} where id = ${id}))
+        where id = ${target}
+      `);
+    }
 
     tx.run(sql`
       update ${productSubstances} set substance_id = ${target}
@@ -482,10 +502,14 @@ export async function renameSymptom(
   const id = Number(formData.get('symptomId'));
   const name = String(formData.get('name') ?? '').trim();
   const namePl = emptyToNull(String(formData.get('namePl') ?? '').trim());
+  const aliasWasAsked = formData.has('namePl');
   if (!Number.isInteger(id)) return { error: 'That tag is no longer there.', merge: null };
   if (!name) return { error: 'Give it a name.', merge: null };
   if (name.length > MAX_TAG_NAME) {
     return { error: `That name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
+  }
+  if (namePl !== null && namePl.length > MAX_TAG_NAME) {
+    return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
   }
 
   const targetRows = await db
@@ -516,16 +540,19 @@ export async function renameSymptom(
       return;
     }
 
-    if (namePl !== null) {
+    if (aliasWasAsked) {
       tx.update(symptoms).set({ namePl }).where(eq(symptoms.id, target)).run();
     }
 
-    // The surviving tag inherits the Polish alias, same as a substance does.
-    tx.run(sql`
-      update ${symptoms} set
-        name_pl = coalesce(name_pl, (select name_pl from ${symptoms} where id = ${id}))
-      where id = ${target}
-    `);
+    // The surviving tag inherits the Polish alias, same as a substance does —
+    // unless the form said what the alias should be.
+    if (!aliasWasAsked) {
+      tx.run(sql`
+        update ${symptoms} set
+          name_pl = coalesce(name_pl, (select name_pl from ${symptoms} where id = ${id}))
+        where id = ${target}
+      `);
+    }
 
     tx.run(sql`
       update ${productSymptoms} set symptom_id = ${target}

@@ -670,10 +670,15 @@ export async function getProductSymptoms(): Promise<Map<number, string[]>> {
  * form, and a mistyped "Paracetmol" becomes a row exactly like a real one.
  *
  * So the test is not "is it used" — that hid the entire starter catalogue the
- * moment it was written — but "is it a catalogue entry, or is it still in use".
- * A typed name stops being offered once nothing references it; a seeded one is
- * vocabulary and stays. Nothing is deleted either way: the Polish alias cannot
- * be typed back in through any form in the app.
+ * moment it was written — but "does it carry a Polish alias, or is it still in
+ * use". A bare typed name stops being offered once nothing references it.
+ *
+ * The alias used to mean "the seed wrote this", because nothing else could.
+ * That is no longer true: the product form and the pencil both set one now, so
+ * the rule reads as what it always meant in practice — an entry somebody gave a
+ * second name to is vocabulary worth keeping, whoever typed it. Giving a typo
+ * an alias would keep the typo in the list, which is the honest consequence of
+ * having said it was worth naming twice.
  *
  * Manufacturers never had the problem — they are read straight off the product
  * column, so correcting the spelling there is the whole fix.
