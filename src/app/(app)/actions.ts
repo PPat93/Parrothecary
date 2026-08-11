@@ -236,9 +236,10 @@ async function linkSubstance(
   productId: number,
   name: string,
   amountText: string | null,
+  namePl: string | null = null,
 ): Promise<void> {
   const existing = await db
-    .select({ id: substances.id })
+    .select({ id: substances.id, namePl: substances.namePl })
     .from(substances)
     .where(sql`lower(${substances.name}) = lower(${name})`)
     .limit(1);
@@ -247,9 +248,17 @@ async function linkSubstance(
   if (substanceId === undefined) {
     const created = await db
       .insert(substances)
-      .values({ name })
+      .values({ name, namePl })
       .returning({ id: substances.id });
     substanceId = created[0]?.id;
+  } else if (namePl !== null && existing[0]!.namePl === null) {
+    /*
+     * Fill a missing alias, never overwrite one. Typing an existing substance
+     * is the common way to reach this, and quietly replacing the Polish name
+     * somebody else set from a form where it is an afterthought would be the
+     * wrong way round — the pencil is where an alias gets changed on purpose.
+     */
+    await db.update(substances).set({ namePl }).where(eq(substances.id, substanceId));
   }
   if (substanceId === undefined) return;
 
@@ -278,13 +287,17 @@ export async function addSubstanceToProduct(
   const productId = Number(formData.get('productId'));
   const name = String(formData.get('substance') ?? '').trim();
   const amount = emptyToNull(String(formData.get('substanceAmount') ?? '').trim());
+  const namePl = emptyToNull(String(formData.get('substancePl') ?? '').trim());
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter a substance name.', values: snapshot(formData) };
+  if (namePl !== null && namePl.length > MAX_TAG_NAME) {
+    return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.` };
+  }
 
   if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
 
-  await linkSubstance(productId, name, amount);
+  await linkSubstance(productId, name, amount, namePl);
   refreshAll();
   return { error: null, ok: true };
 }
@@ -294,9 +307,13 @@ export async function addSubstanceToProduct(
  * throat" and "sore throat" stay one tag — two spellings would split the shelf
  * in half and quietly hide things from the search.
  */
-async function linkSymptom(productId: number, name: string): Promise<void> {
+async function linkSymptom(
+  productId: number,
+  name: string,
+  namePl: string | null = null,
+): Promise<void> {
   const existing = await db
-    .select({ id: symptoms.id })
+    .select({ id: symptoms.id, namePl: symptoms.namePl })
     .from(symptoms)
     .where(sql`lower(${symptoms.nameEn}) = lower(${name})`)
     .limit(1);
@@ -305,9 +322,12 @@ async function linkSymptom(productId: number, name: string): Promise<void> {
   if (symptomId === undefined) {
     const created = await db
       .insert(symptoms)
-      .values({ nameEn: name })
+      .values({ nameEn: name, namePl })
       .returning({ id: symptoms.id });
     symptomId = created[0]?.id;
+  } else if (namePl !== null && existing[0]!.namePl === null) {
+    // Fill a missing alias, never overwrite one — same rule as substances.
+    await db.update(symptoms).set({ namePl }).where(eq(symptoms.id, symptomId));
   }
   if (symptomId === undefined) return;
 
@@ -320,13 +340,17 @@ export async function addSymptomToProduct(
 ): Promise<FormResult> {
   const productId = Number(formData.get('productId'));
   const name = String(formData.get('symptom') ?? '').trim();
+  const namePl = emptyToNull(String(formData.get('symptomPl') ?? '').trim());
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter what it is used for.', values: snapshot(formData) };
+  if (namePl !== null && namePl.length > MAX_TAG_NAME) {
+    return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.` };
+  }
 
   if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
 
-  await linkSymptom(productId, name);
+  await linkSymptom(productId, name, namePl);
   refreshAll();
   return { error: null, ok: true };
 }
@@ -364,6 +388,7 @@ export async function renameSubstance(
 ): Promise<RenameResult> {
   const id = Number(formData.get('substanceId'));
   const name = String(formData.get('name') ?? '').trim();
+  const namePl = emptyToNull(String(formData.get('namePl') ?? '').trim());
   if (!Number.isInteger(id)) return { error: 'That substance is no longer there.', merge: null };
   if (!name) return { error: 'Give it a name.', merge: null };
   if (name.length > MAX_TAG_NAME) {
@@ -407,8 +432,13 @@ export async function renameSubstance(
 
   db.transaction((tx) => {
     if (target === undefined) {
-      tx.update(substances).set({ name }).where(eq(substances.id, id)).run();
+      tx.update(substances).set({ name, namePl }).where(eq(substances.id, id)).run();
       return;
+    }
+
+    // Merging: an alias typed here wins, otherwise the survivor inherits below.
+    if (namePl !== null) {
+      tx.update(substances).set({ namePl }).where(eq(substances.id, target)).run();
     }
 
     // Move the links that will not collide, drop the ones that would, then the
@@ -451,6 +481,7 @@ export async function renameSymptom(
 ): Promise<RenameResult> {
   const id = Number(formData.get('symptomId'));
   const name = String(formData.get('name') ?? '').trim();
+  const namePl = emptyToNull(String(formData.get('namePl') ?? '').trim());
   if (!Number.isInteger(id)) return { error: 'That tag is no longer there.', merge: null };
   if (!name) return { error: 'Give it a name.', merge: null };
   if (name.length > MAX_TAG_NAME) {
@@ -481,8 +512,12 @@ export async function renameSymptom(
 
   db.transaction((tx) => {
     if (target === undefined) {
-      tx.update(symptoms).set({ nameEn: name }).where(eq(symptoms.id, id)).run();
+      tx.update(symptoms).set({ nameEn: name, namePl }).where(eq(symptoms.id, id)).run();
       return;
+    }
+
+    if (namePl !== null) {
+      tx.update(symptoms).set({ namePl }).where(eq(symptoms.id, target)).run();
     }
 
     // The surviving tag inherits the Polish alias, same as a substance does.

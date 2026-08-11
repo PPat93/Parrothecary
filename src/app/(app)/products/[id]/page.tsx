@@ -41,7 +41,7 @@ import {
   AddSymptomForm,
 } from './add-forms';
 import { PhotoForm } from './photo-form';
-import { RenameTag } from './rename-tag';
+import { EditTag } from './rename-tag';
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -218,10 +218,11 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         ) : (
           product.substances.map((s) => (
             <div key={s.id} className="flex items-center justify-between gap-3 py-1 text-sm">
-              <RenameTag
+              <EditTag
                 kind="substance"
                 id={s.id}
                 name={s.name}
+                namePl={s.namePl}
                 label={s.namePl && s.namePl !== s.name ? `${s.name} (${s.namePl})` : s.name}
               />
               <span className="flex shrink-0 items-center gap-2">
@@ -361,7 +362,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                   className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
                   style={{ borderColor: 'var(--border)' }}
                 >
-                  <RenameTag kind="symptom" id={s.id} name={s.nameEn} label={s.nameEn} />
+                  <EditTag kind="symptom" id={s.id} name={s.nameEn} namePl={s.namePl} label={s.nameEn} />
                   <form action={removeSymptomFromProduct} className="flex">
                     <input type="hidden" name="productId" value={product.id} />
                     <input type="hidden" name="symptomId" value={s.id} />

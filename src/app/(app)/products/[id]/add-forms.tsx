@@ -80,6 +80,14 @@ export function AddSymptomForm({
         <Datalist id="symptoms" options={symptomNames} />
         <Submit pending={pending}>Add</Submit>
       </div>
+
+      {/* Same rule as substances: fills a blank alias, never replaces one. */}
+      <TextInput
+        name="symptomPl"
+        placeholder="ból gardła — optional, so a Polish search finds it"
+        aria-label="Polish name for this tag, optional"
+        defaultValue={prev.symptomPl ?? ''}
+      />
       <ErrorText>{state.error}</ErrorText>
     </form>
   );
@@ -140,6 +148,16 @@ export function AddSubstanceForm({
           />
         </Field>
       </div>
+
+      {/*
+        Optional, and only fills a blank: typing a substance that already exists
+        is the usual way here, and an alias somebody set deliberately should not
+        be replaced from a field they were not thinking about. Changing one is
+        the pencil's job.
+      */}
+      <Field label="Polish name" hint="Optional. Lets a search in Polish find it.">
+        <TextInput name="substancePl" placeholder="Paracetamol" defaultValue={prev.substancePl ?? ''} />
+      </Field>
       <ErrorText>{state.error}</ErrorText>
       <Submit pending={pending}>Add substance</Submit>
     </form>
