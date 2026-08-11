@@ -79,6 +79,8 @@ export interface StockRow {
   unitName: string;
   hasExpiry: boolean;
   expiryGraceDays: number;
+  /** The product photograph, so a box can be recognised by sight. */
+  photoPath: string | null;
 }
 
 const stockSelection = {
@@ -108,6 +110,7 @@ const stockSelection = {
    * here so those screens can say so rather than leaving it a mystery.
    */
   productArchivedAt: products.archivedAt,
+  photoPath: products.photoPath,
 };
 
 /**
@@ -177,6 +180,14 @@ export interface ProductStock {
   totalUnits: number;
   /** Physically here but past its window. Shown separately, never added in. */
   pastDateUnits: number;
+  /**
+   * The box's photograph, for recognising it by sight.
+   *
+   * Half this cupboard is packaged in a language neither of us reads quickly,
+   * and a picture of the box settles "is this the one" faster than the name
+   * does — which is the whole reason searching exists.
+   */
+  photoPath: string | null;
   boxes: StockRow[];
 }
 
@@ -197,6 +208,7 @@ export function groupByProduct(rows: StockRow[], today: IsoDate): ProductStock[]
         archived: (row.productArchivedAt ?? null) !== null,
         totalUnits: 0,
         pastDateUnits: 0,
+        photoPath: row.photoPath,
         boxes: [],
       };
       map.set(row.productId, entry);
