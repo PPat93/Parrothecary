@@ -366,6 +366,9 @@ export async function renameSubstance(
   const name = String(formData.get('name') ?? '').trim();
   if (!Number.isInteger(id)) return { error: 'That substance is no longer there.', merge: null };
   if (!name) return { error: 'Give it a name.', merge: null };
+  if (name.length > MAX_TAG_NAME) {
+    return { error: `That name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
+  }
 
   const targetRows = await db
     .select({ id: substances.id, name: substances.name })
@@ -382,14 +385,23 @@ export async function renameSubstance(
    * first, and says how much moves.
    */
   if (target !== undefined && formData.get('confirm') !== 'yes') {
-    const moving = await db
-      .select({ productId: productSubstances.productId })
-      .from(productSubstances)
-      .where(eq(productSubstances.substanceId, id));
+    /*
+     * Only the ones that actually move. A product already carrying both names
+     * keeps the one it is being merged into and simply loses the duplicate, so
+     * counting every link overstated what the merge would do — "moves all 2
+     * products" when one of them was already there.
+     */
+    const moving = await db.all<{ n: number }>(sql`
+      select count(*) as n from ${productSubstances}
+      where substance_id = ${id}
+        and product_id not in (
+          select product_id from ${productSubstances} where substance_id = ${target}
+        )
+    `);
 
     return {
       error: null,
-      merge: { name: targetRows[0]!.name, products: moving.length },
+      merge: { name: targetRows[0]!.name, products: moving[0]?.n ?? 0 },
     };
   }
 
@@ -401,6 +413,22 @@ export async function renameSubstance(
 
     // Move the links that will not collide, drop the ones that would, then the
     // now-empty row. Doing it in this order keeps the unique pair intact.
+    /*
+     * Carry the Polish alias across before the row goes.
+     *
+     * Which of the two survives is decided by which one you happened to rename,
+     * and the seeded catalogue entries are the ones with an alias — so merging
+     * the correctly-spelled seeded name onto a typo deleted a search alias that
+     * no form in this app can type back in. The surviving row inherits it,
+     * whichever direction the merge went.
+     */
+    tx.run(sql`
+      update ${substances} set
+        name_pl = coalesce(name_pl, (select name_pl from ${substances} where id = ${id})),
+        notes   = coalesce(notes,   (select notes   from ${substances} where id = ${id}))
+      where id = ${target}
+    `);
+
     tx.run(sql`
       update ${productSubstances} set substance_id = ${target}
       where substance_id = ${id}
@@ -425,6 +453,9 @@ export async function renameSymptom(
   const name = String(formData.get('name') ?? '').trim();
   if (!Number.isInteger(id)) return { error: 'That tag is no longer there.', merge: null };
   if (!name) return { error: 'Give it a name.', merge: null };
+  if (name.length > MAX_TAG_NAME) {
+    return { error: `That name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
+  }
 
   const targetRows = await db
     .select({ id: symptoms.id, name: symptoms.nameEn })
@@ -434,14 +465,18 @@ export async function renameSymptom(
 
   const target = targetRows[0]?.id;
 
-  // Merging asks first, exactly as it does for a substance.
+  // Merging asks first, exactly as it does for a substance, and counts only
+  // the products that actually move.
   if (target !== undefined && formData.get('confirm') !== 'yes') {
-    const moving = await db
-      .select({ productId: productSymptoms.productId })
-      .from(productSymptoms)
-      .where(eq(productSymptoms.symptomId, id));
+    const moving = await db.all<{ n: number }>(sql`
+      select count(*) as n from ${productSymptoms}
+      where symptom_id = ${id}
+        and product_id not in (
+          select product_id from ${productSymptoms} where symptom_id = ${target}
+        )
+    `);
 
-    return { error: null, merge: { name: targetRows[0]!.name, products: moving.length } };
+    return { error: null, merge: { name: targetRows[0]!.name, products: moving[0]?.n ?? 0 } };
   }
 
   db.transaction((tx) => {
@@ -449,6 +484,13 @@ export async function renameSymptom(
       tx.update(symptoms).set({ nameEn: name }).where(eq(symptoms.id, id)).run();
       return;
     }
+
+    // The surviving tag inherits the Polish alias, same as a substance does.
+    tx.run(sql`
+      update ${symptoms} set
+        name_pl = coalesce(name_pl, (select name_pl from ${symptoms} where id = ${id}))
+      where id = ${target}
+    `);
 
     tx.run(sql`
       update ${productSymptoms} set symptom_id = ${target}
@@ -2328,6 +2370,9 @@ export async function logout(): Promise<void> {
  * and the form asks before folding the two together, because that step cannot
  * be undone.
  */
+/** An ingredient name, not an essay. Long enough for "Pyridoxine hydrochloride". */
+const MAX_TAG_NAME = 100;
+
 export interface RenameResult {
   error: string | null;
   merge: { name: string; products: number } | null;
