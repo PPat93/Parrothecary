@@ -358,18 +358,40 @@ export async function removeSymptomFromProduct(formData: FormData): Promise<void
  * is being merged into — one of the two has to win, and that is the one whose
  * spelling was right.
  */
-export async function renameSubstance(formData: FormData): Promise<void> {
+export async function renameSubstance(
+  _prev: RenameResult,
+  formData: FormData,
+): Promise<RenameResult> {
   const id = Number(formData.get('substanceId'));
   const name = String(formData.get('name') ?? '').trim();
-  if (!Number.isInteger(id) || !name) return;
+  if (!Number.isInteger(id)) return { error: 'That substance is no longer there.', merge: null };
+  if (!name) return { error: 'Give it a name.', merge: null };
 
   const targetRows = await db
-    .select({ id: substances.id })
+    .select({ id: substances.id, name: substances.name })
     .from(substances)
     .where(and(sql`lower(${substances.name}) = lower(${name})`, ne(substances.id, id)))
     .limit(1);
 
   const target = targetRows[0]?.id;
+
+  /*
+   * A plain rename is one tap. A merge is not: it folds two entries into one,
+   * moves every product across and deletes the row, and there is no undo short
+   * of re-adding the substance to each product by hand. So the second one asks
+   * first, and says how much moves.
+   */
+  if (target !== undefined && formData.get('confirm') !== 'yes') {
+    const moving = await db
+      .select({ productId: productSubstances.productId })
+      .from(productSubstances)
+      .where(eq(productSubstances.substanceId, id));
+
+    return {
+      error: null,
+      merge: { name: targetRows[0]!.name, products: moving.length },
+    };
+  }
 
   db.transaction((tx) => {
     if (target === undefined) {
@@ -391,21 +413,36 @@ export async function renameSubstance(formData: FormData): Promise<void> {
   });
 
   refreshAll();
+  return { error: null, merge: null, ok: true };
 }
 
 /** The same for a symptom tag, for the same reason: one spelling, one tag. */
-export async function renameSymptom(formData: FormData): Promise<void> {
+export async function renameSymptom(
+  _prev: RenameResult,
+  formData: FormData,
+): Promise<RenameResult> {
   const id = Number(formData.get('symptomId'));
   const name = String(formData.get('name') ?? '').trim();
-  if (!Number.isInteger(id) || !name) return;
+  if (!Number.isInteger(id)) return { error: 'That tag is no longer there.', merge: null };
+  if (!name) return { error: 'Give it a name.', merge: null };
 
   const targetRows = await db
-    .select({ id: symptoms.id })
+    .select({ id: symptoms.id, name: symptoms.nameEn })
     .from(symptoms)
     .where(and(sql`lower(${symptoms.nameEn}) = lower(${name})`, ne(symptoms.id, id)))
     .limit(1);
 
   const target = targetRows[0]?.id;
+
+  // Merging asks first, exactly as it does for a substance.
+  if (target !== undefined && formData.get('confirm') !== 'yes') {
+    const moving = await db
+      .select({ productId: productSymptoms.productId })
+      .from(productSymptoms)
+      .where(eq(productSymptoms.symptomId, id));
+
+    return { error: null, merge: { name: targetRows[0]!.name, products: moving.length } };
+  }
 
   db.transaction((tx) => {
     if (target === undefined) {
@@ -425,6 +462,7 @@ export async function renameSymptom(formData: FormData): Promise<void> {
   });
 
   refreshAll();
+  return { error: null, merge: null, ok: true };
 }
 
 export async function removeSubstanceFromProduct(formData: FormData): Promise<void> {
@@ -2281,6 +2319,19 @@ export async function undoDose(formData: FormData): Promise<void> {
 export async function logout(): Promise<void> {
   await endSession();
   redirect('/login');
+}
+
+/**
+ * What a rename came back with.
+ *
+ * `merge` is set when the new name is already taken: nothing has happened yet,
+ * and the form asks before folding the two together, because that step cannot
+ * be undone.
+ */
+export interface RenameResult {
+  error: string | null;
+  merge: { name: string; products: number } | null;
+  ok?: boolean;
 }
 
 export interface FormResult {
