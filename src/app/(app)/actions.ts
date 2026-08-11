@@ -1043,6 +1043,13 @@ export async function linkBarcode(formData: FormData): Promise<void> {
   const variantId = Number(formData.get('variantId'));
   const code = String(formData.get('code') ?? '').trim();
   if (!Number.isInteger(variantId) || !code) return;
+  /*
+   * The typed-in form checks this; the scanned one did not, and it is the more
+   * likely of the two to be stale — the scan summary sits on screen with a pack
+   * already chosen while somebody on the other phone tidies up. Attaching to a
+   * pack that has gone threw a foreign key error at a camera.
+   */
+  if (!(await variantIsThere(variantId))) return;
 
   await attachBarcode(variantId, code, String(formData.get('barcodeType') ?? 'ean13'));
   refreshAll();
