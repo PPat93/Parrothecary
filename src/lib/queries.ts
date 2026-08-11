@@ -560,6 +560,8 @@ export interface BatchDetail extends StockRow {
   packLabelOrSize: string;
   /** A dose was confirmed straight from this box — deleting it would violate the FK. */
   hasDoseEvents: boolean;
+  /** Received against a shopping line, so it is a purchase record. */
+  cameFromAnOrder: boolean;
 }
 
 /** One box, with everything its edit form needs. */
@@ -588,10 +590,18 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
     .where(eq(doseEvents.batchId, id))
     .limit(1);
 
+  /* The purchase this box arrived against, if any — it blocks deleting. */
+  const lineRows = await db
+    .select({ id: shoppingItems.id })
+    .from(shoppingItems)
+    .where(eq(shoppingItems.receivedBatchId, id))
+    .limit(1);
+
   return {
     ...row,
     packLabelOrSize: row.packLabel ?? `${row.packSize} ${row.unitName}`,
     hasDoseEvents: eventRows.length > 0,
+    cameFromAnOrder: lineRows.length > 0,
   };
 }
 
@@ -650,11 +660,41 @@ export async function getProductSymptoms(): Promise<Map<number, string[]>> {
   return byProduct;
 }
 
+/*
+ * What belongs in a suggestion list.
+ *
+ * Two kinds of row live in these tables. The seed ships a starter catalogue —
+ * "sore throat", "cough", "heartburn" — each with a Polish search alias, so the
+ * feature is useful on day one rather than demanding somebody type the whole
+ * vocabulary first. The other kind is created by typing a name into the product
+ * form, and a mistyped "Paracetmol" becomes a row exactly like a real one.
+ *
+ * So the test is not "is it used" — that hid the entire starter catalogue the
+ * moment it was written — but "does it carry a Polish alias, or is it still in
+ * use". A bare typed name stops being offered once nothing references it.
+ *
+ * The alias used to mean "the seed wrote this", because nothing else could.
+ * That is no longer true: the product form and the pencil both set one now, so
+ * the rule reads as what it always meant in practice — an entry somebody gave a
+ * second name to is vocabulary worth keeping, whoever typed it. Giving a typo
+ * an alias would keep the typo in the list, which is the honest consequence of
+ * having said it was worth naming twice.
+ *
+ * Manufacturers never had the problem — they are read straight off the product
+ * column, so correcting the spelling there is the whole fix.
+ */
+
 /** Every symptom tag in use, so the picker suggests rather than demands typing. */
 export async function getSymptomNames(): Promise<string[]> {
   const rows = await db
-    .select({ nameEn: symptoms.nameEn })
+    .selectDistinct({ nameEn: symptoms.nameEn })
     .from(symptoms)
+    .where(
+      or(
+        isNotNull(symptoms.namePl),
+        sql`exists (select 1 from ${productSymptoms} ps where ps.symptom_id = ${symptoms.id})`,
+      ),
+    )
     .orderBy(sql`${symptoms.nameEn} collate nocase`);
   return rows.map((r) => r.nameEn);
 }
@@ -662,8 +702,14 @@ export async function getSymptomNames(): Promise<string[]> {
 /** Substance names already in use, for the product form's suggestions. */
 export async function getSubstanceNames(): Promise<string[]> {
   const rows = await db
-    .select({ name: substances.name })
+    .selectDistinct({ name: substances.name })
     .from(substances)
+    .where(
+      or(
+        isNotNull(substances.namePl),
+        sql`exists (select 1 from ${productSubstances} ps where ps.substance_id = ${substances.id})`,
+      ),
+    )
     .orderBy(sql`${substances.name} collate nocase`);
   return rows.map((r) => r.name);
 }
@@ -721,6 +767,8 @@ export interface ShoppingRow {
   notes: string | null;
   tripId: number | null;
   tripLabel: string | null;
+  /** The trip's collection date, or null when the line is not on a trip. */
+  tripCollectionDate: string | null;
   variantId: number;
   packSize: number;
   packLabel: string | null;
@@ -730,7 +778,11 @@ export interface ShoppingRow {
   strength: string | null;
   unitName: string;
   hasExpiry: boolean;
+  /** Set when the product was archived after this line was put on the list. */
+  productArchivedAt: Date | null;
   receivedBatchId: number | null;
+  /** Units the received box came with, or null if this line never became one. */
+  receivedUnits: number | null;
 }
 
 const shoppingSelection = {
@@ -740,6 +792,11 @@ const shoppingSelection = {
   notes: shoppingItems.notes,
   tripId: shoppingItems.tripId,
   tripLabel: trips.label,
+  /*
+   * When the trip collects. The receive form uses it as the purchase date, so a
+   * box bought on a restock lands in the right year without anyone typing it.
+   */
+  tripCollectionDate: trips.collectionDate,
   variantId: variants.id,
   packSize: variants.packSize,
   packLabel: variants.packLabel,
@@ -749,7 +806,28 @@ const shoppingSelection = {
   strength: products.strength,
   unitName: products.unitName,
   hasExpiry: products.hasExpiry,
+  /*
+   * Archived, but still on the list. Archiving does not clear open lines, and
+   * nothing said so — you would buy two packs of something you had decided to
+   * stop using. The stock list, the dose board and Expiring all mark it, so
+   * this does too.
+   */
+  productArchivedAt: products.archivedAt,
   receivedBatchId: shoppingItems.receivedBatchId,
+  /*
+   * What actually turned up, read from the `received` movement rather than the
+   * box's quantity — the box empties as doses come out of it, and this has to
+   * stay the amount that arrived.
+   *
+   * Ordering two packs and receiving one closed the line as "in the cupboard"
+   * and dropped both packs off the trip's still-to-buy, with nothing anywhere
+   * saying the second never came. Both numbers were on the line the whole time;
+   * nothing compared them.
+   */
+  receivedUnits: sql<number | null>`(
+    select sum(m.delta) from ${stockMovements} m
+    where m.batch_id = ${shoppingItems.receivedBatchId} and m.reason = 'received'
+  )`,
 };
 
 export async function getShoppingList(): Promise<ShoppingRow[]> {
@@ -1167,6 +1245,11 @@ export async function getPreviousCollectionDate(
  */
 export interface TripDetail extends Omit<TripRow, 'spentMinorEur' | 'uncostedBoxes'> {
   items: ShoppingRow[];
+  /**
+   * Things on the packing list. Deleting the trip deletes them with it, so the
+   * confirmation has to be able to say how many are about to go.
+   */
+  kitCount: number;
 }
 
 export async function getTrip(id: number): Promise<TripDetail | null> {
@@ -1183,6 +1266,11 @@ export async function getTrip(id: number): Promise<TripDetail | null> {
     .where(eq(shoppingItems.tripId, id))
     .orderBy(byName);
 
+  const kit = await db
+    .select({ id: travelKitItems.id })
+    .from(travelKitItems)
+    .where(eq(travelKitItems.tripId, id));
+
   return {
     id: trip.id,
     label: trip.label,
@@ -1194,6 +1282,7 @@ export async function getTrip(id: number): Promise<TripDetail | null> {
     notes: trip.notes,
     itemCount: items.length,
     items,
+    kitCount: kit.length,
   };
 }
 
@@ -1465,31 +1554,40 @@ export async function getAuditRows(tripId: number): Promise<AuditRow[]> {
  * Measured as everything that ever went in, which never blocks a legitimate
  * put-back and still catches a typed 1000.
  */
+/*
+ * Only stock that genuinely came in: what the box opened with, what was
+ * received into it, and any correction upward. Counting put-backs here
+ * ratcheted the ceiling up by ten every time ten went back, so the guard
+ * loosened a little with every ordinary use.
+ */
+const unitsEverIn = sql<number>`coalesce((
+  select sum(m.delta) from ${stockMovements} m
+  where m.batch_id = ${batches.id}
+    and m.delta > 0
+    and m.reason in ('opening', 'received', 'adjust', 'audit')
+), 0)`;
+
+/**
+ * How much a full box of this holds — which is not the pack size.
+ *
+ * A shopping line can be for three packs, and receiving it makes one box: the
+ * form itself defaults the quantity to packs × pack size. Every money figure
+ * that divided by the pack size therefore read a multi-pack box as three times
+ * more valuable per unit than it was, and costed a third of it left over as the
+ * whole price wasted.
+ */
+const unitsWhenFull = sql<number>`max(${variants.packSize}, ${unitsEverIn})`;
+
 export async function getBatchCapacities(batchIds: number[]): Promise<Map<number, number>> {
   if (batchIds.length === 0) return new Map();
 
   const rows = await db
-    .select({
-      batchId: batches.id,
-      packSize: variants.packSize,
-      /*
-       * Only stock that genuinely came in: what the box opened with, what was
-       * received into it, and any correction upward. Counting put-backs here
-       * ratcheted the ceiling up by ten every time ten went back, so the guard
-       * loosened a little with every ordinary use.
-       */
-      everIn: sql<number>`coalesce((
-        select sum(m.delta) from ${stockMovements} m
-        where m.batch_id = ${batches.id}
-          and m.delta > 0
-          and m.reason in ('opening', 'received', 'adjust', 'audit')
-      ), 0)`,
-    })
+    .select({ batchId: batches.id, capacity: unitsWhenFull })
     .from(batches)
     .innerJoin(variants, eq(batches.variantId, variants.id))
     .where(inArray(batches.id, batchIds));
 
-  return new Map(rows.map((row) => [row.batchId, Math.max(row.packSize, row.everIn)]));
+  return new Map(rows.map((row) => [row.batchId, row.capacity]));
 }
 
 /* ------------------------------------------------------------------ */
@@ -1652,10 +1750,25 @@ export interface KitRow {
   available: number;
   /** The box FEFO would reach for goes off before you get home. */
   expiresAway: boolean;
+  /** Retired, but still in the bag. Same reason the shopping list says so. */
+  archived: boolean;
+  /**
+   * What the courses actually need over the trip as it stands now.
+   *
+   * The number in the bag was worked out when the item was added. Trips get
+   * longer afterwards, and nothing recomputed: a ten-day trip packed with ten
+   * tablets stayed at ten when it became twenty days, silently half-packed.
+   * Zero for anything not on a schedule — a standing item has no "enough".
+   */
+  dueUnits: number;
 }
 
 /** What is on the packing list for this trip. */
-export async function getTravelKit(tripId: number, returnDate: IsoDate | null): Promise<KitRow[]> {
+export async function getTravelKit(
+  tripId: number,
+  departure: IsoDate,
+  returnDate: IsoDate | null,
+): Promise<KitRow[]> {
   const rows = await db
     .select({
       id: travelKitItems.id,
@@ -1666,6 +1779,7 @@ export async function getTravelKit(tripId: number, returnDate: IsoDate | null): 
       units: travelKitItems.units,
       packed: travelKitItems.packed,
       note: travelKitItems.note,
+      archivedAt: products.archivedAt,
     })
     .from(travelKitItems)
     .innerJoin(products, eq(travelKitItems.productId, products.id))
@@ -1676,6 +1790,41 @@ export async function getTravelKit(tripId: number, returnDate: IsoDate | null): 
 
   const today = todayIso();
   const stock = await getBatchesForProducts(rows.map((row) => row.productId));
+
+  /*
+   * What each course needs over this trip, worked out now rather than when the
+   * item was added. Same window and same rules the suggestions use, so a bagged
+   * item and a suggested one cannot disagree about the same ten days.
+   */
+  const due = new Map<number, number>();
+  if (returnDate !== null) {
+    const schedules = await db
+      .select({
+        productId: doseSchedules.productId,
+        doseUnits: doseSchedules.doseUnits,
+        timesPerDay: doseSchedules.timesPerDay,
+        intervalDays: doseSchedules.intervalDays,
+        startDate: doseSchedules.startDate,
+        endDate: doseSchedules.endDate,
+      })
+      .from(doseSchedules)
+      .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+      .where(
+        and(
+          isNull(doseSchedules.archivedAt),
+          isNull(householdMembers.archivedAt),
+          inArray(
+            doseSchedules.productId,
+            rows.map((row) => row.productId),
+          ),
+        ),
+      );
+
+    for (const schedule of schedules) {
+      const units = unitsDueBetween(schedule, departure, returnDate);
+      due.set(schedule.productId, (due.get(schedule.productId) ?? 0) + units);
+    }
+  }
 
   return rows.map((row) => {
     const boxes = stock.get(row.productId) ?? [];
@@ -1688,6 +1837,8 @@ export async function getTravelKit(tripId: number, returnDate: IsoDate | null): 
         returnDate !== null && next !== undefined && next !== null
           ? expiresDuringTrip(next.expiryDate, returnDate)
           : false,
+      archived: row.archivedAt !== null,
+      dueUnits: Math.round((due.get(row.productId) ?? 0) * 100) / 100,
     };
   });
 }
@@ -1983,13 +2134,31 @@ export interface YearSpend {
 }
 
 /**
+ * The yearly totals plus what they had to leave out.
+ *
+ * Every other figure on the Money page counts what it cannot include — "plus
+ * four boxes with no price it can use", "two binned boxes have a złoty price
+ * with no rate". This one did the same arithmetic and then showed the totals
+ * alone, so a box priced but never dated dropped out of every year and out of
+ * sight: twenty-five euro of real spend that no line on the page accounted for.
+ */
+export interface SpendSummary {
+  years: YearSpend[];
+  /** Priced, but with no purchase date — real money belonging to no year. */
+  undatedBoxes: number;
+  undatedMinorEur: number;
+  /** Priced in złoty with no rate recorded, so not in any total. */
+  uncostedBoxes: number;
+}
+
+/**
  * What was spent each year.
  *
  * By purchase date rather than by trip: boxes bought locally belong to a year
  * but to no trip, and leaving them out would make the yearly figure quietly
  * smaller than the money that actually left the account.
  */
-export async function getSpendByYear(): Promise<YearSpend[]> {
+export async function getSpendByYear(): Promise<SpendSummary> {
   const rows = await db
     .select({
       purchaseDate: batches.purchaseDate,
@@ -1998,19 +2167,34 @@ export async function getSpendByYear(): Promise<YearSpend[]> {
       fxRateToEur: batches.fxRateToEur,
     })
     .from(batches)
-    .where(and(isNotNull(batches.purchasePriceMinor), isNotNull(batches.purchaseDate)));
+    // Dateless rows stay in: they are counted separately below rather than
+    // dropped, which is what made twenty-five euro invisible.
+    .where(isNotNull(batches.purchasePriceMinor));
 
   const byYear = new Map<string, YearSpend>();
+  let undatedBoxes = 0;
+  let undatedMinorEur = 0;
+  let uncostedBoxes = 0;
 
   for (const row of rows) {
     const year = (row.purchaseDate ?? '').slice(0, 4);
-    if (year.length !== 4) continue;
+    if (year.length !== 4) {
+      const eur = inEur(row.priceMinor!, row.currency, row.fxRateToEur);
+      if (eur === null) uncostedBoxes++;
+      else {
+        undatedBoxes++;
+        undatedMinorEur += eur;
+      }
+      continue;
+    }
 
     const entry = byYear.get(year) ?? { year, minorEur: 0, boxes: 0, uncostedBoxes: 0 };
     const eur = inEur(row.priceMinor!, row.currency, row.fxRateToEur);
 
-    if (eur === null) entry.uncostedBoxes++;
-    else {
+    if (eur === null) {
+      entry.uncostedBoxes++;
+      uncostedBoxes++;
+    } else {
       entry.minorEur += eur;
       entry.boxes++;
     }
@@ -2018,7 +2202,12 @@ export async function getSpendByYear(): Promise<YearSpend[]> {
     byYear.set(year, entry);
   }
 
-  return [...byYear.values()].sort((a, b) => a.year.localeCompare(b.year));
+  return {
+    years: [...byYear.values()].sort((a, b) => a.year.localeCompare(b.year)),
+    undatedBoxes,
+    undatedMinorEur,
+    uncostedBoxes,
+  };
 }
 
 export interface PriceTrend {
@@ -2050,6 +2239,7 @@ export async function getPriceTrends(): Promise<PriceTrend[]> {
       strength: products.strength,
       unitName: products.unitName,
       packSize: variants.packSize,
+      unitsWhenFull,
       purchaseDate: batches.purchaseDate,
       priceMinor: batches.purchasePriceMinor,
       currency: batches.purchaseCurrency,
@@ -2068,11 +2258,13 @@ export async function getPriceTrends(): Promise<PriceTrend[]> {
 
   for (const row of rows) {
     const eur = inEur(row.priceMinor!, row.currency, row.fxRateToEur);
-    // Nothing to compare against if it cannot be put in euro, or if the pack
-    // size is unusable as a denominator.
-    if (eur === null || row.packSize <= 0) continue;
+    // Nothing to compare against if it cannot be put in euro, or if there is
+    // no usable denominator. Not the pack size: a box received from a
+    // three-pack line holds three packs, and dividing by one made it look
+    // like the price had tripled that month.
+    if (eur === null || row.unitsWhenFull <= 0) continue;
 
-    const perUnit = eur / row.packSize;
+    const perUnit = eur / row.unitsWhenFull;
     const date = row.purchaseDate!;
     const existing = byProduct.get(row.productId);
 
@@ -2146,7 +2338,7 @@ export function summariseWaste(rows: WasteRow[]): WasteSummary {
 
     const unused = unusedValue(
       money(row.priceMinor, row.currency),
-      row.packSize,
+      row.unitsWhenFull,
       row.quantityRemaining,
     );
     const eur = toEurOrNull(unused, row.fxRateToEur);
@@ -2273,9 +2465,23 @@ export async function getRestockWindows(): Promise<RestockWindow[]> {
   const completed = await db
     .select({ label: trips.label, collectionDate: trips.collectionDate })
     .from(trips)
-    // The section is called "between restocks" and has to mean it: a holiday
-    // in the middle would split one supply cycle into two meaningless halves.
-    .where(and(eq(trips.status, 'completed'), eq(trips.kind, 'restock')))
+    /*
+     * The section is called "between restocks" and has to mean it: a holiday
+     * in the middle would split one supply cycle into two meaningless halves.
+     *
+     * And not a trip dated in the future, however it got marked completed —
+     * ticking one off early made a window from the last real restock to a date
+     * two months out, reported as "223 days · 18 taken" when sixty-six of those
+     * days had not happened. Every per-day figure read from it was diluted.
+     * Nothing was collected tomorrow, so nothing can be bounded by tomorrow.
+     */
+    .where(
+      and(
+        eq(trips.status, 'completed'),
+        eq(trips.kind, 'restock'),
+        sql`${trips.collectionDate} <= ${todayIso()}`,
+      ),
+    )
     .orderBy(asc(trips.collectionDate));
 
   if (completed.length < 2) return [];
@@ -2382,8 +2588,13 @@ export interface PurchaseRow {
   currency: 'PLN' | 'EUR';
   /** Rate recorded at purchase. Null for a euro buy, which needs none. */
   fxRateToEur: number | null;
-  /** What was bought: one pack of this size. The denominator for unit cost. */
+  /** The pack this box is of. Not the denominator for unit cost — see below. */
   packSize: number;
+  /**
+   * Units a full one of these boxes holds. A line for three packs becomes one
+   * box of three packs' worth, so this is what unit cost divides by.
+   */
+  unitsWhenFull: number;
   packLabel: string | null;
   /** Set once the box has left stock, so waste can be costed. */
   status: string;
@@ -2407,6 +2618,7 @@ export async function getProductPurchases(productId: number): Promise<PurchaseRo
       currency: batches.purchaseCurrency,
       fxRateToEur: batches.fxRateToEur,
       packSize: variants.packSize,
+      unitsWhenFull,
       packLabel: variants.packLabel,
       status: batches.status,
       tripLabel: trips.label,
@@ -2440,6 +2652,8 @@ export interface WasteRow {
   quantityRemaining: number;
   unitName: string;
   packSize: number;
+  /** Units a full one of these holds — three packs on one line is one box. */
+  unitsWhenFull: number;
   priceMinor: number | null;
   currency: 'PLN' | 'EUR' | null;
   fxRateToEur: number | null;
@@ -2468,6 +2682,8 @@ export async function getWaste(): Promise<WasteRow[]> {
       quantityRemaining: batches.quantityRemaining,
       unitName: products.unitName,
       packSize: variants.packSize,
+      // What a full one of these boxes holds; a line for three packs is one box.
+      unitsWhenFull,
       priceMinor: batches.purchasePriceMinor,
       currency: batches.purchaseCurrency,
       fxRateToEur: batches.fxRateToEur,
@@ -2532,8 +2748,13 @@ export async function getTripMoney(tripId: number): Promise<TripMoney> {
 
   // Still to buy: everything on the trip that has not produced a box yet.
   const outstanding = await db
-    .select({ variantId: shoppingItems.variantId, quantityPacks: shoppingItems.quantityPacks })
+    .select({
+      variantId: shoppingItems.variantId,
+      quantityPacks: shoppingItems.quantityPacks,
+      packSize: variants.packSize,
+    })
     .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
     .where(
       and(
         eq(shoppingItems.tripId, tripId),
@@ -2551,8 +2772,12 @@ export async function getTripMoney(tripId: number): Promise<TripMoney> {
         priceMinor: batches.purchasePriceMinor,
         currency: batches.purchaseCurrency,
         fxRateToEur: batches.fxRateToEur,
+        // What that price actually bought. A box received from a three-pack
+        // line holds three packs, so its price is not the price of one.
+        unitsWhenFull,
       })
       .from(batches)
+      .innerJoin(variants, eq(batches.variantId, variants.id))
       /*
        * The most recent price that can actually be converted, not simply the
        * most recent. Taking the newest and finding it had no rate against it
@@ -2570,13 +2795,24 @@ export async function getTripMoney(tripId: number): Promise<TripMoney> {
       .limit(1);
 
     const price = lastPaid[0];
-    const eur = price ? inEur(price.priceMinor!, price.currency, price.fxRateToEur) : null;
+    if (!price) {
+      uncostedLines++;
+      continue;
+    }
+
+    const eur = inEur(price.priceMinor!, price.currency, price.fxRateToEur);
     if (eur === null) {
       uncostedLines++;
       continue;
     }
 
-    estimatedMinorEur += eur * line.quantityPacks;
+    /*
+     * Scaled from what that box held to what this line asks for. Multiplying
+     * the whole price of a 180-unit box by the number of packs wanted priced a
+     * single 60-pack at thirty euro instead of ten.
+     */
+    const packsInReference = price.unitsWhenFull > 0 ? price.unitsWhenFull / line.packSize : 1;
+    estimatedMinorEur += Math.round((eur / Math.max(1, packsInReference)) * line.quantityPacks);
     estimatedLines++;
   }
 
@@ -2630,7 +2866,10 @@ export async function getStockValue(): Promise<StockValue> {
       currency: batches.purchaseCurrency,
       fxRateToEur: batches.fxRateToEur,
       quantityRemaining: batches.quantityRemaining,
-      packSize: variants.packSize,
+      // Not the pack size: a box received from a three-pack line holds three
+      // packs, and a third of it left counted as the whole price still sitting
+      // in the drawer.
+      unitsWhenFull,
     })
     .from(batches)
     .innerJoin(variants, eq(batches.variantId, variants.id))
@@ -2645,7 +2884,8 @@ export async function getStockValue(): Promise<StockValue> {
       uncostedBoxes++;
       continue;
     }
-    const fraction = row.packSize > 0 ? Math.min(1, row.quantityRemaining / row.packSize) : 0;
+    const fraction =
+      row.unitsWhenFull > 0 ? Math.min(1, row.quantityRemaining / row.unitsWhenFull) : 0;
     minorEur += Math.round(eur * fraction);
   }
 

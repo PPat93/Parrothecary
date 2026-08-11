@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
 import {
@@ -34,7 +34,7 @@ import {
   variants,
 } from '@/db/schema';
 import { isValidEan13, parseScan } from '@/domain/barcode';
-import { addDays, todayIso } from '@/domain/date';
+import { addDays, isIsoDate, todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { isScheduleActiveOn } from '@/domain/dosing';
 import {
@@ -158,6 +158,13 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
       values: snapshot(formData),
     };
   }
+  // The same ceiling the add-a-pack form applies. This creates the first pack.
+  if (packSize > MAX_PACK_SIZE) {
+    return {
+      error: `${packSize} is too large for a pack. ${MAX_PACK_SIZE} is the most — check the number on the box.`,
+      values: snapshot(formData),
+    };
+  }
 
   const inserted = await db
     .insert(products)
@@ -194,6 +201,32 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
 }
 
 /**
+ * Does this product still exist?
+ *
+ * Everything that hangs something off a product — a substance, a symptom, a
+ * pack, an alternative — writes a real foreign key. A product page is open on a
+ * phone for a long time, and if the other phone deletes that product in the
+ * meantime, every one of those writes failed with
+ * `SQLITE_CONSTRAINT_FOREIGNKEY` and a crash page, on a form that answers
+ * everything else with one line of plain English.
+ */
+/** Units in one pack. A ten-litre bottle of anything is 10 000 ml. */
+const MAX_PACK_SIZE = 100_000;
+
+async function productIsThere(id: number): Promise<boolean> {
+  const rows = await db.select({ id: products.id }).from(products).where(eq(products.id, id)).limit(1);
+  return rows.length > 0;
+}
+
+/** The same, for a pack. Barcodes hang off the pack rather than the product. */
+async function variantIsThere(id: number): Promise<boolean> {
+  const rows = await db.select({ id: variants.id }).from(variants).where(eq(variants.id, id)).limit(1);
+  return rows.length > 0;
+}
+
+const PRODUCT_GONE = 'That product is no longer there — it may have been deleted on another phone.';
+
+/**
  * Attach an active substance, creating it if this is the first product to use
  * it. Matching is case-insensitive so "Paracetamol" and "paracetamol" do not
  * become two different substances — which would silently defeat the
@@ -203,9 +236,10 @@ async function linkSubstance(
   productId: number,
   name: string,
   amountText: string | null,
+  namePl: string | null = null,
 ): Promise<void> {
   const existing = await db
-    .select({ id: substances.id })
+    .select({ id: substances.id, namePl: substances.namePl })
     .from(substances)
     .where(sql`lower(${substances.name}) = lower(${name})`)
     .limit(1);
@@ -214,9 +248,17 @@ async function linkSubstance(
   if (substanceId === undefined) {
     const created = await db
       .insert(substances)
-      .values({ name })
+      .values({ name, namePl })
       .returning({ id: substances.id });
     substanceId = created[0]?.id;
+  } else if (namePl !== null && existing[0]!.namePl === null) {
+    /*
+     * Fill a missing alias, never overwrite one. Typing an existing substance
+     * is the common way to reach this, and quietly replacing the Polish name
+     * somebody else set from a form where it is an afterthought would be the
+     * wrong way round — the pencil is where an alias gets changed on purpose.
+     */
+    await db.update(substances).set({ namePl }).where(eq(substances.id, substanceId));
   }
   if (substanceId === undefined) return;
 
@@ -245,11 +287,17 @@ export async function addSubstanceToProduct(
   const productId = Number(formData.get('productId'));
   const name = String(formData.get('substance') ?? '').trim();
   const amount = emptyToNull(String(formData.get('substanceAmount') ?? '').trim());
+  const namePl = emptyToNull(String(formData.get('substancePl') ?? '').trim());
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter a substance name.', values: snapshot(formData) };
+  if (namePl !== null && namePl.length > MAX_TAG_NAME) {
+    return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.` };
+  }
 
-  await linkSubstance(productId, name, amount);
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
+
+  await linkSubstance(productId, name, amount, namePl);
   refreshAll();
   return { error: null, ok: true };
 }
@@ -259,9 +307,13 @@ export async function addSubstanceToProduct(
  * throat" and "sore throat" stay one tag — two spellings would split the shelf
  * in half and quietly hide things from the search.
  */
-async function linkSymptom(productId: number, name: string): Promise<void> {
+async function linkSymptom(
+  productId: number,
+  name: string,
+  namePl: string | null = null,
+): Promise<void> {
   const existing = await db
-    .select({ id: symptoms.id })
+    .select({ id: symptoms.id, namePl: symptoms.namePl })
     .from(symptoms)
     .where(sql`lower(${symptoms.nameEn}) = lower(${name})`)
     .limit(1);
@@ -270,9 +322,12 @@ async function linkSymptom(productId: number, name: string): Promise<void> {
   if (symptomId === undefined) {
     const created = await db
       .insert(symptoms)
-      .values({ nameEn: name })
+      .values({ nameEn: name, namePl })
       .returning({ id: symptoms.id });
     symptomId = created[0]?.id;
+  } else if (namePl !== null && existing[0]!.namePl === null) {
+    // Fill a missing alias, never overwrite one — same rule as substances.
+    await db.update(symptoms).set({ namePl }).where(eq(symptoms.id, symptomId));
   }
   if (symptomId === undefined) return;
 
@@ -285,11 +340,17 @@ export async function addSymptomToProduct(
 ): Promise<FormResult> {
   const productId = Number(formData.get('productId'));
   const name = String(formData.get('symptom') ?? '').trim();
+  const namePl = emptyToNull(String(formData.get('symptomPl') ?? '').trim());
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter what it is used for.', values: snapshot(formData) };
+  if (namePl !== null && namePl.length > MAX_TAG_NAME) {
+    return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.` };
+  }
 
-  await linkSymptom(productId, name);
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
+
+  await linkSymptom(productId, name, namePl);
   refreshAll();
   return { error: null, ok: true };
 }
@@ -305,6 +366,207 @@ export async function removeSymptomFromProduct(formData: FormData): Promise<void
       and(eq(productSymptoms.productId, productId), eq(productSymptoms.symptomId, symptomId)),
     );
   refreshAll();
+}
+
+/**
+ * Correct the spelling of a substance, everywhere it is used.
+ *
+ * Renaming rather than re-typing matters beyond tidiness: a misspelling is a
+ * *different* substance as far as the database is concerned, so "Paracetmol"
+ * and "Paracetamol" never trigger the double-dose warning against each other.
+ * Fixing it on one product fixes it on all of them.
+ *
+ * Renaming onto a name that already exists merges the two: every product
+ * carrying the misspelling is moved onto the real one, and the empty row goes.
+ * A product already carrying both keeps the amount recorded against the name it
+ * is being merged into — one of the two has to win, and that is the one whose
+ * spelling was right.
+ */
+export async function renameSubstance(
+  _prev: RenameResult,
+  formData: FormData,
+): Promise<RenameResult> {
+  const id = Number(formData.get('substanceId'));
+  const name = String(formData.get('name') ?? '').trim();
+  const namePl = emptyToNull(String(formData.get('namePl') ?? '').trim());
+  /*
+   * "Left blank" and "not asked" are different answers, and only the form knows
+   * which happened. Emptying the field on purpose has to be able to clear an
+   * alias, while a submit that never carried the field must not wipe one.
+   */
+  const aliasWasAsked = formData.has('namePl');
+  if (!Number.isInteger(id)) return { error: 'That substance is no longer there.', merge: null };
+  if (!name) return { error: 'Give it a name.', merge: null };
+  if (name.length > MAX_TAG_NAME) {
+    return { error: `That name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
+  }
+  if (namePl !== null && namePl.length > MAX_TAG_NAME) {
+    return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
+  }
+
+  const targetRows = await db
+    .select({ id: substances.id, name: substances.name })
+    .from(substances)
+    .where(and(sql`lower(${substances.name}) = lower(${name})`, ne(substances.id, id)))
+    .limit(1);
+
+  const target = targetRows[0]?.id;
+
+  /*
+   * A plain rename is one tap. A merge is not: it folds two entries into one,
+   * moves every product across and deletes the row, and there is no undo short
+   * of re-adding the substance to each product by hand. So the second one asks
+   * first, and says how much moves.
+   */
+  if (target !== undefined && formData.get('confirm') !== 'yes') {
+    /*
+     * Only the ones that actually move. A product already carrying both names
+     * keeps the one it is being merged into and simply loses the duplicate, so
+     * counting every link overstated what the merge would do — "moves all 2
+     * products" when one of them was already there.
+     */
+    const moving = await db.all<{ n: number }>(sql`
+      select count(*) as n from ${productSubstances}
+      where substance_id = ${id}
+        and product_id not in (
+          select product_id from ${productSubstances} where substance_id = ${target}
+        )
+    `);
+
+    return {
+      error: null,
+      merge: { name: targetRows[0]!.name, products: moving[0]?.n ?? 0 },
+    };
+  }
+
+  db.transaction((tx) => {
+    if (target === undefined) {
+      tx.update(substances).set({ name, namePl }).where(eq(substances.id, id)).run();
+      return;
+    }
+
+    // Merging: whatever the form said wins, including an empty box. Only a
+    // submit that never carried the field falls through to the inheritance
+    // below, which is there to stop a merge quietly destroying an alias.
+    if (aliasWasAsked) {
+      tx.update(substances).set({ namePl }).where(eq(substances.id, target)).run();
+    }
+
+    // Move the links that will not collide, drop the ones that would, then the
+    // now-empty row. Doing it in this order keeps the unique pair intact.
+    /*
+     * Carry the Polish alias across before the row goes.
+     *
+     * Which of the two survives is decided by which one you happened to rename,
+     * and the seeded catalogue entries are the ones with an alias — so merging
+     * the correctly-spelled seeded name onto a typo deleted a search alias that
+     * no form in this app can type back in. The surviving row inherits it,
+     * whichever direction the merge went.
+     */
+    if (!aliasWasAsked) {
+      tx.run(sql`
+        update ${substances} set
+          name_pl = coalesce(name_pl, (select name_pl from ${substances} where id = ${id})),
+          notes   = coalesce(notes,   (select notes   from ${substances} where id = ${id}))
+        where id = ${target}
+      `);
+    } else {
+      // Notes are never edited here, so they are rescued either way.
+      tx.run(sql`
+        update ${substances} set
+          notes = coalesce(notes, (select notes from ${substances} where id = ${id}))
+        where id = ${target}
+      `);
+    }
+
+    tx.run(sql`
+      update ${productSubstances} set substance_id = ${target}
+      where substance_id = ${id}
+        and product_id not in (
+          select product_id from ${productSubstances} where substance_id = ${target}
+        )
+    `);
+    tx.delete(productSubstances).where(eq(productSubstances.substanceId, id)).run();
+    tx.delete(substances).where(eq(substances.id, id)).run();
+  });
+
+  refreshAll();
+  return { error: null, merge: null, ok: true };
+}
+
+/** The same for a symptom tag, for the same reason: one spelling, one tag. */
+export async function renameSymptom(
+  _prev: RenameResult,
+  formData: FormData,
+): Promise<RenameResult> {
+  const id = Number(formData.get('symptomId'));
+  const name = String(formData.get('name') ?? '').trim();
+  const namePl = emptyToNull(String(formData.get('namePl') ?? '').trim());
+  const aliasWasAsked = formData.has('namePl');
+  if (!Number.isInteger(id)) return { error: 'That tag is no longer there.', merge: null };
+  if (!name) return { error: 'Give it a name.', merge: null };
+  if (name.length > MAX_TAG_NAME) {
+    return { error: `That name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
+  }
+  if (namePl !== null && namePl.length > MAX_TAG_NAME) {
+    return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.`, merge: null };
+  }
+
+  const targetRows = await db
+    .select({ id: symptoms.id, name: symptoms.nameEn })
+    .from(symptoms)
+    .where(and(sql`lower(${symptoms.nameEn}) = lower(${name})`, ne(symptoms.id, id)))
+    .limit(1);
+
+  const target = targetRows[0]?.id;
+
+  // Merging asks first, exactly as it does for a substance, and counts only
+  // the products that actually move.
+  if (target !== undefined && formData.get('confirm') !== 'yes') {
+    const moving = await db.all<{ n: number }>(sql`
+      select count(*) as n from ${productSymptoms}
+      where symptom_id = ${id}
+        and product_id not in (
+          select product_id from ${productSymptoms} where symptom_id = ${target}
+        )
+    `);
+
+    return { error: null, merge: { name: targetRows[0]!.name, products: moving[0]?.n ?? 0 } };
+  }
+
+  db.transaction((tx) => {
+    if (target === undefined) {
+      tx.update(symptoms).set({ nameEn: name, namePl }).where(eq(symptoms.id, id)).run();
+      return;
+    }
+
+    if (aliasWasAsked) {
+      tx.update(symptoms).set({ namePl }).where(eq(symptoms.id, target)).run();
+    }
+
+    // The surviving tag inherits the Polish alias, same as a substance does —
+    // unless the form said what the alias should be.
+    if (!aliasWasAsked) {
+      tx.run(sql`
+        update ${symptoms} set
+          name_pl = coalesce(name_pl, (select name_pl from ${symptoms} where id = ${id}))
+        where id = ${target}
+      `);
+    }
+
+    tx.run(sql`
+      update ${productSymptoms} set symptom_id = ${target}
+      where symptom_id = ${id}
+        and product_id not in (
+          select product_id from ${productSymptoms} where symptom_id = ${target}
+        )
+    `);
+    tx.delete(productSymptoms).where(eq(productSymptoms.symptomId, id)).run();
+    tx.delete(symptoms).where(eq(symptoms.id, id)).run();
+  });
+
+  refreshAll();
+  return { error: null, merge: null, ok: true };
 }
 
 export async function removeSubstanceFromProduct(formData: FormData): Promise<void> {
@@ -360,6 +622,41 @@ export async function updateProduct(_prev: FormResult, formData: FormData): Prom
     };
   }
 
+  /*
+   * Saving a product that has since been deleted updated nothing and then
+   * redirected to its page, which 404s — so a careful edit ended at "not found"
+   * with no hint that the work had gone nowhere.
+   */
+  if (!(await productIsThere(id))) return { error: PRODUCT_GONE, values: snapshot(formData) };
+
+  /*
+   * Turning expiry off is not a labelling change — it decides whether dates
+   * already written on boxes mean anything.
+   *
+   * `isDosable` answers true for a product that does not expire, whatever the
+   * box says. So unticking this on a product holding long-expired stock made
+   * that stock usable again: the boxes dropped off Expiring, the dose board
+   * stopped refusing, and a dose came out of a box 221 days past its date. One
+   * checkbox, no warning, nothing in the ledger to show why.
+   *
+   * The grace-days field beside it already refuses to quietly extend how long
+   * something counts as safe to take. This is the same rule at a larger scale.
+   */
+  if (!parsed.data.hasExpiry) {
+    const dated = await db
+      .select({ id: batches.id })
+      .from(batches)
+      .innerJoin(variants, eq(batches.variantId, variants.id))
+      .where(and(eq(variants.productId, id), isNotNull(batches.expiryDate)));
+
+    if (dated.length > 0) {
+      return {
+        error: `${dated.length} ${dated.length === 1 ? 'box' : 'boxes'} of this have an expiry date recorded. Turning expiry off would ignore those dates and treat past-date stock as usable — clear the dates on those boxes first if this really does not expire.`,
+        values: snapshot(formData),
+      };
+    }
+  }
+
   await db
     .update(products)
     .set({ ...parsed.data, updatedAt: new Date() })
@@ -408,8 +705,24 @@ export async function deleteProduct(formData: FormData): Promise<void> {
 
   if (scheduleRows.length > 0) return;
 
+  /*
+   * The photo is a file, not a row, so nothing cascades it. Deleting the
+   * product used to leave the picture of its box on disk for good — invisible
+   * to the app, and a photograph of somebody's medication outliving the record
+   * it belonged to. Read the path before the row goes.
+   */
+  const photoRows = await db
+    .select({ photoPath: products.photoPath })
+    .from(products)
+    .where(eq(products.id, id))
+    .limit(1);
+
   // Variants, substance links and shopping lines cascade from the schema.
   await db.delete(products).where(eq(products.id, id));
+
+  const photo = photoRows[0]?.photoPath;
+  if (photo) await deletePhoto(photo);
+
   refreshAll();
   redirect('/products?archived=1');
 }
@@ -462,8 +775,20 @@ export async function createVariant(_prev: FormResult, formData: FormData): Prom
   const packLabel = emptyToNull(String(formData.get('packLabel') ?? '').trim());
 
   if (!Number.isInteger(productId)) return { error: 'Pick a product.' };
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
   if (packSize === null || packSize <= 0) {
     return { error: 'Pack size must be a positive number.', values: snapshot(formData) };
+  }
+  /*
+   * And a believable one. Only a lower bound was checked, and the pack size is
+   * now what every money figure divides by — a mistyped pack of a billion made
+   * each box's share of its own price round to nothing.
+   */
+  if (packSize > MAX_PACK_SIZE) {
+    return {
+      error: `${packSize} is too large for a pack. ${MAX_PACK_SIZE} is the most — check the number on the box.`,
+      values: snapshot(formData),
+    };
   }
 
   // Two identical pack sizes would appear as indistinguishable options in every
@@ -531,6 +856,16 @@ function parseBatchFields(formData: FormData): { fields: BatchFields } | { error
     }
   }
 
+  /*
+   * Stored raw before, so "soon" went straight into the column and came back
+   * out of Statistics as a year: a bar labelled "soon" sitting between 2025 and
+   * 2026, because the year is the first four characters of this string.
+   */
+  const purchaseDate = emptyToNull(String(formData.get('purchaseDate') ?? '').trim());
+  if (purchaseDate !== null && !isIsoDate(purchaseDate)) {
+    return { error: `Could not read "${purchaseDate}" as a purchase date. Pick it from the calendar.` };
+  }
+
   let purchasePriceMinor: number | null = null;
   let purchaseCurrency: (typeof CURRENCIES)[number] | null = null;
   /*
@@ -566,7 +901,7 @@ function parseBatchFields(formData: FormData): { fields: BatchFields } | { error
       expiryPrecision,
       lotNumber: emptyToNull(String(formData.get('lotNumber') ?? '').trim()),
       location: emptyToNull(String(formData.get('location') ?? '').trim()),
-      purchaseDate: emptyToNull(String(formData.get('purchaseDate') ?? '').trim()),
+      purchaseDate,
       purchasePriceMinor,
       purchaseCurrency,
       fxRateToEur,
@@ -580,6 +915,36 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
   const fail = (error: string): FormResult => ({ error, values: snapshot(formData) });
 
   if (!Number.isInteger(variantId)) return fail('Pick which pack this is.');
+
+  /*
+   * The pack has to exist, and its product must not be retired.
+   *
+   * The picker already leaves archived products out and the archive dialog
+   * promises exactly that — but nothing enforced it, so the two ordinary ways
+   * of arriving here with a stale pack both worked: a form left open while the
+   * other phone archives, and scanning an old box, which resolves its barcode
+   * without caring that the product was retired. Either one quietly put stock
+   * back into a cupboard someone had just cleared out.
+   *
+   * Receiving a shopping line is deliberately not held to this: that order was
+   * placed before the product was retired and the boxes are physically here, so
+   * refusing would leave real stock unrecordable. The list marks those lines
+   * as archived instead.
+   */
+  const packRows = await db
+    .select({ id: variants.id, productName: products.name, archivedAt: products.archivedAt })
+    .from(variants)
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(eq(variants.id, variantId))
+    .limit(1);
+
+  const pack = packRows[0];
+  if (!pack) return fail('That pack no longer exists. Pick another one.');
+  if (pack.archivedAt !== null) {
+    return fail(
+      `${pack.productName} is archived, so it takes no new boxes. Restore it first if this is going back in the cupboard.`,
+    );
+  }
 
   const parsed = parseBatchFields(formData);
   if ('error' in parsed) return fail(parsed.error);
@@ -792,6 +1157,25 @@ export async function deleteBatch(formData: FormData): Promise<void> {
     .limit(1);
   if (eventRows.length > 0) return;
 
+  /*
+   * And not a box that a shopping line became. That line is the record of a
+   * purchase: the trip reads its spend through it, and the pointer is
+   * `set null`, so deleting the box left the line still saying "in the
+   * cupboard" while pointing at nothing, and quietly took the money off the
+   * trip — €30.70 became €25.77 with nothing to show why.
+   *
+   * Same reasoning as the dose-event guard above. Binning is the way to say a
+   * box is gone; deleting is only for one entered by mistake, and a box that
+   * arrived against an order was not.
+   */
+  const lineRows = await db
+    .select({ id: shoppingItems.id })
+    .from(shoppingItems)
+    .where(eq(shoppingItems.receivedBatchId, id))
+    .limit(1);
+
+  if (lineRows.length > 0) return;
+
   await db.delete(batches).where(eq(batches.id, id));
   refreshAll();
   redirect(backTo(formData));
@@ -884,6 +1268,13 @@ export async function linkBarcode(formData: FormData): Promise<void> {
   const variantId = Number(formData.get('variantId'));
   const code = String(formData.get('code') ?? '').trim();
   if (!Number.isInteger(variantId) || !code) return;
+  /*
+   * The typed-in form checks this; the scanned one did not, and it is the more
+   * likely of the two to be stale — the scan summary sits on screen with a pack
+   * already chosen while somebody on the other phone tidies up. Attaching to a
+   * pack that has gone threw a foreign key error at a camera.
+   */
+  if (!(await variantIsThere(variantId))) return;
 
   await attachBarcode(variantId, code, String(formData.get('barcodeType') ?? 'ean13'));
   refreshAll();
@@ -895,6 +1286,7 @@ export async function addBarcode(_prev: FormResult, formData: FormData): Promise
   const code = String(formData.get('code') ?? '').trim();
 
   if (!Number.isInteger(variantId)) return { error: 'Unknown pack.' };
+  if (!(await variantIsThere(variantId))) return { error: 'That pack is no longer there.' };
   if (!code) return { error: 'Enter a barcode.', values: snapshot(formData) };
 
   const error = await attachBarcode(variantId, code, String(formData.get('barcodeType') ?? 'ean13'));
@@ -913,6 +1305,9 @@ export async function setProductPhoto(
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!(file instanceof File)) return { error: 'Choose a photo first.' };
+  // Before writing the file, not after: saving one for a product that has gone
+  // updates no row and leaves the image on disk with nothing pointing at it.
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
 
   const saved = await savePhoto(file);
   if ('error' in saved) return { error: saved.error };
@@ -1196,6 +1591,10 @@ export async function addAlternative(
   if (!ALTERNATIVE_RELATIONS.some((r) => r === relation)) {
     return { error: 'Pick how the two are related.', values: snapshot(formData) };
   }
+  if (!(await productIsThere(productId))) return { error: PRODUCT_GONE };
+  if (!(await productIsThere(alternativeId))) {
+    return { error: 'That alternative is no longer there.', values: snapshot(formData) };
+  }
 
   const existing = await db
     .select({ productId: productAlternatives.productId })
@@ -1415,11 +1814,14 @@ export async function setBatchStatus(formData: FormData): Promise<void> {
 /* Shopping list                                                       */
 /* ------------------------------------------------------------------ */
 
+/** Packs on a single shopping line. Generous for a household, still a number. */
+const MAX_PACKS_PER_LINE = 999;
+
 export async function addShoppingItem(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const variantId = Number(formData.get('variantId'));
   const quantityPacks = Number(formData.get('quantityPacks') ?? 1);
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
-  const tripId = await parseTripId(formData.get('tripId'));
+  const tripId = await parseTripId(formData.get('tripId'), 'restock');
 
   if (!Number.isInteger(variantId)) {
     return { error: 'Pick which pack to buy.', values: snapshot(formData) };
@@ -1427,6 +1829,42 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
   if (!Number.isInteger(quantityPacks) || quantityPacks < 1) {
     return {
       error: 'Number of packs must be a whole number, at least 1.',
+      values: snapshot(formData),
+    };
+  }
+  /*
+   * Only a lower bound was checked. A thousand million packs went on the list
+   * happily and turned the trip's estimate into €5,780,000,033.87, which is
+   * not a number anyone can read past.
+   */
+  if (quantityPacks > MAX_PACKS_PER_LINE) {
+    return {
+      error: `${quantityPacks} packs on one line is more than this is meant for — ${MAX_PACKS_PER_LINE} is the most. Add a second line if you really need more.`,
+      values: snapshot(formData),
+    };
+  }
+
+  /*
+   * The pack has to still be there. `variant_id` is a real foreign key, so a
+   * form left open while the other phone deletes that pack size threw
+   * SQLITE_CONSTRAINT_FOREIGNKEY and put a crash page in front of the list.
+   * An archived product is refused for the same reason it cannot take a new
+   * box: buying more of something you have retired is not a thing to plan.
+   */
+  const variantRows = await db
+    .select({ id: variants.id, productName: products.name, archivedAt: products.archivedAt })
+    .from(variants)
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(eq(variants.id, variantId))
+    .limit(1);
+
+  const variant = variantRows[0];
+  if (!variant) {
+    return { error: 'That pack size no longer exists. Pick another one.', values: snapshot(formData) };
+  }
+  if (variant.archivedAt !== null) {
+    return {
+      error: `${variant.productName} is archived. Restore it first if you mean to buy more.`,
       values: snapshot(formData),
     };
   }
@@ -1447,14 +1885,27 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
  * back to "no trip" loses only the association, which the trip page can restore
  * in one tap.
  */
-async function parseTripId(raw: FormDataEntryValue | null): Promise<number | null> {
+async function parseTripId(
+  raw: FormDataEntryValue | null,
+  kind?: (typeof TRIP_KINDS)[number],
+): Promise<number | null> {
   const value = String(raw ?? '').trim();
   if (value === '') return null;
 
   const id = Number(value);
   if (!Number.isInteger(id)) return null;
 
-  const rows = await db.select({ id: trips.id }).from(trips).where(eq(trips.id, id)).limit(1);
+  /*
+   * Optionally the right sort of trip, too. The picker only ever offers planned
+   * restocks for a shopping line, but nothing enforced it, so a line could end
+   * up on a holiday — where the trip page has no shopping section at all and
+   * would never show it again.
+   */
+  const rows = await db
+    .select({ id: trips.id })
+    .from(trips)
+    .where(kind === undefined ? eq(trips.id, id) : and(eq(trips.id, id), eq(trips.kind, kind)))
+    .limit(1);
   return rows[0]?.id ?? null;
 }
 
@@ -1465,7 +1916,7 @@ export async function setShoppingTrip(formData: FormData): Promise<void> {
 
   await db
     .update(shoppingItems)
-    .set({ tripId: await parseTripId(formData.get('tripId')), updatedAt: new Date() })
+    .set({ tripId: await parseTripId(formData.get('tripId'), 'restock'), updatedAt: new Date() })
     .where(eq(shoppingItems.id, id));
   refreshAll();
 }
@@ -1475,6 +1926,14 @@ export async function setShoppingStatus(formData: FormData): Promise<void> {
   const status = String(formData.get('status'));
   if (!Number.isInteger(id)) return;
   if (!SHOPPING_STATUSES.some((s) => s === status)) return;
+  /*
+   * "In the cupboard" is not a status anyone gets to set: it is what
+   * `receiveShoppingItem` writes in the same transaction that creates the box.
+   * Setting it here marked a line as bought with no box behind it — and since
+   * it is also terminal, the line could not be walked back afterwards, so a
+   * list that said something false could only be cleared, never corrected.
+   */
+  if (status === 'in_stock') return;
 
   /*
    * Settled lines do not move. The list already stops offering the arrows once
@@ -1643,6 +2102,19 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
     return fail('Repeat every how many days? A whole number from 1 (daily) to 365.');
   }
   if (!startDate) return fail('Pick a start date.');
+  /*
+   * Real dates, not merely non-empty strings.
+   *
+   * A start date of "soon" was stored happily and then broke three pages with
+   * `Not an ISO date` — the dose board, the trip page and the audit worksheet
+   * all walk every schedule and do arithmetic on these. One row from one stale
+   * form took out the screen this app exists for, and the only way back was
+   * deleting the schedule.
+   */
+  if (!isIsoDate(startDate)) return fail('That start date did not come through as a date. Pick it again.');
+  if (endDate !== null && !isIsoDate(endDate)) {
+    return fail('That end date did not come through as a date. Pick it again.');
+  }
   if (endDate && endDate < startDate) return fail('The end date is before the start date.');
 
   /*
@@ -1953,6 +2425,22 @@ export async function logout(): Promise<void> {
   redirect('/login');
 }
 
+/**
+ * What a rename came back with.
+ *
+ * `merge` is set when the new name is already taken: nothing has happened yet,
+ * and the form asks before folding the two together, because that step cannot
+ * be undone.
+ */
+/** An ingredient name, not an essay. Long enough for "Pyridoxine hydrochloride". */
+const MAX_TAG_NAME = 100;
+
+export interface RenameResult {
+  error: string | null;
+  merge: { name: string; products: number } | null;
+  ok?: boolean;
+}
+
 export interface FormResult {
   error: string | null;
   ok?: boolean;
@@ -2021,12 +2509,26 @@ async function parseTripFields(
     };
   }
 
+  /*
+   * A real date, not merely a non-empty string. The field is a date picker, so
+   * this only shows up on a stale or hand-made submit — but everything below
+   * does arithmetic on it, and "tomorrow" threw `Not an ISO date` out of the
+   * date helpers, which reaches the browser as a crash page rather than as the
+   * one-line correction the rest of this form gives.
+   */
+  if (!isIsoDate(collectionDate)) {
+    return { error: 'That date did not come through as a date. Pick it again.' };
+  }
+
   if (kind === 'travel') {
     const returnDate = String(formData.get('returnDate') ?? '').trim();
     if (!returnDate) {
       return {
         error: 'When do you come back? Without that there is no way to work out how much to pack.',
       };
+    }
+    if (!isIsoDate(returnDate)) {
+      return { error: 'That return date did not come through as a date. Pick it again.' };
     }
     if (returnDate < collectionDate) {
       return { error: 'The return date is before you leave.' };
@@ -2037,6 +2539,9 @@ async function parseTripFields(
   }
 
   const orderByRaw = String(formData.get('orderByDate') ?? '').trim();
+  if (orderByRaw && !isIsoDate(orderByRaw)) {
+    return { error: 'That order deadline did not come through as a date. Pick it again.' };
+  }
   const previous = await getPreviousCollectionDate(collectionDate, excludeTripId);
   const orderByDate = orderByRaw || defaultOrderByDate(collectionDate, previous);
 
@@ -2065,6 +2570,46 @@ export async function updateTrip(_prev: FormResult, formData: FormData): Promise
 
   const parsed = await parseTripFields(formData, id);
   if ('error' in parsed) return { error: parsed.error, values: snapshot(formData) };
+
+  /*
+   * A holiday has no shopping section, so turning a restock into one hides
+   * every line attached to it: still on the shopping list, but orphaned from
+   * the only page that shows a trip's list, its costs and its audit. Say what
+   * is in the way instead of quietly stranding them.
+   */
+  if (parsed.fields.kind === 'travel') {
+    const attached = await db
+      .select({ id: shoppingItems.id })
+      .from(shoppingItems)
+      .where(eq(shoppingItems.tripId, id));
+
+    if (attached.length > 0) {
+      return {
+        error: `This trip has ${attached.length} shopping ${attached.length === 1 ? 'line' : 'lines'} on it, and a holiday cannot carry a shopping list. Move them to another restock first, or take them off the trip.`,
+        values: snapshot(formData),
+      };
+    }
+  }
+
+  /*
+   * And the same the other way round. A restock has no packing list, so turning
+   * a holiday into one leaves its bag behind: rows still pointing at the trip,
+   * on a page with nowhere to show them. Kit items are deleted with their trip,
+   * never orphaned, and this keeps that true.
+   */
+  if (parsed.fields.kind === 'restock') {
+    const packed = await db
+      .select({ id: travelKitItems.id })
+      .from(travelKitItems)
+      .where(eq(travelKitItems.tripId, id));
+
+    if (packed.length > 0) {
+      return {
+        error: `This trip has ${packed.length} ${packed.length === 1 ? 'thing' : 'things'} on its packing list, and a restock does not have one. Clear the list first if this really is a restock.`,
+        values: snapshot(formData),
+      };
+    }
+  }
 
   await db
     .update(trips)
@@ -2131,12 +2676,20 @@ export async function addAuditSelection(formData: FormData): Promise<void> {
    * a shopping list is a list nothing will ever collect — the same reason the
    * packing list refuses to attach itself to a restock.
    */
-  const kind = await db
-    .select({ kind: trips.kind })
+  const trip = await db
+    .select({ kind: trips.kind, status: trips.status })
     .from(trips)
     .where(eq(trips.id, tripId))
     .limit(1);
-  if (kind[0]?.kind !== 'restock') redirect(`/trips/${tripId}`);
+  if (trip[0]?.kind !== 'restock') redirect(`/trips/${tripId}`);
+  /*
+   * And a trip still ahead of us. The shopping form only ever offers planned
+   * restocks for exactly this reason, but the worksheet checked the kind and
+   * not the status, so a trip already collected could still be added to —
+   * lines nobody will ever pick up, on the one page that no longer shows what
+   * is running out.
+   */
+  if (trip[0].status !== 'planned') redirect(`/trips/${tripId}`);
 
   const picked = formData.getAll('pick').map(String);
   if (picked.length === 0) redirect(`/trips/${tripId}`);
@@ -2165,6 +2718,8 @@ export async function addAuditSelection(formData: FormData): Promise<void> {
     const variantId = Number(formData.get(`variant-${key}`) ?? 0);
     const packs = Number(formData.get(`packs-${key}`) ?? 0);
     if (!Number.isInteger(variantId) || !Number.isInteger(packs) || packs < 1) continue;
+    // The same ceiling the shopping form applies. This writes the same rows.
+    if (packs > MAX_PACKS_PER_LINE) continue;
 
     /*
      * The pack has to belong to the product that was ticked. Nothing in the UI

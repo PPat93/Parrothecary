@@ -191,6 +191,18 @@ describe('unusedValue', () => {
     expect(unusedValue(pack, 50, 80)).toEqual(money(1299, 'PLN'));
   });
 
+  it('costs a multi-pack box against everything it held', () => {
+    /*
+     * A shopping line for three 60-packs is received as one box of 180, priced
+     * at what all three cost. Dividing by one pack instead charged a box with
+     * two packs still in it as the entire €30 thrown away.
+     */
+    const threePacks = money(3000, 'EUR');
+    expect(unusedValue(threePacks, 180, 180)).toEqual(money(3000, 'EUR'));
+    expect(unusedValue(threePacks, 180, 120)).toEqual(money(2000, 'EUR'));
+    expect(unusedValue(threePacks, 180, 60)).toEqual(money(1000, 'EUR'));
+  });
+
   it('treats a negative remainder as nothing left', () => {
     expect(unusedValue(pack, 50, -5)).toEqual(money(0, 'PLN'));
   });

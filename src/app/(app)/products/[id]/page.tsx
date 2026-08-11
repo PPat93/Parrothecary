@@ -41,6 +41,7 @@ import {
   AddSymptomForm,
 } from './add-forms';
 import { PhotoForm } from './photo-form';
+import { EditTag } from './rename-tag';
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -217,9 +218,13 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         ) : (
           product.substances.map((s) => (
             <div key={s.id} className="flex items-center justify-between gap-3 py-1 text-sm">
-              <span className="min-w-0 break-words">
-                {s.namePl && s.namePl !== s.name ? `${s.name} (${s.namePl})` : s.name}
-              </span>
+              <EditTag
+                kind="substance"
+                id={s.id}
+                name={s.name}
+                namePl={s.namePl}
+                label={s.namePl && s.namePl !== s.name ? `${s.name} (${s.namePl})` : s.name}
+              />
               <span className="flex shrink-0 items-center gap-2">
                 <span style={{ color: 'var(--muted)' }}>
                   {s.amountText ?? (s.amountMg !== null ? `${s.amountMg} mg` : '—')}
@@ -348,14 +353,19 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           <ul className="flex flex-wrap gap-2">
             {product.symptoms.map((s) => (
               <li key={s.id}>
-                <form action={removeSymptomFromProduct} className="flex">
-                  <input type="hidden" name="productId" value={product.id} />
-                  <input type="hidden" name="symptomId" value={s.id} />
-                  <span
-                    className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
-                    style={{ borderColor: 'var(--border)' }}
-                  >
-                    {s.nameEn}
+                {/*
+                  Two forms side by side rather than one wrapping the other:
+                  renaming and removing are separate submits, and a form inside
+                  a form is not valid markup.
+                */}
+                <span
+                  className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  <EditTag kind="symptom" id={s.id} name={s.nameEn} namePl={s.namePl} label={s.nameEn} />
+                  <form action={removeSymptomFromProduct} className="flex">
+                    <input type="hidden" name="productId" value={product.id} />
+                    <input type="hidden" name="symptomId" value={s.id} />
                     <button
                       type="submit"
                       aria-label={`Remove ${s.nameEn}`}
@@ -364,8 +374,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                     >
                       ×
                     </button>
-                  </span>
-                </form>
+                  </form>
+                </span>
               </li>
             ))}
           </ul>
@@ -471,14 +481,27 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                           "consumed" is derived from the quantity reaching zero
                           rather than chosen by anyone.
                         */}
-                        {box.status === 'expired' || box.status === 'discarded' ? (
+                        {box.status !== 'in_stock' ? (
                           <form action={setBatchStatus} className="ml-auto">
                             <input type="hidden" name="id" value={box.id} />
                             <input type="hidden" name="status" value="in_stock" />
                             <ConfirmButton
                               label="Put back"
                               title="Put this box back?"
-                              message={`${formatQuantity(box.quantityRemaining, product.unitName, pack.packSize)} returns to your stock, and it stops counting as waste. Use this if it was binned by mistake.`}
+                              /*
+                                Two ways a box leaves the cupboard, and both
+                                needed a way back. Binning had none until the
+                                Expiring round; emptying it with the stepper
+                                still had none — take one too many and the box
+                                drops off the stock list, taking the + button
+                                with it, so the mistake could not be undone
+                                from anywhere.
+                              */
+                              message={
+                                box.status === 'consumed'
+                                  ? `This box was emptied. Putting it back returns it to the stock list with nothing in it, so − and + can correct the amount.`
+                                  : `${formatQuantity(box.quantityRemaining, product.unitName, pack.packSize)} returns to your stock, and it stops counting as waste. Use this if it was binned by mistake.`
+                              }
                               confirmLabel="Yes, put it back"
                               tone="ok"
                               className="rounded-lg border px-2.5 py-1 text-xs font-medium"
@@ -632,9 +655,11 @@ function PurchaseHistory({
       ...purchase,
       paid,
       eur,
-      perUnit: pricePerUnit(paid, purchase.packSize),
+      // Not the pack size: a box received from a three-pack line holds three
+      // packs, and dividing by one pack tripled every per-unit price.
+      perUnit: pricePerUnit(paid, purchase.unitsWhenFull),
       // Per unit in euro, so rows in different currencies are comparable.
-      perUnitEur: eur === null ? null : pricePerUnit(eur, purchase.packSize),
+      perUnitEur: eur === null ? null : pricePerUnit(eur, purchase.unitsWhenFull),
     };
   });
 

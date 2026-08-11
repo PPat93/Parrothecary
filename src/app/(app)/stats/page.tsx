@@ -31,8 +31,16 @@ export default async function StatsPage() {
   ]);
 
   const wasted = summariseWaste(waste);
-  const spentTrips = trips.filter((trip) => trip.spentMinorEur > 0);
-  const peakYear = Math.max(1, ...byYear.map((year) => year.minorEur));
+  /*
+   * A trip counts as having spend if money went out on it — not only if that
+   * money could be put into euro. Filtering on the euro total alone dropped a
+   * whole trip whose single box was priced in złoty with no rate: nothing was
+   * shown for it, and its uncosted box was counted nowhere on the page. The
+   * "+" marker beside a total only ever appeared on trips that happened to
+   * have some convertible spend as well.
+   */
+  const spentTrips = trips.filter((trip) => trip.spentMinorEur > 0 || trip.uncostedBoxes > 0);
+  const peakYear = Math.max(1, ...byYear.years.map((year) => year.minorEur));
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -42,26 +50,37 @@ export default async function StatsPage() {
 
       <StatsTabs active="money" />
 
-      {/* What is sitting in the drawers, prorated by what is left in each box. */}
-      {value.minorEur > 0 ? (
+      {/*
+        What is sitting in the drawers, prorated by what is left in each box.
+
+        Shown whenever there is anything to say — including when nothing could
+        be priced at all. Gating this on the euro total hid the section along
+        with its own caveat: a cupboard full of boxes bought in złoty with no
+        rate recorded reported nothing whatsoever, rather than saying how many
+        boxes it could not put a figure on.
+      */}
+      {value.minorEur > 0 || value.uncostedBoxes > 0 ? (
         <Section title="In the cupboard">
           <p className="text-3xl font-semibold tabular-nums" test-data="stats-stock-value">
-            {eur(value.minorEur)}
+            {value.minorEur > 0 ? eur(value.minorEur) : '—'}
           </p>
           <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
-            of stock at what it cost
-            {value.uncostedBoxes > 0
+            {value.minorEur > 0 ? 'of stock at what it cost' : 'nothing in the cupboard has a price this can use'}
+            {value.minorEur > 0 && value.uncostedBoxes > 0
               ? `, plus ${value.uncostedBoxes} ${value.uncostedBoxes === 1 ? 'box' : 'boxes'} with no price it can use`
+              : ''}
+            {value.minorEur === 0 && value.uncostedBoxes > 0
+              ? ` — ${value.uncostedBoxes} ${value.uncostedBoxes === 1 ? 'box is' : 'boxes are'} waiting on a price or an exchange rate`
               : ''}
             .
           </p>
         </Section>
       ) : null}
 
-      {byYear.length > 0 ? (
+      {byYear.years.length > 0 ? (
         <Section title="Spent by year">
           <ul className="flex flex-col gap-2" test-data="stats-by-year">
-            {byYear.map((year) => (
+            {byYear.years.map((year) => (
               <li key={year.year} className="flex items-center gap-3">
                 <span className="w-10 shrink-0 text-sm tabular-nums" style={{ color: 'var(--muted)' }}>
                   {year.year}
@@ -88,6 +107,27 @@ export default async function StatsPage() {
             By purchase date, so boxes bought locally count too — they belong to a year but to no
             trip.
           </p>
+
+          {/*
+            What the bars had to leave out. Without this the totals looked
+            complete: a box priced but never dated belongs to no year at all,
+            and its money simply was not on the page anywhere.
+          */}
+          {byYear.undatedBoxes > 0 ? (
+            <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }} test-data="stats-undated">
+              {eur(byYear.undatedMinorEur)} sits outside these bars, in {byYear.undatedBoxes}{' '}
+              {byYear.undatedBoxes === 1 ? 'box' : 'boxes'} with a price but no purchase date. Add
+              the date on the box and it joins its year.
+            </p>
+          ) : null}
+
+          {byYear.uncostedBoxes > 0 ? (
+            <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }} test-data="stats-uncosted-year">
+              {byYear.uncostedBoxes} {byYear.uncostedBoxes === 1 ? 'box has' : 'boxes have'} a złoty
+              price with no exchange rate, so {byYear.uncostedBoxes === 1 ? 'it is' : 'they are'} in
+              no year either.
+            </p>
+          ) : null}
         </Section>
       ) : null}
 
@@ -100,7 +140,9 @@ export default async function StatsPage() {
                   {trip.label}
                 </Link>
                 <span className="shrink-0 tabular-nums">
-                  {eur(trip.spentMinorEur)}
+                  {/* A dash rather than €0.00 when nothing could be converted:
+                      the trip cost something, the app just cannot say what. */}
+                  {trip.spentMinorEur > 0 ? eur(trip.spentMinorEur) : '—'}
                   {trip.uncostedBoxes > 0 ? (
                     <span
                       style={{ color: 'var(--muted)' }}

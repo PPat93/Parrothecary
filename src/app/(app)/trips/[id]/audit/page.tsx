@@ -34,6 +34,14 @@ export default async function TripAuditPage({ params }: { params: Promise<{ id: 
    */
   if (trip.kind !== 'restock') redirect(`/trips/${tripId}`);
 
+  /*
+   * And only while the trip is still ahead. The trip page stops showing what
+   * will run out once a restock is done, but this URL kept serving the whole
+   * worksheet, so a collected trip could still be ticked into a shopping list
+   * nobody would ever pick up. Plan against the next one instead.
+   */
+  if (trip.status !== 'planned') redirect(`/trips/${tripId}`);
+
   const today = todayIso();
   const rows = await getAuditRows(tripId);
 

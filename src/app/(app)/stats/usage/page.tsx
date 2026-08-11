@@ -100,9 +100,17 @@ export default async function UsagePage({
                 </Link>
 
                 <span className="shrink-0 text-right text-xs tabular-nums">
-                  {row.summary.used > 0 ? (
+                  {/*
+                    Either sign, like corrected and drift below it. Undoing a
+                    dose in a window that does not contain the dose itself nets
+                    negative, and only this line dropped that silently — the row
+                    stayed, with nothing where its figure should be.
+                  */}
+                  {row.summary.used !== 0 ? (
                     <span className="block">
-                      used {formatQuantity(row.summary.used, row.unitName)}
+                      {row.summary.used > 0
+                        ? `used ${formatQuantity(row.summary.used, row.unitName)}`
+                        : `put back ${formatQuantity(-row.summary.used, row.unitName)}`}
                     </span>
                   ) : null}
                   {row.summary.received > 0 ? (

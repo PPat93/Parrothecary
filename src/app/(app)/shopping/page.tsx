@@ -3,6 +3,7 @@ import {ActionButton, type Tone} from '@/components/action-button';
 import {ConfirmButton} from '@/components/confirm-button';
 import {SHOPPING_STATUSES, TERMINAL_SHOPPING_STATUSES} from '@/db/schema';
 import {getShoppingList, getTripOptions, getVariantOptions, type ShoppingRow} from '@/lib/queries';
+import {shortDeliveryNote} from '@/lib/labels';
 import {removeShoppingItem, setShoppingStatus} from '../actions';
 import {AddShoppingForm} from './add-form';
 
@@ -112,6 +113,18 @@ export default async function ShoppingPage() {
                                                         {item.strength}
                           </span>
                                                 ) : null}
+                                                {/* Archiving does not clear open lines — say so rather
+                            than let a retired product be bought again. */}
+                                                {item.productArchivedAt !== null ? (
+                                                    <span
+                                                        className="ml-2 inline-flex shrink-0 items-center rounded-md px-2 py-0.5 align-middle text-xs font-medium"
+                                                        test-data="archived-product"
+                                                        style={{background: 'var(--color-warning)', color: 'black'}}
+                                                        title="This product is archived. It cannot be added to the list any more, and this line was here before that — clear it, or restore the product."
+                                                    >
+                            archived
+                          </span>
+                                                ) : null}
                                             </p>
                                             <p className="text-xs" style={{color: 'var(--muted)'}}>
                                                 {item.packLabel ?? `${item.packSize} ${item.unitName}`}
@@ -131,6 +144,17 @@ export default async function ShoppingPage() {
                                                     ' · no trip'
                                                 )}
                                             </p>
+                                            {/* Said, not hidden: the line is settled, but not all of
+                          it turned up, and the trip stopped counting the rest. */}
+                                            {shortDeliveryNote(item.quantityPacks, item.packSize, item.receivedUnits, item.unitName) ? (
+                                                <p
+                                                    className="text-xs"
+                                                    test-data="short-delivery"
+                                                    style={{color: 'var(--color-warning)'}}
+                                                >
+                                                    {shortDeliveryNote(item.quantityPacks, item.packSize, item.receivedUnits, item.unitName)}
+                                                </p>
+                                            ) : null}
                                             {/* Own line, wrapping: notes are free text and get long. */}
                                             {item.notes ? (
                                                 <p

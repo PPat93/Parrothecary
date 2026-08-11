@@ -31,7 +31,7 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
   if (trip.kind !== 'travel' || trip.returnDate === null) redirect(`/trips/${tripId}`);
 
   const [kit, suggestions] = await Promise.all([
-    getTravelKit(tripId, trip.returnDate),
+    getTravelKit(tripId, trip.collectionDate, trip.returnDate),
     getKitSuggestions(tripId, trip.collectionDate, trip.returnDate),
   ]);
 
@@ -92,6 +92,18 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
                         </span>
                       ) : null}
                     </Link>
+                    {/* Suggestions skip archived products, but one added before
+                        being archived stays in the bag. Mark it. */}
+                    {row.archived ? (
+                      <span
+                        className="ml-2 inline-flex shrink-0 items-center rounded-md px-2 py-0.5 align-middle text-xs font-medium"
+                        test-data="archived-product"
+                        style={{ background: 'var(--color-warning)', color: 'black' }}
+                        title="This product is archived — it is no longer suggested for a trip. What is in the cupboard is what is left."
+                      >
+                        archived
+                      </span>
+                    ) : null}
                   </p>
 
                   <p className="text-xs" style={{ color: 'var(--muted)' }}>
@@ -107,6 +119,19 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
                   {row.expiresAway ? (
                     <p className="text-xs font-medium" style={{ color: 'var(--color-warning)' }}>
                       the box you would take goes off before you get home
+                    </p>
+                  ) : null}
+                  {/*
+                    The number in the bag was worked out on the day it was
+                    added. Extend the trip afterwards and it stays as it was —
+                    ten tablets for what is now twenty days — with nothing
+                    saying the sum had moved on.
+                  */}
+                  {row.dueUnits > row.units ? (
+                    <p className="text-xs font-medium" style={{ color: 'var(--color-warning)' }}>
+                      {formatQuantity(row.dueUnits, row.unitName)} due over {nights}{' '}
+                      {nights === 1 ? 'day' : 'days'} — the bag has{' '}
+                      {formatQuantity(row.units, row.unitName)}
                     </p>
                   ) : null}
                 </div>

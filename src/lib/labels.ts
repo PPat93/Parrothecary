@@ -61,6 +61,28 @@ export function shoppingStatusLabel(status: string): string {
   return SHOPPING_STATUS_LABELS[status as keyof typeof SHOPPING_STATUS_LABELS] ?? status;
 }
 
+/**
+ * "100 of 200 tablets arrived", or null when the whole order turned up.
+ *
+ * A line that came in short still reads as settled everywhere — it is in the
+ * cupboard, just not all of it — so the shortfall is said beside it rather than
+ * changing what the line means. Shared by the shopping list and the trip page
+ * so both phrase it identically.
+ */
+export function shortDeliveryNote(
+  quantityPacks: number,
+  packSize: number,
+  receivedUnits: number | null,
+  unitName: string,
+): string | null {
+  if (receivedUnits === null) return null;
+
+  const expected = quantityPacks * packSize;
+  if (expected <= 0 || receivedUnits >= expected) return null;
+
+  return `${receivedUnits} of ${expected} ${unitName}${expected === 1 ? '' : 's'} arrived`;
+}
+
 export function batchStatusLabel(status: string): string {
   return BATCH_STATUS_LABELS[status as keyof typeof BATCH_STATUS_LABELS] ?? status;
 }

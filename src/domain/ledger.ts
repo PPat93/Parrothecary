@@ -110,9 +110,16 @@ export function movementForStatusChange(
  * two drift apart on the first press against an almost-empty box.
  *
  * Bounded at both ends, because a box is a physical thing: it cannot give out
- * more than it holds, and it cannot take back more than it came with. Putting
- * a thousand tablets into a pack of fifty used to be allowed silently, leaving
- * a single box reading "20 packs + 22 tablets".
+ * more than it holds, and it cannot take back more than it can hold. Putting a
+ * thousand tablets into a pack of fifty used to be allowed silently, leaving a
+ * single box reading "20 packs + 22 tablets".
+ *
+ * "What it can hold" is a full pack, or more if more than a pack ever came in —
+ * not the amount this particular box arrived with. So a box entered part-used
+ * at six of a fifty-pack will accept `+` up to fifty. That is deliberate: the
+ * stricter rule would leave the `+` dead on a box whose incoming movements
+ * predate the ledger, which is how an emptied box is put back into use. The
+ * pencil is the tool for correcting a quantity that was never right.
  *
  * `capacity` is the pack size. Omit it for a box with no meaningful ceiling.
  * Correcting a quantity that genuinely exceeds the pack belongs on the edit
