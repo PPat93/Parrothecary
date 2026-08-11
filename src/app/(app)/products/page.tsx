@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { formatQuantity } from '@/domain/quantity';
 import { SearchBox } from '@/components/search-box';
+import { Thumbnail } from '@/components/thumbnail';
 import { SymptomTags } from '@/components/symptom-tags';
 import { getProducts, getProductSymptoms } from '@/lib/queries';
 
@@ -72,12 +73,9 @@ export default async function ProductsPage({
               >
                 {/* Recognising a box by sight beats reading a foreign name. */}
                 {row.photoPath ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/photo/${row.photoPath}-thumb`}
-                    alt=""
+                  <Thumbnail
+                    photoPath={row.photoPath}
                     className="h-11 w-11 shrink-0 rounded-lg border object-cover"
-                    style={{ borderColor: 'var(--border)' }}
                   />
                 ) : null}
 

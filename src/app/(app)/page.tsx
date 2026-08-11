@@ -3,6 +3,7 @@ import {ExpiryBadge} from '@/components/expiry-badge';
 import {RunOutBadge} from '@/components/run-out-badge';
 import {LINK_BUTTON, toneStyle} from '@/components/tone';
 import {SearchBox} from '@/components/search-box';
+import {Thumbnail} from '@/components/thumbnail';
 import {SymptomTags} from '@/components/symptom-tags';
 import {todayIso} from '@/domain/date';
 import {totalAvailable} from '@/domain/fefo';
@@ -109,12 +110,9 @@ export default async function StockPage({
                                       gains nothing from repeating it.
                                     */}
                                     {group.photoPath ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img
-                                            src={`/photo/${group.photoPath}-thumb`}
-                                            alt=""
+                                        <Thumbnail
+                                            photoPath={group.photoPath}
                                             className="mt-0.5 h-10 w-10 shrink-0 rounded-lg border object-cover"
-                                            style={{borderColor: 'var(--border)'}}
                                         />
                                     ) : null}
 
