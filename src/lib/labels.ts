@@ -1,4 +1,5 @@
 import type { ALTERNATIVE_RELATIONS, BATCH_STATUSES, SHOPPING_STATUSES } from '@/db/schema';
+import type { MOVEMENT_REASONS } from '@/domain/ledger';
 
 /**
  * Human wording for the status enums.
@@ -81,6 +82,30 @@ export function shortDeliveryNote(
   if (expected <= 0 || receivedUnits >= expected) return null;
 
   return `${receivedUnits} of ${expected} ${unitName}${expected === 1 ? '' : 's'} arrived`;
+}
+
+/**
+ * A movement reason, said the way you would say it out loud.
+ *
+ * The stored words are the vocabulary the statistics are built on — "taken" and
+ * "adjust" mean two different things there — but a history nobody can read is
+ * just the database showing through, so each one gets a sentence fragment
+ * rather than its column value.
+ */
+export const MOVEMENT_REASON_LABELS: Record<(typeof MOVEMENT_REASONS)[number], string> = {
+  opening: 'already in the cupboard when this started',
+  received: 'arrived',
+  dose: 'taken as a scheduled dose',
+  taken: 'taken from the stock list',
+  adjust: 'quantity corrected',
+  binned: 'left the cupboard',
+  audit: 'counted on the shelf',
+};
+
+export function movementReasonLabel(reason: string): string {
+  return (
+    MOVEMENT_REASON_LABELS[reason as keyof typeof MOVEMENT_REASON_LABELS] ?? reason
+  );
 }
 
 export function batchStatusLabel(status: string): string {

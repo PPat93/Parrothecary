@@ -577,6 +577,48 @@ export interface BatchDetail extends StockRow {
 }
 
 /** One box, with everything its edit form needs. */
+export interface BatchHistoryRow {
+  id: number;
+  occurredAt: Date;
+  delta: number;
+  reason: string;
+  note: string | null;
+  /** What the box held after this movement — the arithmetic, shown. */
+  runningTotal: number;
+}
+
+/**
+ * Everything that ever happened to one box, oldest first.
+ *
+ * The ledger has recorded this since the beginning and nothing has ever shown
+ * it: the only way to see why a box says four was to export the whole thing to
+ * a spreadsheet. That is the wrong place to answer a question you are asking
+ * while looking at the box.
+ *
+ * The running total is computed here rather than stored, so the list adds up in
+ * front of you and ends on the number the box claims. When those two disagree
+ * the history is the thing that shows where.
+ */
+export async function getBatchHistory(batchId: number): Promise<BatchHistoryRow[]> {
+  const rows = await db
+    .select({
+      id: stockMovements.id,
+      occurredAt: stockMovements.occurredAt,
+      delta: stockMovements.delta,
+      reason: stockMovements.reason,
+      note: stockMovements.note,
+    })
+    .from(stockMovements)
+    .where(eq(stockMovements.batchId, batchId))
+    .orderBy(asc(stockMovements.occurredAt), asc(stockMovements.id));
+
+  let running = 0;
+  return rows.map((row) => {
+    running = Math.round((running + row.delta) * 100) / 100;
+    return { ...row, runningTotal: running };
+  });
+}
+
 export async function getBatch(id: number): Promise<BatchDetail | null> {
   const rows = await db
     .select({
