@@ -29,6 +29,7 @@ import { nextBatchToOpen, totalAvailable, type FefoBatch } from '@/domain/fefo';
 import { money, toEurOrNull, unusedValue } from '@/domain/money';
 import { summariseMovements, type Movement, type MovementSummary } from '@/domain/ledger';
 import { expiresDuringTrip, suggestKit } from '@/domain/travel';
+import { checkBox } from '@/domain/integrity';
 import { unitsDueBetween } from '@/domain/dosing';
 
 /**
@@ -577,6 +578,60 @@ export interface BatchDetail extends StockRow {
 }
 
 /** One box, with everything its edit form needs. */
+export interface IntegrityReport {
+  /** How many boxes were compared. */
+  checked: number;
+  /** The ones whose numbers do not add up, worst first is not a thing — id order. */
+  problems: {
+    batchId: number;
+    name: string;
+    /** Only a box still in the cupboard can be put right by counting it. */
+    countable: boolean;
+    problem: NonNullable<ReturnType<typeof checkBox>>;
+  }[];
+}
+
+/**
+ * Does every box's number still agree with its ledger?
+ *
+ * The same question `npm run db:check-ledger` answers from the command line,
+ * asked from inside the app so it is something you notice rather than something
+ * you remember to run. Both call `checkBox` — the rule has one home, because
+ * the last time a second place re-derived it, it got binned boxes wrong.
+ */
+export async function getLedgerIntegrity(): Promise<IntegrityReport> {
+  const rows = await db
+    .select({
+      batchId: batches.id,
+      name: products.name,
+      status: batches.status,
+      quantity: batches.quantityRemaining,
+      capacity: unitsWhenFull,
+      ledger: sql<number>`coalesce((
+        select sum(m.delta) from ${stockMovements} m where m.batch_id = ${batches.id}
+      ), 0)`,
+    })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .orderBy(asc(batches.id));
+
+  const problems: IntegrityReport['problems'] = [];
+  for (const row of rows) {
+    const problem = checkBox(row);
+    if (problem) {
+      problems.push({
+        batchId: row.batchId,
+        name: row.name,
+        countable: row.status === 'in_stock',
+        problem,
+      });
+    }
+  }
+
+  return { checked: rows.length, problems };
+}
+
 export interface BatchHistoryRow {
   id: number;
   occurredAt: Date;
