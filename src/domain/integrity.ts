@@ -8,9 +8,9 @@
  * in the app would notice.
  *
  * The rule lives here, in one place, because it is asked in two: the standalone
- * check script and the Audit screen. It was a script-only rule first, and the
- * page that later re-derived it got it wrong — reading a correctly binned box
- * as broken — which is the argument for this file existing at all.
+ * check script and the Audit screen. It was a script-only rule first, and a
+ * page that re-derived it got it wrong — reading a correctly binned box as
+ * broken — which is the argument for this file existing at all.
  *
  * Pure: numbers in, verdict out. No database, no framework.
  */
@@ -53,11 +53,24 @@ export function expectedLedger(box: Pick<BoxNumbers, 'status' | 'quantity'>): nu
   return box.status === 'in_stock' ? box.quantity : 0;
 }
 
+/**
+ * Reported numbers, not compared ones.
+ *
+ * Summing reals gives 21.900000000000002, and printing that in a warning
+ * suggests a precision the cupboard does not have. Rounded to the two decimals
+ * quantities are stored to.
+ *
+ * This cannot make a flagged box look sound: the threshold above is 0.005 and
+ * the rounding granularity is 0.01, so any difference big enough to report is
+ * still visible once rounded.
+ */
+const shown = (value: number) => Math.round(value * 100) / 100;
+
 /** The first thing wrong with this box, or null when it is sound. */
 export function checkBox(box: BoxNumbers): IntegrityProblem | null {
   const expected = expectedLedger(box);
   if (Math.abs(box.ledger - expected) > INTEGRITY_TOLERANCE) {
-    return { kind: 'ledger', expected, ledger: box.ledger };
+    return { kind: 'ledger', expected: shown(expected), ledger: shown(box.ledger) };
   }
 
   /*
@@ -73,7 +86,7 @@ export function checkBox(box: BoxNumbers): IntegrityProblem | null {
     box.capacity !== undefined &&
     box.quantity - box.capacity > INTEGRITY_TOLERANCE
   ) {
-    return { kind: 'capacity', quantity: box.quantity, capacity: box.capacity };
+    return { kind: 'capacity', quantity: shown(box.quantity), capacity: shown(box.capacity) };
   }
 
   return null;

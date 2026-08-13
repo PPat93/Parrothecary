@@ -63,6 +63,24 @@ describe('checkBox', () => {
     expect(checkBox({ status: 'in_stock', quantity: 0.3, ledger: 0.1 + 0.2 })).toBeNull();
   });
 
+  it('reports numbers a person can read, not the sum of the floats', () => {
+    // sum() over reals produces 21.900000000000002; printing that in a warning
+    // claims a precision the cupboard has not got.
+    expect(checkBox({ status: 'in_stock', quantity: 22, ledger: 0.1 + 0.2 + 21.6 })).toEqual({
+      kind: 'ledger',
+      expected: 22,
+      ledger: 21.9,
+    });
+  });
+
+  it('still shows a difference once the numbers are rounded', () => {
+    // The threshold is 0.005 and rounding lands on 0.01, so anything worth
+    // reporting stays visible rather than rounding into agreement.
+    const problem = checkBox({ status: 'in_stock', quantity: 22, ledger: 21.994 });
+    expect(problem).not.toBeNull();
+    expect(problem).not.toEqual({ kind: 'ledger', expected: 22, ledger: 22 });
+  });
+
   it('reports the ledger problem first when a box has both', () => {
     // The ledger disagreement is the more fundamental of the two.
     expect(checkBox({ status: 'in_stock', quantity: 80, ledger: 4, capacity: 60 })).toEqual({

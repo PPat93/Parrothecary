@@ -115,7 +115,12 @@ export default async function CountPage({
         stored facts that should agree, compared. It sits here rather than on
         About because a disagreement is answered by counting, and that is the
         button on this page — an alarm with no next step is worse than none.
+
+        Nothing to say when there are no boxes: on a database entered fresh —
+        which is how this one starts — "all 0 boxes add up" is a reassurance
+        about nothing, sitting at the top of the first screen you open.
       */}
+      {integrity.checked === 0 ? null : (
       <div
         className="mb-4 rounded-2xl border p-3 text-xs"
         test-data="integrity"
@@ -174,6 +179,7 @@ export default async function CountPage({
           </>
         )}
       </div>
+      )}
 
       {/* A count means little without knowing when the last one was. */}
       <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }} test-data="count-history">
