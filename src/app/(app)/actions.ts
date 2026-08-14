@@ -1970,10 +1970,17 @@ export async function removeShoppingItem(formData: FormData): Promise<void> {
 /* Household members and dosing                                       */
 /* ------------------------------------------------------------------ */
 
+/** Long enough for any name anyone actually has. */
+const MAX_PERSON_NAME = 80;
+
 export async function createMember(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const name = String(formData.get('name') ?? '').trim();
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
   if (!name) return { error: 'Enter a name.', values: snapshot(formData) };
+  /* A name, not a paragraph — it goes in a heading beside a dose board. */
+  if (name.length > MAX_PERSON_NAME) {
+    return { error: `That name is longer than ${MAX_PERSON_NAME} characters.`, values: snapshot(formData) };
+  }
 
   const inserted = await db
     .insert(householdMembers)
@@ -1994,6 +2001,22 @@ export async function updateMember(_prev: FormResult, formData: FormData): Promi
 
   if (!Number.isInteger(id)) return { error: 'Unknown person.' };
   if (!name) return { error: 'Enter a name.', values: snapshot(formData) };
+  if (name.length > MAX_PERSON_NAME) {
+    return { error: `That name is longer than ${MAX_PERSON_NAME} characters.`, values: snapshot(formData) };
+  }
+
+  /*
+   * Saving a person who has since been deleted updated nothing and then sent
+   * you to their page, which 404s — the same dead end product editing had.
+   */
+  const present = await db
+    .select({ id: householdMembers.id })
+    .from(householdMembers)
+    .where(eq(householdMembers.id, id))
+    .limit(1);
+  if (present.length === 0) {
+    return { error: 'That person is no longer on the list.', values: snapshot(formData) };
+  }
 
   await db
     .update(householdMembers)
@@ -2138,6 +2161,38 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
     .limit(1);
   if (scheduled.length === 0) {
     return fail('That product is archived or no longer exists — restore it first.');
+  }
+
+  /*
+   * The identical schedule twice is a double tap, not a plan.
+   *
+   * Two schedules for one product are legitimate and sometimes the only way to
+   * say what is actually happening: one tablet in the morning and two at night
+   * cannot be written as a single "twice a day", so the app adds them up. But
+   * the *same* dose at the same frequency, again, is a resubmitted form — and
+   * it does real damage quietly, because the rates are summed. A duplicate of
+   * two-a-day turned a cupboard with four days left into one with two, and the
+   * board showed two cards nothing could tell apart.
+   */
+  const identical = await db
+    .select({ id: doseSchedules.id })
+    .from(doseSchedules)
+    .where(
+      and(
+        eq(doseSchedules.memberId, memberId),
+        eq(doseSchedules.productId, productId),
+        eq(doseSchedules.doseUnits, doseUnits),
+        eq(doseSchedules.timesPerDay, timesPerDay),
+        eq(doseSchedules.intervalDays, intervalDays),
+        isNull(doseSchedules.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  if (identical.length > 0) {
+    return fail(
+      'That exact course is already running for this person. Change the dose or how often it is taken if this is meant to be a second one.',
+    );
   }
 
   await db.insert(doseSchedules).values({
