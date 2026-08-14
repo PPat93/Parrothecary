@@ -4,23 +4,26 @@
  *   npm run db:check-ledger
  *
  * The ledger is only worth having if its sum matches the number the app shows,
- * so that claim gets checked rather than assumed. Two rules, from
- * src/domain/ledger.ts:
+ * so that claim gets checked rather than assumed.
  *
- *   a box in stock      ->  sum(delta) == quantity_remaining
- *   a box out of stock  ->  sum(delta) == 0
+ * The rules themselves live in src/domain/integrity.ts and are imported rather
+ * than restated: this script had them in SQL, the Audit screen wanted the same
+ * question, and a second copy immediately disagreed with the first about what a
+ * binned box should look like. One definition, two callers.
  *
  * Read-only. Exits non-zero when something disagrees, so it can be wired into
  * a check step later without changing anything here.
+ *
+ * Importing a `.ts` file from a plain script needs Node 22.18 or newer, which
+ * is why package.json now says so. Worth knowing before choosing the runtime on
+ * the machine this ends up on: everything else here would run on anything.
  */
 import Database from 'better-sqlite3';
 import path from 'node:path';
+import { checkBox } from '../src/domain/integrity.ts';
 
 const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
 const db = new Database(dbPath, { readonly: true });
-
-/** Floats: 0.1 + 0.2 is not 0.3, and quantities are stored to two decimals. */
-const TOLERANCE = 0.005;
 
 const rows = db
   .prepare(
@@ -51,20 +54,16 @@ const rows = db
 const problems = [];
 
 for (const row of rows) {
-  const expected = row.status === 'in_stock' ? row.quantity : 0;
-  if (Math.abs(row.ledger - expected) > TOLERANCE) {
-    problems.push(
-      `  batch ${row.id} (${row.name}, ${row.status}): ledger ${row.ledger}, expected ${expected}` +
-        ` — ${row.movements} movement${row.movements === 1 ? '' : 's'}`,
-    );
-  }
+  const problem = checkBox(row);
+  if (!problem) continue;
 
-  if (row.status === 'in_stock' && row.quantity - row.capacity > TOLERANCE) {
-    problems.push(
-      `  batch ${row.id} (${row.name}): holds ${row.quantity} but only ${row.capacity} ever came in` +
-        ` — more was put back than was taken out`,
-    );
-  }
+  problems.push(
+    problem.kind === 'ledger'
+      ? `  batch ${row.id} (${row.name}, ${row.status}): ledger ${problem.ledger},` +
+        ` expected ${problem.expected} — ${row.movements} movement${row.movements === 1 ? '' : 's'}`
+      : `  batch ${row.id} (${row.name}): holds ${problem.quantity} but only ${problem.capacity}` +
+        ` ever came in — more was put back than was taken out`,
+  );
 }
 
 const totals = db

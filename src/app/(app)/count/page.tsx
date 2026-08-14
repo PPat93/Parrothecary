@@ -1,6 +1,13 @@
+import Link from 'next/link';
 import { BackLink } from '@/components/back-link';
 import { formatExpiry } from '@/domain/expiry';
-import { getCountDrift, getLastStockCount, getStock, toExpiryInput } from '@/lib/queries';
+import {
+  getCountDrift,
+  getLastStockCount,
+  getLedgerIntegrity,
+  getStock,
+  toExpiryInput,
+} from '@/lib/queries';
 import { CountForm } from './count-form';
 
 export interface CountRow {
@@ -34,10 +41,11 @@ export default async function CountPage({
 }) {
   const { counted, changed, net } = await searchParams;
 
-  const [rows, lastCount, drift] = await Promise.all([
+  const [rows, lastCount, drift, integrity] = await Promise.all([
     getStock(),
     getLastStockCount(),
     getCountDrift(),
+    getLedgerIntegrity(),
   ]);
 
   // One line per box; grouped only so the name is not repeated down the page.
@@ -99,6 +107,79 @@ export default async function CountPage({
           </p>
         </div>
       ) : null}
+
+      {/*
+        Whether the record is sound, said where the record gets corrected.
+
+        This is the one number the app cannot check by looking at the shelf: two
+        stored facts that should agree, compared. It sits here rather than on
+        About because a disagreement is answered by counting, and that is the
+        button on this page — an alarm with no next step is worse than none.
+
+        Nothing to say when there are no boxes: on a database entered fresh —
+        which is how this one starts — "all 0 boxes add up" is a reassurance
+        about nothing, sitting at the top of the first screen you open.
+      */}
+      {integrity.checked === 0 ? null : (
+      <div
+        className="mb-4 rounded-2xl border p-3 text-xs"
+        test-data="integrity"
+        style={{
+          borderColor: integrity.problems.length === 0 ? 'var(--border)' : 'var(--color-warning)',
+          color: 'var(--muted)',
+        }}
+      >
+        {integrity.problems.length === 0 ? (
+          <p>
+            {/*
+              "every box ever recorded", not just the ones countable below: the
+              check covers used-up and binned boxes too, and 40 sitting above a
+              form listing 16 would otherwise read as forty things to count.
+            */}
+            <span style={{ color: 'var(--color-ok)' }}>Records agree.</span> All{' '}
+            {integrity.checked} boxes ever recorded add up to the movements behind them.
+          </p>
+        ) : (
+          <>
+            {/*
+              The advice belongs on the row, not up here. Counting fixes a box
+              that is still in the cupboard; one that has been used up or binned
+              is not on the sheet below, so telling you to count it would be the
+              same wrong turn the box history took — a next step that cannot be
+              taken.
+            */}
+            <p style={{ color: 'var(--color-warning)' }}>
+              {integrity.problems.length} of {integrity.checked} boxes ever recorded{' '}
+              {integrity.problems.length === 1 ? 'does' : 'do'} not add up. Each one’s history shows
+              where it went wrong.
+            </p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {integrity.problems.map((row) => (
+                <li key={row.batchId}>
+                  <Link
+                    href={`/stock/${row.batchId}/edit`}
+                    className="underline underline-offset-4"
+                  >
+                    {row.name}
+                  </Link>{' '}
+                  {row.problem.kind === 'ledger'
+                    ? `— movements come to ${row.problem.ledger}, expected ${row.problem.expected}`
+                    : `— holds ${row.problem.quantity}, but only ${row.problem.capacity} ever came in`}
+                  {row.countable ? (
+                    <span style={{ color: 'var(--muted)' }}> · counting it below puts it right</span>
+                  ) : (
+                    <span style={{ color: 'var(--muted)' }}>
+                      {' '}
+                      · this box has left the cupboard, so counting cannot reach it
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+      )}
 
       {/* A count means little without knowing when the last one was. */}
       <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }} test-data="count-history">

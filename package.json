@@ -49,5 +49,8 @@
   "overrides": {
     "sharp": "$sharp",
     "postcss": "^8.5.23"
+  },
+  "engines": {
+    "node": ">=22.18"
   }
 }
