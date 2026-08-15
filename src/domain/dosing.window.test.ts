@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addDays } from './date';
-import { boardDates, doseWindowDays, HISTORY_DAYS, recentScheduleDates } from './dosing';
+import { boardDates, boardDoseStatus, doseWindowDays, HISTORY_DAYS, recentScheduleDates } from './dosing';
 
 /**
  * The dose board draws a row of pills per schedule, and separately fetches the
@@ -114,6 +114,26 @@ describe('the days the board will draw a pill on', () => {
       (date) => date === old,
     );
     expect(dates).toEqual([old, TODAY]);
+  });
+
+  it('calls an unconfirmed occurrence on a kept older day unknown, not missed', () => {
+    // The day is kept because its other occurrence was confirmed. Its sibling
+    // must not turn back into an accusation about a morning before the app.
+    const old = addDays(TODAY, -2);
+    const morningTaken = new Set([1]);
+
+    expect(boardDoseStatus(1, old, TODAY, morningTaken, TODAY)).toBe('taken');
+    expect(boardDoseStatus(2, old, TODAY, morningTaken, TODAY)).toBe('unknown');
+  });
+
+  it('still calls a genuine missed dose missed', () => {
+    const yesterday = addDays(TODAY, -1);
+    const entered = addDays(TODAY, -5);
+    expect(boardDoseStatus(1, yesterday, TODAY, new Set(), entered)).toBe('missed');
+  });
+
+  it('leaves today alone however new the course is', () => {
+    expect(boardDoseStatus(1, TODAY, TODAY, new Set(), TODAY)).toBe('pending');
   });
 
   it('does not resurrect days the schedule was not running on', () => {

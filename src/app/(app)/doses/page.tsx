@@ -5,7 +5,7 @@ import {LINK_BUTTON, toneStyle} from '@/components/tone';
 import {addDays, todayIso} from '@/domain/date';
 import {
     boardDates,
-    doseOccurrenceStatus,
+    boardDoseStatus,
     doseWindowDays,
     formatDoseCadence,
     HISTORY_DAYS,
@@ -344,7 +344,7 @@ export default async function DosesPage() {
                                                                             scheduleId={schedule.scheduleId}
                                                                             date={date}
                                                                             occurrence={occurrence}
-                                                                            status={doseOccurrenceStatus(occurrence, date, today, takenHere)}
+                                                                            status={boardDoseStatus(occurrence, date, today, takenHere, schedule.createdOn)}
                                                                             showNumber={schedule.timesPerDay > 1}
                                                                             outOfStock={outOfStock}
                                                                             onlyPastDate={onlyPastDate}
@@ -406,16 +406,18 @@ function DosePill({
      * title — is the same "explain instead of allow a dead action" rule the
      * rest of the app already follows (e.g. the archived-product picker).
      */
-    if (status === 'future' || (outOfStock && !taken)) {
+    if (status === 'future' || status === 'unknown' || (outOfStock && !taken)) {
         return (
             <span
                 aria-hidden
                 title={
-                    outOfStock && !taken
-                        ? onlyPastDate
-                            ? 'The only stock left is too far past its date to use — bin it from Expiring and add a new box'
-                            : 'No stock to confirm this from'
-                        : undefined
+                    status === 'unknown'
+                        ? 'Before this course was added — the app cannot know whether this one was taken'
+                        : outOfStock && !taken
+                            ? onlyPastDate
+                                ? 'The only stock left is too far past its date to use — bin it from Expiring and add a new box'
+                                : 'No stock to confirm this from'
+                            : undefined
                 }
                 className="flex h-8 w-8 items-center justify-center rounded-lg border text-xs"
                 style={{borderColor: 'var(--border)', color: 'var(--muted)', opacity: 0.4}}

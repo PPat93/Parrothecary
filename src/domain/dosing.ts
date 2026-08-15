@@ -10,7 +10,13 @@ import type { IsoDate } from './date';
  * that were actually taken.
  */
 
-export type DoseStatus = 'taken' | 'missed' | 'pending' | 'future';
+export type DoseStatus =
+  | 'taken'
+  | 'missed'
+  | 'pending'
+  | 'future'
+  /** A day before this course was entered — the app has nothing to say about it. */
+  | 'unknown';
 
 export interface DoseScheduleWindow {
   startDate: IsoDate;
@@ -92,6 +98,32 @@ export function doseOccurrenceStatus(
   if (date > today) return 'future';
   if (date < today) return 'missed';
   return 'pending';
+}
+
+/**
+ * The same status, told it when the course was entered.
+ *
+ * `boardDates` already drops the days before that, so this only matters for the
+ * one kind of day it keeps: an older day carrying a confirmation, kept so the
+ * dose recorded on it can still be undone. On a twice-a-day course that day
+ * arrives with a second occurrence attached, and calling that one *missed*
+ * brings back the accusation the day was kept in spite of — about a morning the
+ * app was not installed for.
+ *
+ * `unknown` rather than silently dropping the pill: a gap in the row is the
+ * thing this codebase keeps mistaking for a broken screen. Grey, with a reason
+ * on it, is the same answer the board already gives for everything else it will
+ * not let you tap.
+ */
+export function boardDoseStatus(
+  occurrence: number,
+  date: IsoDate,
+  today: IsoDate,
+  takenOccurrences: ReadonlySet<number>,
+  createdOn: IsoDate,
+): DoseStatus {
+  const status = doseOccurrenceStatus(occurrence, date, today, takenOccurrences);
+  return status === 'missed' && date < createdOn ? 'unknown' : status;
 }
 
 /**

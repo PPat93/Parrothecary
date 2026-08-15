@@ -2317,8 +2317,13 @@ export async function confirmDose(formData: FormData): Promise<void> {
    */
   if (occurrence < 1 || occurrence > schedule.timesPerDay) return;
   if (!isScheduleActiveOn(schedule, date)) return;
-  // Tomorrow is offered on the board — taking the evening dose early is real.
-  // Anything beyond that is a stale form or a crafted one.
+  /*
+   * The board only ever draws today and the days behind it, so nothing it
+   * renders can land here with a future date at all. The extra day of slack is
+   * for the phone left open overnight: the form was drawn before midnight and
+   * submitted after it, and the dose it describes is real. Anything past that
+   * is a crafted request.
+   */
   if (date > addDays(todayIso(), 1)) return;
 
   const batchRows = await db
