@@ -30,7 +30,16 @@ export default async function ReceivePage({ params }: { params: Promise<{ id: st
           {item.strength ? ` ${item.strength}` : ''}{' '}
           {item.status === 'in_stock'
             ? 'is already in the cupboard — this line was received earlier. Receiving it again would add a second box that never existed.'
-            : 'is marked as never arrived, so nothing was added to stock. Move it back into the flow on the shopping list if that was wrong.'}
+            : /*
+               * This used to say "move it back into the flow on the shopping
+               * list". There is no such control: "didn't arrive" is a settled
+               * state, so the list gives that row a Clear button and nothing
+               * else, and `setShoppingStatus` refuses to walk a settled line
+               * backwards even if a stale form asked it to. The page was
+               * pointing at a button that does not exist. Clearing and adding
+               * it again is the way out, so that is what it says now.
+               */
+              'is marked as never arrived, so nothing was added to stock. That cannot be walked back: clear the line on the shopping list and add the item again if it turns up after all.'}
         </p>
       ) : (
         <>
