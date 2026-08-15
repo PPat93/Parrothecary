@@ -34,6 +34,18 @@ export interface CountRow {
  * things, and a form that wanted all thirty numbers before accepting any of
  * them would be abandoned halfway down the shelf.
  */
+/**
+ * The day a count happened, where the person counting was standing.
+ *
+ * `toISOString()` is UTC, so a cupboard counted at half past midnight was
+ * reported as yesterday — the same mistake the CSV export made with its
+ * timestamps before it was fixed.
+ */
+function localDay(when: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`;
+}
+
 export default async function CountPage({
   searchParams,
 }: {
@@ -70,7 +82,27 @@ export default async function CountPage({
   }
 
   const grouped = [...groups.entries()].map(([productLabel, rows]) => ({ productLabel, rows }));
-  const justCounted = counted !== undefined;
+
+  /*
+   * The summary is handed back through the URL, so it is whatever the URL says.
+   * Typed by hand it reported "Counted abc boxes. xyz boxes disagreed — net
+   * hello units, now recorded" — a sentence about something that never
+   * happened, on the screen whose whole job is telling the truth about stock.
+   *
+   * Nothing was ever written from these, so this only decides whether the
+   * banner is shown at all: real numbers or no banner.
+   */
+  const wholeNumber = (value: string | undefined): number | null => {
+    if (value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+  };
+
+  const countedBoxes = wholeNumber(counted);
+  const changedBoxes = wholeNumber(changed);
+  const netUnits = net === undefined ? null : Number(net);
+  const justCounted =
+    countedBoxes !== null && changedBoxes !== null && netUnits !== null && Number.isFinite(netUnits);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -92,16 +124,16 @@ export default async function CountPage({
           style={{ borderColor: 'var(--color-ok)', color: 'var(--muted)' }}
         >
           <p>
-            Counted {counted} {counted === '1' ? 'box' : 'boxes'}.{' '}
-            {changed === '0' ? (
+            Counted {countedBoxes} {countedBoxes === 1 ? 'box' : 'boxes'}.{' '}
+            {changedBoxes === 0 ? (
               <span style={{ color: 'var(--color-ok)' }}>Everything matched.</span>
             ) : (
               <>
                 <span style={{ color: 'var(--color-warning)' }}>
-                  {changed} {changed === '1' ? 'box' : 'boxes'} disagreed
+                  {changedBoxes} {changedBoxes === 1 ? 'box' : 'boxes'} disagreed
                 </span>{' '}
-                — net {Number(net) > 0 ? '+' : ''}
-                {net} units, now recorded.
+                — net {netUnits! > 0 ? '+' : ''}
+                {netUnits} units, now recorded.
               </>
             )}
           </p>
@@ -185,7 +217,7 @@ export default async function CountPage({
       <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }} test-data="count-history">
         {lastCount === null
           ? 'Never counted. Whatever the first count turns up is a starting point, not drift.'
-          : `Last counted ${lastCount.toISOString().slice(0, 10)}. ` +
+          : `Last counted ${localDay(lastCount)}. ` +
             (drift.movements === 0
               ? 'Nothing has ever disagreed.'
               : `${drift.movements} difference${drift.movements === 1 ? '' : 's'} recorded so far, ` +
