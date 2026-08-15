@@ -1193,6 +1193,39 @@ export async function getProductDailyRates(): Promise<Map<number, number>> {
   return new Map(rows.map((r) => [r.productId, r.rate]));
 }
 
+/**
+ * Who is on a running course for each of these products, by name.
+ *
+ * For warnings that have to name a person. Archiving a product already refuses
+ * while someone is being dosed from it, and says whose dose it would have
+ * stopped; binning the last usable box does the same thing to the same person
+ * and said nothing at all, which is the more surprising of the two — one is a
+ * refusal, the other just quietly empties the dose board.
+ *
+ * Same `runningSchedulesOn` predicate as everything else, so it cannot decide a
+ * course is live when the dose board thinks it finished.
+ */
+export async function getDoseTakersByProduct(
+  productIds: number[],
+): Promise<Map<number, string[]>> {
+  const map = new Map<number, string[]>();
+  if (productIds.length === 0) return map;
+
+  const rows = await db
+    .selectDistinct({ productId: doseSchedules.productId, memberName: householdMembers.name })
+    .from(doseSchedules)
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(and(inArray(doseSchedules.productId, productIds), runningSchedulesOn(todayIso())))
+    .orderBy(sql`${householdMembers.name} collate nocase`);
+
+  for (const row of rows) {
+    const names = map.get(row.productId);
+    if (names) names.push(row.memberName);
+    else map.set(row.productId, [row.memberName]);
+  }
+  return map;
+}
+
 export async function getBatchesForProducts(
   productIds: number[],
 ): Promise<Map<number, FefoBatch[]>> {
