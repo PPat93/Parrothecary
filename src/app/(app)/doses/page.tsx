@@ -4,13 +4,13 @@ import {RunOutBadge} from '@/components/run-out-badge';
 import {LINK_BUTTON, toneStyle} from '@/components/tone';
 import {addDays, todayIso} from '@/domain/date';
 import {
+    boardDates,
     doseOccurrenceStatus,
     doseWindowDays,
     formatDoseCadence,
     HISTORY_DAYS,
     isScheduleRunning,
     nextDueDate,
-    recentScheduleDates,
     type DoseStatus,
 } from '@/domain/dosing';
 import {daysPastDate} from '@/domain/expiry';
@@ -152,7 +152,12 @@ export default async function DosesPage() {
                                             endDate: schedule.endDate,
                                             intervalDays: schedule.intervalDays,
                                         };
-                                        const dates = recentScheduleDates(window, today, doseWindowDays(schedule));
+                                        const dates = boardDates(
+                                            {...window, createdOn: schedule.createdOn},
+                                            today,
+                                            doseWindowDays(schedule),
+                                            (date) => taken.has(`${schedule.scheduleId}:${date}`),
+                                        );
                                         const dueToday = dates.includes(today);
                                         const nextDue = dueToday ? null : nextDueDate(window, today);
                                         const stock = stockByProduct.get(schedule.productId) ?? [];

@@ -1090,6 +1090,12 @@ export interface DoseScheduleBoardRow {
   startDate: string;
   endDate: string | null;
   /**
+   * The calendar day this schedule was entered, which is not the day the course
+   * started — courses are normally typed in after the fact. The board will not
+   * draw a missed pill for a day before this one; see `boardDates`.
+   */
+  createdOn: string;
+  /**
    * Set when the product behind this live schedule has been archived — a state
    * `archiveProduct` refuses to create, but that older data and direct database
    * edits can still be in. The board shows the schedule anyway and marks it:
@@ -1115,6 +1121,9 @@ export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> 
       intervalDays: doseSchedules.intervalDays,
       startDate: doseSchedules.startDate,
       endDate: doseSchedules.endDate,
+      // Local calendar day, to match `todayIso` — a UTC day would shift the
+      // cut-off by one for anything entered late in the evening.
+      createdOn: sql<string>`date(${doseSchedules.createdAt}, 'unixepoch', 'localtime')`,
       productArchivedAt: products.archivedAt,
     })
     .from(doseSchedules)

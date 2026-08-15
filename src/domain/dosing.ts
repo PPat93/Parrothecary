@@ -184,7 +184,7 @@ export function doseWindowDays(schedule: { intervalDays: number }): number {
 export function recentScheduleDates(
   schedule: DoseScheduleWindow,
   today: IsoDate,
-  days = 3,
+  days = HISTORY_DAYS,
 ): IsoDate[] {
   const dates: IsoDate[] = [];
   for (let i = days - 1; i >= 0; i--) {
@@ -192,4 +192,34 @@ export function recentScheduleDates(
     if (isScheduleActiveOn(schedule, date)) dates.push(date);
   }
   return dates;
+}
+
+/**
+ * The dates the dose board draws a pill on — `recentScheduleDates`, minus the
+ * days this app was never in a position to know about.
+ *
+ * A course is almost always entered after it began. Four of the five schedules
+ * in the real cabinet were backdated on the day they were typed in, one of them
+ * by five months, because that is simply how you record something you are
+ * already taking. The board took the start date at face value and immediately
+ * drew two days of red "missed" pills for every one of them: an accusation
+ * about days when the app did not exist, that could not be dismissed, only
+ * waited out. At least one was cleared by confirming it — deducting a real
+ * tablet from the cupboard to silence a warning that should never have
+ * appeared.
+ *
+ * So: nothing before the day the schedule was entered. With one exception —
+ * a day that *does* have a confirmation is always drawn, however old. Hiding a
+ * recorded dose would take away the only way to undo it, and this app's rule is
+ * that the way out has to exist somewhere.
+ */
+export function boardDates(
+  schedule: DoseScheduleWindow & { createdOn: IsoDate },
+  today: IsoDate,
+  days: number,
+  isConfirmed: (date: IsoDate) => boolean,
+): IsoDate[] {
+  return recentScheduleDates(schedule, today, days).filter(
+    (date) => date >= schedule.createdOn || isConfirmed(date),
+  );
 }

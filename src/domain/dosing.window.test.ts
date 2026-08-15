@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addDays } from './date';
-import { doseWindowDays, HISTORY_DAYS, recentScheduleDates } from './dosing';
+import { boardDates, doseWindowDays, HISTORY_DAYS, recentScheduleDates } from './dosing';
 
 /**
  * The dose board draws a row of pills per schedule, and separately fetches the
@@ -66,5 +66,64 @@ describe('the dose board window', () => {
     for (const intervalDays of [1, 2, 3, 7, 14]) {
       expect(doseWindowDays({ intervalDays })).toBeGreaterThan(intervalDays);
     }
+  });
+});
+
+/**
+ * Backdating is the normal way to enter a course you are already taking — four
+ * of the five schedules in the real cabinet were entered that way. The board
+ * drew red "missed" pills for the days before it knew the course existed.
+ */
+describe('the days the board will draw a pill on', () => {
+  const daily = { startDate: '2026-03-06', endDate: null, intervalDays: 1 };
+  const nothingConfirmed = () => false;
+
+  it('says nothing about the days before the course was entered', () => {
+    const dates = boardDates({ ...daily, createdOn: TODAY }, TODAY, HISTORY_DAYS, nothingConfirmed);
+    expect(dates).toEqual([TODAY]);
+  });
+
+  it('still shows today, so a course entered today can be confirmed at once', () => {
+    const dates = boardDates({ ...daily, createdOn: TODAY }, TODAY, HISTORY_DAYS, nothingConfirmed);
+    expect(dates).toContain(TODAY);
+  });
+
+  it('fills in as the days pass', () => {
+    const entered = addDays(TODAY, -1);
+    const dates = boardDates({ ...daily, createdOn: entered }, TODAY, HISTORY_DAYS, nothingConfirmed);
+    expect(dates).toEqual([entered, TODAY]);
+  });
+
+  it('leaves an established course untouched', () => {
+    const dates = boardDates(
+      { ...daily, createdOn: '2026-03-06' },
+      TODAY,
+      HISTORY_DAYS,
+      nothingConfirmed,
+    );
+    expect(dates).toEqual([addDays(TODAY, -2), addDays(TODAY, -1), TODAY]);
+  });
+
+  it('never hides a dose that was confirmed, however old the day', () => {
+    // Undoing it has to stay possible — the way out has to exist somewhere.
+    const old = addDays(TODAY, -2);
+    const dates = boardDates(
+      { ...daily, createdOn: TODAY },
+      TODAY,
+      HISTORY_DAYS,
+      (date) => date === old,
+    );
+    expect(dates).toEqual([old, TODAY]);
+  });
+
+  it('does not resurrect days the schedule was not running on', () => {
+    const weekly = { startDate: '2026-06-13', endDate: null, intervalDays: 7 };
+    const dates = boardDates(
+      { ...weekly, createdOn: '2026-06-13' },
+      TODAY,
+      doseWindowDays({ intervalDays: 7 }),
+      () => true,
+    );
+    expect(dates).toEqual(['2026-08-08', TODAY]);
   });
 });
