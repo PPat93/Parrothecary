@@ -153,6 +153,29 @@ export function formatDoseCadence(timesPerDay: number, intervalDays = 1): string
   return `${timesPerDay}×/${intervalDays} days`;
 }
 
+/** Days of history the dose board shows for an everyday schedule. */
+export const HISTORY_DAYS = 3;
+
+/**
+ * How far back one schedule's row of pills reaches.
+ *
+ * Three days shows nothing at all for a weekly dose on four days out of seven,
+ * which reads as broken rather than as "not today" — so the row widens past one
+ * full interval and the last dosing day is always on screen.
+ *
+ * Here, rather than on the board, because the board is not the only thing that
+ * needs it: the query fetching which doses were confirmed has to reach back at
+ * least as far as the furthest pill drawn. It did not. The row widened to eight
+ * days for a weekly schedule while the query kept its three-day cutoff, so the
+ * dose taken last Saturday came back unconfirmed and its pill rendered red —
+ * permanently, since `confirmDose` rightly refuses to record the same
+ * occurrence twice. The board accused you of missing a dose you had taken and
+ * gave you no way to argue.
+ */
+export function doseWindowDays(schedule: { intervalDays: number }): number {
+  return Math.max(HISTORY_DAYS, schedule.intervalDays + 1);
+}
+
 /**
  * The dates worth showing on the "today" board — recent days clipped to when
  * the schedule actually existed, so a course started three days ago does not
