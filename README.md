@@ -376,8 +376,11 @@ somebody's memory, which is how a small good idea quietly disappears.
   CSV instead.
 - **Push notifications** — the app is used daily, so reminders would be noise, and they would have
   forced the first background scheduler into an app that deliberately derives everything on read.
-- **Passkeys** — sessions already last 90 days and renew on use, so "remember me" exists in all
-  but name; a password manager covers the rest.
+- **Passkeys** — a session lasts 90 days from the login that created it, so "remember me" exists in
+  all but name; a password manager covers the rest. (It does *not* slide forward with use, as this
+  line claimed until 2026-08-15: expiry is fixed at login, so each phone signs in about twice a
+  year however often it is opened. Sliding expiry would mean a database write on every request, for
+  a login nobody minds doing at that interval.)
 - **Audit log as a changelog** — who-changed-what has no audience in a two-person household. The
   reconciliation people actually mean by "audit" is item 2 above.
 

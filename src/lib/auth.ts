@@ -17,6 +17,25 @@ const SESSION_DAYS = Number(process.env.SESSION_DAYS ?? 90);
 const RATE_LIMIT_WINDOW_MINUTES = 15;
 const RATE_LIMIT_MAX_ATTEMPTS = 10;
 
+/**
+ * A second ceiling, counted across every address at once.
+ *
+ * The per-address limit is keyed on `X-Forwarded-For`, which is a header the
+ * caller sends — so anyone reaching this app directly rather than through the
+ * reverse proxy can put a new address on every request and never be limited at
+ * all. Tested: six wrong passwords under six invented addresses, six times
+ * "wrong password", no lockout.
+ *
+ * Caddy should overwrite that header, and if it does the per-address limit is
+ * the one that matters. This is the belt to that pair of braces: a total no
+ * header can dodge. Set high enough that two people fumbling a password never
+ * meet it, low enough that guessing at speed stops in seconds.
+ *
+ * The cost is that a flood locks the household out for the window as well. On
+ * a machine holding what this one holds, that is the right way to fail.
+ */
+const RATE_LIMIT_MAX_TOTAL = 30;
+
 export function sessionMaxAgeSeconds(): number {
   return SESSION_DAYS * 24 * 60 * 60;
 }
@@ -102,12 +121,14 @@ async function pruneExpiredSessions(): Promise<void> {
 export async function isRateLimited(ip: string): Promise<boolean> {
   const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MINUTES * 60 * 1000);
 
-  const rows = await db
-    .select({ id: loginAttempts.id })
+  const recent = await db
+    .select({ ip: loginAttempts.ip })
     .from(loginAttempts)
-    .where(and(eq(loginAttempts.ip, ip), gte(loginAttempts.attemptedAt, since)));
+    .where(gte(loginAttempts.attemptedAt, since));
 
-  return rows.length >= RATE_LIMIT_MAX_ATTEMPTS;
+  // Both ceilings, in one pass over a table that only ever holds one window.
+  if (recent.length >= RATE_LIMIT_MAX_TOTAL) return true;
+  return recent.filter((row) => row.ip === ip).length >= RATE_LIMIT_MAX_ATTEMPTS;
 }
 
 export async function recordFailedAttempt(ip: string): Promise<void> {
@@ -125,4 +146,5 @@ export async function clearAttempts(ip: string): Promise<void> {
 export const RATE_LIMIT = {
   windowMinutes: RATE_LIMIT_WINDOW_MINUTES,
   maxAttempts: RATE_LIMIT_MAX_ATTEMPTS,
+  maxTotal: RATE_LIMIT_MAX_TOTAL,
 };
