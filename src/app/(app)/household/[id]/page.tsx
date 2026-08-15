@@ -109,7 +109,18 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
           </ul>
         )}
 
-        {products.length === 0 ? (
+        {member.archivedAt ? (
+          /*
+            An archived person cannot be given a course — the action refuses it
+            — so the form has no business being here. It was offered anyway,
+            filled in, submitted, and answered with "that person is no longer on
+            the list": everything except the part where it works.
+          */
+          <p className="mt-3 text-xs" style={{ color: 'var(--muted)' }}>
+            Nothing new can be started while this person is archived. Restore them first — their
+            existing courses and dose history are untouched.
+          </p>
+        ) : products.length === 0 ? (
           <p className="mt-3 text-xs" style={{ color: 'var(--muted)' }}>
             Add a product before scheduling a dose for it.
           </p>
