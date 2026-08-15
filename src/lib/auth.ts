@@ -110,6 +110,16 @@ export async function destroyAllSessions(): Promise<void> {
   await db.delete(sessions);
 }
 
+/** How many devices are signed in right now, so the About page can say. */
+export async function countActiveSessions(): Promise<number> {
+  const rows = await db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(gte(sessions.expiresAt, new Date()));
+
+  return rows.length;
+}
+
 async function pruneExpiredSessions(): Promise<void> {
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
 }

@@ -55,6 +55,7 @@ import { defaultOrderByDate } from '@/domain/trip';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
 import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
 import { parseAmount, parseFxRate } from '@/domain/money';
+import { destroyAllSessions } from '@/lib/auth';
 import { endSession } from '@/lib/session';
 
 function refreshAll() {
@@ -2477,6 +2478,22 @@ export async function undoDose(formData: FormData): Promise<void> {
 
 export async function logout(): Promise<void> {
   await endSession();
+  redirect('/login');
+}
+
+/**
+ * Sign every device out at once.
+ *
+ * `destroyAllSessions` was written for the case it names — a phone left
+ * somewhere — and then nothing ever called it. The capability existed in the
+ * code and not in the app, which is the same as not existing: recovering a lost
+ * phone meant opening the database by hand.
+ *
+ * Deliberately not beside the everyday logout in the header. It is the thing
+ * you want twice in a lifetime and never by accident.
+ */
+export async function logoutEverywhere(): Promise<void> {
+  await destroyAllSessions();
   redirect('/login');
 }
 
