@@ -243,10 +243,10 @@ export default async function StatsPage() {
           {/* Counted, never folded in — the same sentence Expiring gives. */}
           {wasted.uncostedBoxes > 0 ? (
             <p className="mt-2 text-xs" style={{ color: 'var(--muted)' }} test-data="stats-uncosted-waste">
-              {wasted.uncostedBoxes} binned {wasted.uncostedBoxes === 1 ? 'box has' : 'boxes have'} a
-              złoty price with no exchange rate recorded, so{' '}
-              {wasted.uncostedBoxes === 1 ? 'it is' : 'they are'} in neither figure. Add the rate by
-              editing the box.
+              {wasted.uncostedBoxes} binned {wasted.uncostedBoxes === 1 ? 'box has' : 'boxes have'} no
+              price these figures can use — either none was recorded, or it is in złoty with no
+              exchange rate against it — so {wasted.uncostedBoxes === 1 ? 'it is' : 'they are'} in
+              neither figure. Editing the box fixes {wasted.uncostedBoxes === 1 ? 'it' : 'them'}.
             </p>
           ) : null}
         </Section>

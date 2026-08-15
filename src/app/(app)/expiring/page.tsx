@@ -45,8 +45,25 @@ const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
  * The threshold stays fixed; only the claim is checked. Naming the trip is
  * worth more than the generic line, so it is named whenever it is true.
  */
-function criticalBlurb(nextRestock: TripOption | null, today: string): string {
-    if (nextRestock === null) return 'Less than two months left, and no restock trip is planned.';
+function criticalBlurb(restocks: TripOption[], today: string): string {
+    // The soonest restock still ahead of us. A planned trip whose collection
+    // date has passed is somebody forgetting to close one out, and cannot be
+    // what stock is measured against.
+    const nextRestock = restocks.find((t) => t.collectionDate >= today) ?? null;
+
+    if (nextRestock === null) {
+        /*
+         * "No restock is planned" and "the planned restock is overdue" are
+         * different problems with different fixes, and this said the first
+         * about both. The trip page already tells you the dates have passed —
+         * so the two screens contradicted each other about a trip that exists,
+         * and the reading that sends you off to plan a duplicate is the one
+         * this page was giving.
+         */
+        return restocks.length > 0
+            ? 'Less than two months left. Every restock still marked planned was due to be collected in the past — close one out or move its dates, and this can say whether these boxes survive the next one.'
+            : 'Less than two months left, and no restock trip is planned.';
+    }
 
     const days = differenceInDays(today, nextRestock.collectionDate);
     return days > DEFAULT_THRESHOLDS.criticalDays
@@ -61,10 +78,6 @@ export default async function ExpiringPage() {
         getWaste(),
         getTripOptions(),
     ]);
-
-    // The soonest restock still ahead of us. Past planned trips are somebody
-    // forgetting to close one out, and cannot be what stock is measured against.
-    const nextRestock = tripOptions.find((t) => t.collectionDate >= today) ?? null;
 
     /*
      * Two different things, deliberately not added together.
@@ -119,7 +132,7 @@ export default async function ExpiringPage() {
                             <section key={section.status} test-data={section.title.replace(/\s/g, "").toLowerCase()}>
                                 <h2 className="text-sm font-semibold uppercase tracking-wide" test-data="section-title">{section.title}</h2>
                                 <p className="mb-2 text-xs" style={{color: 'var(--muted)'}} test-data="section-description">
-                                    {section.status === 'critical' ? criticalBlurb(nextRestock, today) : section.blurb}
+                                    {section.status === 'critical' ? criticalBlurb(tripOptions, today) : section.blurb}
                                 </p>
 
                                 <ul className="flex flex-col gap-2">
@@ -263,9 +276,10 @@ export default async function ExpiringPage() {
 
                     {uncosted > 0 ? (
                         <p className="mt-2 text-xs" style={{color: 'var(--muted)'}} test-data="uncosted-waste">
-                            {uncosted} binned {uncosted === 1 ? 'box has' : 'boxes have'} a złoty price with no
-                            exchange rate recorded, so {uncosted === 1 ? 'it is' : 'they are'} not in either
-                            figure. Add the rate by editing the box.
+                            {uncosted} binned {uncosted === 1 ? 'box has' : 'boxes have'} no price these
+                            figures can use — either none was recorded, or it is in złoty with no exchange
+                            rate against it — so {uncosted === 1 ? 'it is' : 'they are'} in neither figure.
+                            Editing the box fixes {uncosted === 1 ? 'it' : 'them'}.
                         </p>
                     ) : null}
                 </div>

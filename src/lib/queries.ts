@@ -2413,71 +2413,6 @@ export async function getPriceTrends(): Promise<PriceTrend[]> {
     .sort((a, b) => b.latestPerUnit - b.firstPerUnit - (a.latestPerUnit - a.firstPerUnit));
 }
 
-export interface WasteSummary {
-  /** Bought, never opened, binned. The figure worth pushing down. */
-  thrownAwayMinorEur: number;
-  neverOpenedBoxes: number;
-  /** Left in packs that were opened and used. Not really waste. */
-  leftInOpenedMinorEur: number;
-  openedBoxes: number;
-  /** Binned boxes whose price could not be converted, so are in neither figure. */
-  uncostedBoxes: number;
-}
-
-/**
- * The two waste figures, deliberately not added together.
- *
- * A sealed box that expired is money thrown away. A box that was opened is
- * not: half a bottle left at its expiry date did its job on the wounds it was
- * opened for, and that size was the smallest one sold. Adding them would
- * flatter one and slander the other.
- *
- * Shared with the Expiring page rather than written out twice — the split is
- * the kind of rule that drifts the moment there are two copies of it.
- */
-export function summariseWaste(rows: WasteRow[]): WasteSummary {
-  const summary: WasteSummary = {
-    thrownAwayMinorEur: 0,
-    neverOpenedBoxes: 0,
-    leftInOpenedMinorEur: 0,
-    openedBoxes: 0,
-    uncostedBoxes: 0,
-  };
-
-  for (const row of rows) {
-    /*
-     * A box binned with nothing left in it was used up, not wasted. It costs
-     * zero either way, but counting it inflates the box count next to the
-     * figure — "€2.76 left in 2 opened packs" when only one pack had anything
-     * in it reads as if the money were spread over both.
-     */
-    if (row.quantityRemaining <= 0) continue;
-    if (row.priceMinor === null || row.currency === null) continue;
-
-    const unused = unusedValue(
-      money(row.priceMinor, row.currency),
-      row.unitsWhenFull,
-      row.quantityRemaining,
-    );
-    const eur = toEurOrNull(unused, row.fxRateToEur);
-
-    if (eur === null) {
-      summary.uncostedBoxes++;
-      continue;
-    }
-
-    if (row.openedAt === null) {
-      summary.thrownAwayMinorEur += eur.amountMinor;
-      summary.neverOpenedBoxes++;
-    } else {
-      summary.leftInOpenedMinorEur += eur.amountMinor;
-      summary.openedBoxes++;
-    }
-  }
-
-  return summary;
-}
-
 /* ------------------------------------------------------------------ */
 /* Statistics — usage, read from the ledger                            */
 /* ------------------------------------------------------------------ */
@@ -2761,6 +2696,8 @@ export async function getProductPurchases(productId: number): Promise<PurchaseRo
       })),
     );
 }
+
+export { summariseWaste, type WasteSummary } from '@/domain/waste';
 
 export interface WasteRow {
   batchId: number;
