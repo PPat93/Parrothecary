@@ -78,6 +78,11 @@ export default function HelpPage() {
           app cannot tell them apart afterwards unless you use the right one at the time.
         </p>
         <p>
+          Behind that pencil is everything that ever happened to the box, oldest first, adding up
+          to the number it claims — where each unit came from and went, and whether the sum still
+          matches. It is the place to look when a quantity seems wrong.
+        </p>
+        <p>
           The amount field between the buttons defaults to 1 and stays wherever you leave it, so a
           box of tablets never needs touching and a bottle needs typing once. A spoonful of
           something liquid is one movement of 10 ml rather than ten movements of one.
@@ -155,6 +160,12 @@ export default function HelpPage() {
           A line can belong to a restock trip or to none at all. Lines with no trip are things
           bought locally, which is a real answer rather than a gap.
         </p>
+        <p>
+          If less turns up than was ordered, the line says so — “100 of 200 tablets arrived” — on
+          both the list and the trip. The line still counts as received, because a box did arrive;
+          the note is there because the trip stops expecting the rest, and nothing else would tell
+          you a pack never came.
+        </p>
       </Panel>
 
       <Panel title="Trips" id="trips">
@@ -207,6 +218,15 @@ export default function HelpPage() {
           product is archived and nothing would be lost by it — no box of it was ever recorded and
           no dose schedule points at it.
         </p>
+        <p>
+          The pencil beside an ingredient or a symptom tag corrects its spelling everywhere it is
+          used, and gives it a Polish name if you want one — the Polish name is a search alias, so
+          “ból gardła” finds what is tagged “sore throat”. Correcting a spelling onto a name that
+          already exists merges the two and says so first, because that cannot be undone. This
+          matters beyond tidiness: a misspelt ingredient is a <em>different</em> ingredient as far
+          as the cabinet is concerned, so the double-dose warning cannot see across the two
+          spellings until they are merged.
+        </p>
       </Panel>
 
       <Panel title="Counting the cupboard" id="count">
@@ -219,6 +239,13 @@ export default function HelpPage() {
           Rows that agree write nothing at all. Only differences are recorded, which is what makes
           the running total meaningful: it is how much stock leaves this house without anyone
           noticing. Counting a box as zero retires it, the same as using it up.
+        </p>
+        <p>
+          The line at the top is a different question from counting. Each box holds its number
+          twice — the figure on the box, and every movement that produced it — and that line
+          compares the two. It cannot be answered by looking at the shelf, which is why it lives
+          here rather than being something to remember to check. When a box does not add up it is
+          named, with a link to its own history.
         </p>
       </Panel>
 
@@ -283,6 +310,31 @@ export default function HelpPage() {
         <Term term="A person cannot be deleted">
           A dose was confirmed for them at some point, which is stock that actually left the
           cupboard.
+        </Term>
+        <Term term="“That exact course is already running”">
+          The same product, the same dose, the same frequency, for the same person — almost always
+          a form sent twice. Two courses of one product are fine and sometimes necessary: one
+          tablet in the morning and two at night cannot be written as a single “twice a day”, and
+          the app adds them up. Change the dose or the frequency and it will take it.
+        </Term>
+        <Term term="An archived person cannot be given a new course">
+          Archiving is how someone stops appearing on the board, so starting something new for them
+          contradicts it. Restore them first; their existing courses and dose history are untouched
+          either way.
+        </Term>
+        <Term term="An archived product will not take a new box">
+          The same rule from the other side. It also applies to scanning: an old box of something
+          retired will be recognised, and still refused. Restore the product if it is coming back.
+        </Term>
+        <Term term="A box that arrived against an order cannot be deleted">
+          It is the record of that purchase, and the trip counts its cost through it — deleting it
+          would take money off the trip with nothing to show why. Bin it from Expiring if it is
+          gone, or clear the shopping line first.
+        </Term>
+        <Term term="A trip will not change between restock and holiday">
+          Not while something is attached to it. A holiday has no shopping list and a restock has no
+          packing list, so switching would strand whatever is on the trip where no screen shows it.
+          Move those off first.
         </Term>
         <Term term="The Save button on a packing amount is missing">
           Nothing has changed yet. It appears once the number differs from what is stored.
