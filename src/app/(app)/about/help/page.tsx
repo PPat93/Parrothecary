@@ -9,6 +9,31 @@ import { AboutTabs, Panel, Term } from '../tabs';
  * wrong — while "doses come out of the box that expires first" stays true
  * through any redesign.
  */
+/**
+ * The panels below, in order, so the page can be jumped around.
+ *
+ * Every panel already carried an `id` and nothing had ever linked to one: the
+ * anchors were built for a contents list that was never written, leaving
+ * fifteen thousand characters of prose to scroll through on a phone to reach
+ * the section that answers "why won't it let me".
+ *
+ * Kept beside the panels deliberately — an entry here with no panel to match is
+ * a link to nowhere, so the two lists are read together or not at all.
+ */
+const CONTENTS: { id: string; label: string }[] = [
+  { id: 'glossary', label: 'Words' },
+  { id: 'stock', label: 'Stock' },
+  { id: 'doses', label: 'Doses' },
+  { id: 'expiring', label: 'Expiring' },
+  { id: 'shopping', label: 'Shopping' },
+  { id: 'trips', label: 'Trips' },
+  { id: 'products', label: 'Products' },
+  { id: 'count', label: 'Counting' },
+  { id: 'statistics', label: 'Statistics' },
+  { id: 'refusals', label: 'Why won’t it let me?' },
+  { id: 'not-doing', label: 'What it does not do' },
+];
+
 export default function HelpPage() {
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -19,6 +44,19 @@ export default function HelpPage() {
       </h1>
 
       <AboutTabs active="help" />
+
+      <nav className="mb-4 flex flex-wrap gap-1.5" test-data="help-contents">
+        {CONTENTS.map((entry) => (
+          <a
+            key={entry.id}
+            href={`#${entry.id}`}
+            className="rounded-lg border px-2 py-1 text-xs"
+            style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+          >
+            {entry.label}
+          </a>
+        ))}
+      </nav>
 
       <Panel title="Words worth knowing" id="glossary">
         <Term term="Product">
