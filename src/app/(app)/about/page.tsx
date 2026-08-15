@@ -67,8 +67,20 @@ export default async function AboutPage() {
       <Section title="Where it lives">
         <p>
           On the home network and nowhere else. No cloud service, no account, no telemetry, and
-          nothing leaves the house. The database is a single file that can be copied to a memory
-          stick.
+          nothing leaves the house.
+        </p>
+        <p className="mt-2">
+          {/*
+            The old wording — "the database is a single file that can be copied
+            to a memory stick" — was true and incomplete, which is worse than
+            either. Photos sit beside the database as separate files, so
+            somebody copying one file for safekeeping would find every picture
+            gone when they restored it. That is not hypothetical: a broken
+            thumbnail turned out to be exactly this shape.
+          */}
+          Everything lives in one folder: the database as a single file, and the box photographs
+          beside it. Copy the folder, not just the file — a database restored on its own comes back
+          with every photograph missing.
         </p>
       </Section>
 

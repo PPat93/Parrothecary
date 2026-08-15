@@ -311,8 +311,14 @@ relies on, and this is the part that needs learning rather than reviewing.
 
 Backups ship *with* it, not after. Deployment day is when real stock and fresh photos get entered,
 and that data is valuable immediately — while today there is exactly one copy of the database on
-one machine. `VACUUM INTO` gives a consistent single-file backup while the app keeps running,
+one machine. `VACUUM INTO` gives a consistent copy of the database while the app keeps running,
 which is also the safe way to take a copy for testing a migration against realistic data.
+
+**A backup is the folder, not the file.** `VACUUM INTO` copies the database and nothing else, while
+the box photographs sit beside it in `data/uploads` as ordinary files. A backup of the database
+alone restores a cabinet whose every picture is missing — which is not hypothetical: a broken
+thumbnail found during the bug hunt turned out to be exactly that shape. Whatever the backup job
+ends up being, it copies both, and a restore is tested by looking at a photo.
 
 The database is wiped for this: a clean start, entered fresh against the real cupboard.
 
