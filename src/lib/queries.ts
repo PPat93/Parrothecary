@@ -576,6 +576,13 @@ export interface BatchDetail extends StockRow {
   hasDoseEvents: boolean;
   /** Received against a shopping line, so it is a purchase record. */
   cameFromAnOrder: boolean;
+  /**
+   * The most this box could hold — its pack, or more if more ever came in.
+   *
+   * Here so the history can apply the same integrity rule the Audit screen and
+   * the check script apply, rather than a narrower one of its own.
+   */
+  capacity: number;
 }
 
 /** One box, with everything its edit form needs. */
@@ -684,6 +691,7 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
       purchasePriceMinor: batches.purchasePriceMinor,
       purchaseCurrency: batches.purchaseCurrency,
       fxRateToEur: batches.fxRateToEur,
+      capacity: unitsWhenFull,
     })
     .from(batches)
     .innerJoin(variants, eq(batches.variantId, variants.id))

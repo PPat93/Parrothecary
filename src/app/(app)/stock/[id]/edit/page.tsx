@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ConfirmButton } from '@/components/confirm-button';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
+import { checkBox } from '@/domain/integrity';
 import { formatQuantity } from '@/domain/quantity';
 import { getBatch, getBatchHistory, getFxRateHistory } from '@/lib/queries';
 import { movementReasonLabel } from '@/lib/labels';
@@ -146,17 +147,39 @@ export default async function EditBatchPage({
             {(() => {
               const ledger = history[history.length - 1]!.runningTotal;
               const inStock = box.status === 'in_stock';
-              const expected = inStock ? box.quantityRemaining : 0;
 
-              if (ledger === expected) {
+              /*
+               * Judged by the shared rule, not a local one.
+               *
+               * This footer used to compare the sum against the quantity and
+               * nothing else, so it only ever saw half of what the integrity
+               * check sees. A box holding more than ever came into it — five
+               * put back into a one-piece pack — has a ledger that agrees with
+               * its quantity perfectly, and this line pronounced it correct
+               * while the Audit screen listed it as broken and sent you here
+               * to find out why. The one page that was supposed to explain the
+               * problem was the one page denying there was one.
+               */
+              const problem = checkBox({
+                status: box.status,
+                quantity: box.quantityRemaining,
+                ledger,
+                capacity: box.capacity,
+              });
+
+              if (problem === null) {
                 return inStock
                   ? `Adds up to ${formatQuantity(box.quantityRemaining, box.unitName, box.packSize)}, which is what the box says.`
                   : `These close at zero because the box has left the cupboard. The ${formatQuantity(box.quantityRemaining, box.unitName, box.packSize)} it still held is what the waste figures cost.`;
               }
 
+              if (problem.kind === 'capacity') {
+                return `The movements add up, but this box holds ${problem.quantity} and only ${problem.capacity} ever came into it — more was put back than was ever taken out. Correcting the quantity above puts it right.`;
+              }
+
               return inStock
-                ? `These add up to ${ledger}, but the box says ${box.quantityRemaining}. Counting it on the Audit screen will put that right.`
-                : `These add up to ${ledger}, and a box out of the cupboard should close at zero. Something wrote a quantity without saying why.`;
+                ? `These add up to ${problem.ledger}, but the box says ${box.quantityRemaining}. Counting it on the Audit screen will put that right.`
+                : `These add up to ${problem.ledger}, and a box out of the cupboard should close at zero. Something wrote a quantity without saying why.`;
             })()}
           </p>
         </section>
