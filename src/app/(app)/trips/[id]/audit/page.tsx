@@ -101,7 +101,16 @@ export default async function TripAuditPage({ params }: { params: Promise<{ id: 
 
         <Group
           title="Empty or nearly"
-          blurb="Nothing left, or less than a quarter of a pack. No dose schedule to project from, so this is what the cupboard alone can tell you."
+          /*
+            The old blurb said "no dose schedule to project from", which is
+            true of most of this group and not of all of it. A scheduled
+            product lands here too when the projection says it is covered but
+            the cupboard is still nearly empty — a course ending in two days
+            with five tablets left against a sixty pack. Saying it has no
+            schedule, on a row the app had just projected, is the kind of claim
+            somebody checks and finds wrong.
+          */
+          blurb="Nothing left, or less than a quarter of a pack. Either there is no dose schedule to project from, or what is due before the trip is already covered — so this is what the cupboard alone can tell you."
           rows={empty}
           empty="Everything else has a sealed pack behind it."
         />
