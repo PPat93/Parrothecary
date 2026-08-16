@@ -68,6 +68,39 @@ export function toEan13(code: string): string {
 }
 
 /**
+ * Every shape the same physical barcode can be written in.
+ *
+ * `parseScan` reduces what a camera reads to one canonical form — a UPC-A
+ * widened to thirteen digits, a GS1 GTIN-14 stripped of its packaging digit —
+ * so codes attached through this app are all stored that way. Codes that
+ * arrived by another route are not: a catalogue typed in before that rule
+ * existed holds twelve- and fourteen-digit forms, and an exact-match lookup
+ * against a scan silently misses every one of them. Five of the eleven packs in
+ * the real cabinet were unrecognisable for exactly this reason — the scanner
+ * offered to attach a code it already had, under a different number of digits.
+ *
+ * Comparing the alternatives is enough; nothing needs rewriting in place.
+ */
+export function barcodeVariants(code: string): string[] {
+  const digits = code.replace(/\D/g, '');
+  if (digits === '') return [code];
+
+  const forms = new Set<string>([code, digits]);
+
+  // Thirteen digits: also the twelve-digit UPC-A it came from, and the
+  // fourteen-digit GTIN a case-level label would print.
+  if (digits.length === 13) {
+    if (digits.startsWith('0')) forms.add(digits.slice(1));
+    forms.add(`0${digits}`);
+  }
+  // Twelve or fourteen: the thirteen-digit form this app would have stored.
+  if (digits.length === 12) forms.add(`0${digits}`);
+  if (digits.length === 14 && digits.startsWith('0')) forms.add(digits.slice(1));
+
+  return [...forms];
+}
+
+/**
  * GS1 dates are YYMMDD, and DD is allowed to be "00" meaning "end of month" —
  * which is exactly the month-precision case the app already models.
  */

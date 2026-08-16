@@ -33,7 +33,7 @@ import {
   variantBarcodes,
   variants,
 } from '@/db/schema';
-import { isValidEan13, parseScan } from '@/domain/barcode';
+import { barcodeVariants, isValidEan13, parseScan } from '@/domain/barcode';
 import { addDays, isIsoDate, todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { isScheduleActiveOn } from '@/domain/dosing';
@@ -1423,10 +1423,17 @@ async function attachBarcode(
     return `${code} is not a valid barcode — its check digit does not match. Re-read the digits under the stripe.`;
   }
 
+  /*
+   * Compared against every shape of the same code, not just the canonical one.
+   * The lookup that resolves a scan does the same — see `barcodeVariants` — and
+   * an exact match here let one physical stripe be stored twice on one pack,
+   * once as twelve digits and once as thirteen, which is precisely the "same
+   * pack failing to match itself" this normalising exists to prevent.
+   */
   const existing = await db
     .select({ variantId: variantBarcodes.variantId })
     .from(variantBarcodes)
-    .where(eq(variantBarcodes.code, code))
+    .where(inArray(variantBarcodes.code, barcodeVariants(code)))
     .limit(1);
 
   const owner = existing[0]?.variantId;

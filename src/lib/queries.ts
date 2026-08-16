@@ -30,6 +30,7 @@ import { money, toEurOrNull, unusedValue, type FxRateOnDate } from '@/domain/mon
 import { summariseMovements, type Movement, type MovementSummary } from '@/domain/ledger';
 import { expiresDuringTrip, suggestKit } from '@/domain/travel';
 import { checkBox } from '@/domain/integrity';
+import { barcodeVariants } from '@/domain/barcode';
 import { doseWindowDays, HISTORY_DAYS, unitsDueBetween } from '@/domain/dosing';
 
 /**
@@ -722,10 +723,17 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
  * scanner offers to attach it, and the cabinet teaches itself.
  */
 export async function findVariantByBarcode(code: string): Promise<VariantRow | null> {
+  /*
+   * Matched against every way the same code can be written, not just the
+   * canonical one — see `barcodeVariants`. A catalogue holding a twelve-digit
+   * UPC-A or a fourteen-digit GTIN is not wrong, it is just written differently
+   * from what a camera hands back, and an exact match made those packs
+   * permanently unrecognisable.
+   */
   const rows = await db
     .select({ variantId: variantBarcodes.variantId })
     .from(variantBarcodes)
-    .where(eq(variantBarcodes.code, code))
+    .where(inArray(variantBarcodes.code, barcodeVariants(code)))
     .limit(1);
 
   const variantId = rows[0]?.variantId;

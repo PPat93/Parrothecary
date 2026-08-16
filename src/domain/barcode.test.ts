@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ean13CheckDigit, isValidEan13, parseGs1, parseGs1Date, parseScan, toEan13 } from './barcode';
+import { ean13CheckDigit, isValidEan13, parseGs1, parseGs1Date, parseScan, toEan13, barcodeVariants } from './barcode';
 
 /*
  * Every code here was read off a real box in the cabinet, so these tests pin
@@ -129,5 +129,49 @@ describe('parseScan', () => {
     expect(result.code).toBe('NOT-A-BARCODE');
     expect(result.type).toBe('other');
     expect(result.expiryDate).toBeNull();
+  });
+});
+
+/**
+ * The same physical barcode, written the several ways a catalogue can hold it.
+ * Five of the eleven packs in the real cabinet were stored in a form no scan
+ * could ever match, so the scanner kept offering to attach a code it already
+ * had.
+ */
+describe('barcodeVariants', () => {
+  it('offers the twelve- and fourteen-digit forms of a thirteen-digit code', () => {
+    expect(barcodeVariants('0033984020276')).toEqual(
+      expect.arrayContaining(['0033984020276', '033984020276', '00033984020276']),
+    );
+  });
+
+  it('offers the thirteen-digit form of a stored UPC-A', () => {
+    expect(barcodeVariants('033984020276')).toEqual(
+      expect.arrayContaining(['033984020276', '0033984020276']),
+    );
+  });
+
+  it('offers the thirteen-digit form of a stored GTIN-14', () => {
+    expect(barcodeVariants('05907996869640')).toEqual(
+      expect.arrayContaining(['05907996869640', '5907996869640']),
+    );
+  });
+
+  it('always includes the code it was given', () => {
+    for (const code of ['5909991434090', '033984020276', '05907996869640', 'ABC-123']) {
+      expect(barcodeVariants(code)).toContain(code);
+    }
+  });
+
+  it('leaves a non-numeric code alone', () => {
+    expect(barcodeVariants('ABC-123')).toEqual(['ABC-123', '123']);
+  });
+
+  it('reaches across the shapes both ways round', () => {
+    // Whichever form is stored, a scan of the other must find it.
+    const scanned = '5907996869640';
+    const stored = '05907996869640';
+    expect(barcodeVariants(scanned)).toContain(stored);
+    expect(barcodeVariants(stored)).toContain(scanned);
   });
 });
