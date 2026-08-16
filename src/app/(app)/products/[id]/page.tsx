@@ -476,10 +476,6 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
                           a phone cost a full box until someone opened the
                           database. This is where those boxes are already
                           listed, so this is where they come back.
-
-                          Not offered for a used-up box: it holds nothing, and
-                          "consumed" is derived from the quantity reaching zero
-                          rather than chosen by anyone.
                         */}
                         {box.status !== 'in_stock' ? (
                           <form action={setBatchStatus} className="ml-auto">

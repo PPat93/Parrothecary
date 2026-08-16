@@ -1023,7 +1023,12 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
    * as archived instead.
    */
   const packRows = await db
-    .select({ id: variants.id, productName: products.name, archivedAt: products.archivedAt })
+    .select({
+      id: variants.id,
+      packSize: variants.packSize,
+      productName: products.name,
+      archivedAt: products.archivedAt,
+    })
     .from(variants)
     .innerJoin(products, eq(variants.productId, products.id))
     .where(eq(variants.id, variantId))
@@ -1054,6 +1059,26 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
   const alreadyHad = formData.get('alreadyHad') === 'on';
 
   /*
+   * A box holding less than one full pack has been opened. Nobody says so on
+   * the form, and nothing else was inferring it: `openedAt` was only ever set
+   * by the stepper and by dosing, so a box typed in part-used stayed "sealed"
+   * for the rest of its life.
+   *
+   * That is not cosmetic. The waste figures split on this exact field, and they
+   * split the wrong way: a box entered at six of a sixty-pack and later binned
+   * was reported as "bought and binned without being used" — the number the
+   * page calls the one worth pushing down — when a part-used box is precisely
+   * what that split exists to keep out of it.
+   *
+   * Compared against one pack rather than against what was ordered, so a
+   * three-pack line that arrives two packes short is still two sealed packs.
+   * Dated to the purchase rather than to today: "opened" on a box bought two
+   * years ago did not happen this afternoon.
+   */
+  const partUsed = pack.packSize > 0 && parsed.fields.quantityRemaining < pack.packSize;
+  const openedAt = partUsed ? (parsed.fields.purchaseDate ?? todayIso()) : null;
+
+  /*
    * The box and the row saying where it came from go in together. A torn write
    * here would leave the ledger disagreeing with the shelf, which is the one
    * thing it exists not to do.
@@ -1062,7 +1087,7 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
     db.transaction((tx) => {
       const inserted = tx
         .insert(batches)
-        .values({ variantId, ...parsed.fields })
+        .values({ variantId, ...parsed.fields, openedAt })
         .returning({ id: batches.id })
         .all();
 
@@ -1116,6 +1141,7 @@ export async function receiveShoppingItem(
     .select({
       variantId: shoppingItems.variantId,
       status: shoppingItems.status,
+      packSize: variants.packSize,
       productName: products.name,
       productArchivedAt: products.archivedAt,
     })
@@ -1167,6 +1193,16 @@ export async function receiveShoppingItem(
   if ('error' in parsed) return fail(parsed.error);
 
   /*
+   * Less than one full pack means the pack is open — the same inference the
+   * add-box path makes, for the same reason the waste figures need it. Against
+   * one pack, not against what was ordered: a three-pack line that turns up two
+   * packs short is still sealed packs.
+   */
+  const partUsed =
+    item.packSize > 0 && parsed.fields.quantityRemaining < item.packSize;
+  const openedAt = partUsed ? (parsed.fields.purchaseDate ?? todayIso()) : null;
+
+  /*
    * Three writes that only make sense together: the box, the row saying it
    * arrived, and the shopping line that becomes it.
    */
@@ -1175,7 +1211,7 @@ export async function receiveShoppingItem(
     batchId = db.transaction((tx) => {
       const inserted = tx
         .insert(batches)
-        .values({ variantId: item.variantId, ...parsed.fields })
+        .values({ variantId: item.variantId, ...parsed.fields, openedAt })
         .returning({ id: batches.id })
         .all();
 
