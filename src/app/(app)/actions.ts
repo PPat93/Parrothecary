@@ -2809,14 +2809,34 @@ export async function setTripStatus(formData: FormData): Promise<void> {
 }
 
 /**
- * No archive step and no guard, unlike products and people. A trip carries no
- * history of its own — the boxes bought on it keep their own purchase dates and
- * prices, and shopping lines are only unassigned (the FK is `set null`), never
- * deleted. So a mistyped trip can simply go.
+ * A mistyped trip can simply go. One that boxes actually arrived on cannot.
+ *
+ * The old reasoning here was that a trip "carries no history of its own",
+ * because the boxes keep their own dates and prices and the shopping lines are
+ * only unassigned. Half true, and the missing half matters: a box records no
+ * trip at all, so the line's `trip_id` is the only thing that says which
+ * restock it came on. `set null` erases that. Deleting October 2024 left its
+ * six boxes sitting in the cupboard with their prices intact and no way to
+ * learn where they came from — the price history stopped saying "October 2024"
+ * beside them, and what that restock cost stopped being answerable.
+ *
+ * So: refused, in the way products and people with history are refused. The
+ * way out is on the same page — unassign those lines one by one, which is a
+ * deliberate act per box rather than a single tap over the lot.
  */
 export async function deleteTrip(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
+
+  const received = await db
+    .select({ id: shoppingItems.id })
+    .from(shoppingItems)
+    .where(and(eq(shoppingItems.tripId, id), isNotNull(shoppingItems.receivedBatchId)))
+    .limit(1);
+
+  // The page offers an explanation instead of the button in this case; this is
+  // the backstop for a page left open while the last box was received.
+  if (received.length > 0) return;
 
   await db.delete(trips).where(eq(trips.id, id));
   refreshAll();
