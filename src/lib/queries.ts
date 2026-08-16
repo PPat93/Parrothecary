@@ -23,14 +23,14 @@ import {
   variants,
 } from '@/db/schema';
 import type { IsoDate } from '@/domain/date';
-import { todayIso } from '@/domain/date';
+import { addDays, todayIso } from '@/domain/date';
 import { isDosable, type ExpiryInput } from '@/domain/expiry';
 import { nextBatchToOpen, totalAvailable, type FefoBatch } from '@/domain/fefo';
 import { money, toEurOrNull, unusedValue, type FxRateOnDate } from '@/domain/money';
 import { summariseMovements, type Movement, type MovementSummary } from '@/domain/ledger';
 import { expiresDuringTrip, suggestKit } from '@/domain/travel';
 import { checkBox } from '@/domain/integrity';
-import { unitsDueBetween } from '@/domain/dosing';
+import { doseWindowDays, HISTORY_DAYS, unitsDueBetween } from '@/domain/dosing';
 
 /**
  * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
@@ -1005,6 +1005,16 @@ export interface MemberScheduleRow {
   startDate: string;
   endDate: string | null;
   notes: string | null;
+  /**
+   * Confirmed doses still inside the window the dose board draws pills for —
+   * the ones you could still tap to undo.
+   *
+   * Removing a schedule takes it off the board, and the board is the only place
+   * a dose can be undone from, so those undos go with it. Counted here so the
+   * confirmation can say how many are about to become permanent instead of
+   * finding out afterwards.
+   */
+  undoableDoses: number;
 }
 
 export interface HouseholdMemberDetail extends HouseholdMemberRow {
@@ -1047,6 +1057,34 @@ export async function getHouseholdMember(id: number): Promise<HouseholdMemberDet
     .where(and(eq(doseSchedules.memberId, id), isNull(doseSchedules.archivedAt)))
     .orderBy(sql`${products.name} collate nocase`);
 
+  /*
+   * Doses still within reach of the board, per schedule. One query for all of
+   * them, cut at the widest window any of these schedules draws, then narrowed
+   * per schedule below — the same `doseWindowDays` the board itself uses, so
+   * "still undoable" here means exactly what it means there.
+   */
+  const today = todayIso();
+  const widest = Math.max(HISTORY_DAYS, ...scheduleRows.map(doseWindowDays));
+  const recentDoses =
+    scheduleRows.length === 0
+      ? []
+      : await db
+          .selectDistinct({
+            scheduleId: doseEvents.scheduleId,
+            date: doseEvents.date,
+            occurrence: doseEvents.occurrence,
+          })
+          .from(doseEvents)
+          .where(
+            and(
+              inArray(
+                doseEvents.scheduleId,
+                scheduleRows.map((row) => row.id),
+              ),
+              sql`${doseEvents.date} >= ${addDays(today, -(widest - 1))}`,
+            ),
+          );
+
   // Deliberately over ALL schedules, including already-removed ones — a
   // schedule that logged doses and was then removed still means this person
   // has real history, which is what blocks a permanent delete.
@@ -1071,7 +1109,14 @@ export async function getHouseholdMember(id: number): Promise<HouseholdMemberDet
     archivedAt: member.archivedAt,
     activeScheduleCount: scheduleRows.length,
     hasDoseEvents,
-    schedules: scheduleRows,
+    schedules: scheduleRows.map((row) => ({
+      ...row,
+      undoableDoses: recentDoses.filter(
+        (dose) =>
+          dose.scheduleId === row.id &&
+          dose.date >= addDays(today, -(doseWindowDays(row) - 1)),
+      ).length,
+    })),
   };
 }
 
