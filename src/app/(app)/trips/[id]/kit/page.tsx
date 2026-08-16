@@ -140,7 +140,21 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
                     noise after it has been unpacked again — these are measured
                     against the cupboard as it is today, not as it was.
                   */}
-                  {!finished && row.units > row.available ? (
+                  {!finished && row.available <= 0 ? (
+                    /*
+                      Nothing at all is its own warning, and it needed to be:
+                      the short-stock line below only fires when the bag asks
+                      for more than there is, and a standing item — a blanket,
+                      plasters, the thermometer — goes in with no number at all.
+                      So the one row the app cannot reason about in any other
+                      way, the one that is on this list purely so it is not
+                      forgotten, was also the only one that could be completely
+                      out of stock and say nothing about it.
+                    */
+                    <p className="text-xs font-medium" style={{ color: 'var(--color-critical)' }}>
+                      none left to pack
+                    </p>
+                  ) : !finished && row.units > row.available ? (
                     <p className="text-xs font-medium" style={{ color: 'var(--color-critical)' }}>
                       only {formatQuantity(row.available, row.unitName)} to take
                     </p>
