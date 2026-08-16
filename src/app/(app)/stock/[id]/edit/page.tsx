@@ -67,7 +67,28 @@ export default async function EditBatchPage({
         something up while holding the box. The ledger has recorded all of this
         from the start; it simply had no screen.
       */}
-      {history.length > 0 ? (
+      {/*
+        A box with nothing recorded against it got no section at all — the
+        heading, the list and the sum all simply absent, with nothing saying
+        why. Eighteen of the forty boxes in the real cabinet are in that state,
+        so the feature looked broken on nearly half of them: present on one box,
+        gone on the next, no explanation either way.
+
+        Every box entered through the app writes its arrival in the same
+        transaction as the box itself, so an empty ledger means the row came
+        from somewhere else — an import, or a database seeded before this
+        screen existed. Worth saying rather than leaving a hole.
+      */}
+      {history.length === 0 ? (
+        <section className="mt-8" test-data="box-history">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide">What happened to it</h2>
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>
+            Nothing was ever recorded against this box, so there is nothing to add up. A box entered
+            through the app records its arrival straight away, so this one came in another way —
+            imported, or already here before this screen was.
+          </p>
+        </section>
+      ) : (
         <section className="mt-8" test-data="box-history">
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide">What happened to it</h2>
 
@@ -139,7 +160,7 @@ export default async function EditBatchPage({
             })()}
           </p>
         </section>
-      ) : null}
+      )}
 
       <div className="mt-8 flex flex-col items-center gap-2">
         {box.hasDoseEvents ? (
