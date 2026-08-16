@@ -838,10 +838,26 @@ interface BatchFields {
  * Shared by "add box" and by receiving a shopping item — both describe the same
  * physical thing arriving in the house, so they parse identically.
  */
-function parseBatchFields(formData: FormData): { fields: BatchFields } | { error: string } {
+function parseBatchFields(
+  formData: FormData,
+  /*
+   * A box arriving must hold something — an empty new box is a typo. A box
+   * being corrected may hold nothing at all, because used-up and binned-empty
+   * are ordinary states, and refusing them closed the only door to the rest of
+   * the form. That is not theoretical: a złoty box with no exchange rate sits
+   * outside every euro total until somebody adds the rate, and the one in this
+   * cabinet that needs it most was long since used up — so the screen built to
+   * repair it turned the save away over a quantity nobody was trying to change.
+   */
+  { allowEmpty = false }: { allowEmpty?: boolean } = {},
+): { fields: BatchFields } | { error: string } {
   const quantity = parseUnits(String(formData.get('quantityRemaining') ?? ''));
-  if (quantity === null || quantity <= 0) {
-    return { error: 'Quantity must be a positive number — 30, 32.5 or 32,5 all work.' };
+  if (quantity === null || quantity < 0 || (!allowEmpty && quantity === 0)) {
+    return {
+      error: allowEmpty
+        ? 'Quantity cannot be negative — 0, 30, 32.5 or 32,5 all work.'
+        : 'Quantity must be a positive number — 30, 32.5 or 32,5 all work.',
+    };
   }
 
   let expiryDate: string | null = null;
@@ -1123,7 +1139,9 @@ export async function updateBatch(_prev: FormResult, formData: FormData): Promis
 
   if (!Number.isInteger(id)) return fail('That box no longer exists.');
 
-  const parsed = parseBatchFields(formData);
+  // Empty allowed here: this is the screen that corrects a box, and a used-up
+  // or binned-empty one still has a price, a date and a rate worth fixing.
+  const parsed = parseBatchFields(formData, { allowEmpty: true });
   if ('error' in parsed) return fail(parsed.error);
 
   const before = await db

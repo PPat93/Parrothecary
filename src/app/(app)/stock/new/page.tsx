@@ -1,15 +1,11 @@
 import Link from 'next/link';
-import { todayIso } from '@/domain/date';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
-import { getSuggestedFxRate, getVariantOptions } from '@/lib/queries';
+import { getFxRateHistory, getVariantOptions } from '@/lib/queries';
 import { BatchForm } from './batch-form';
 
 export default async function NewBatchPage() {
-  // The form dates a new box today, so that is the day to price it against.
-  const [variants, suggestedRate] = await Promise.all([
-    getVariantOptions(),
-    getSuggestedFxRate(todayIso()),
-  ]);
+  // Chosen against the date in the form, which the person can still change.
+  const [variants, rateHistory] = await Promise.all([getVariantOptions(), getFxRateHistory()]);
 
   return (
     <div className="mx-auto w-full max-w-lg">
@@ -35,7 +31,7 @@ export default async function NewBatchPage() {
           </p>
         </div>
       ) : (
-        <BatchForm variants={variants} suggestedRate={suggestedRate} />
+        <BatchForm variants={variants} rateHistory={rateHistory} />
       )}
     </div>
   );

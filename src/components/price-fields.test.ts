@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fxRateField } from './price-fields';
-import type { SuggestedFxRate } from '@/lib/queries';
+import type { SuggestedFxRate } from '@/domain/money';
 
 /**
  * Filling the exchange rate in for you is only ever right on an empty field

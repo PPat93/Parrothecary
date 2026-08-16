@@ -1,25 +1,31 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { ErrorText, Field, SubmitButton, TextInput } from '@/components/form';
 import { todayIso } from '@/domain/date';
 import { PriceFields } from '@/components/price-fields';
 import { receiveShoppingItem, type FormResult } from '../../../actions';
-import type { ShoppingRow, SuggestedFxRate } from '@/lib/queries';
+import type { ShoppingRow } from '@/lib/queries';
+import type { FxRateOnDate } from '@/domain/money';
 
 const initialState: FormResult = { error: null };
 
 export function ReceiveForm({
   item,
-  suggestedRate,
+  rateHistory,
 }: {
   item: ShoppingRow;
-  suggestedRate: SuggestedFxRate | null;
+  rateHistory: FxRateOnDate[];
 }) {
   const [state, formAction, pending] = useActionState(receiveShoppingItem, initialState);
   const prev = state.values ?? {};
 
   const expectedUnits = item.quantityPacks * item.packSize;
+
+  // Owned here so the rate below can follow it — see PriceFields.
+  const [purchaseDate, setPurchaseDate] = useState(
+    prev.purchaseDate ?? item.tripCollectionDate ?? todayIso(),
+  );
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -51,8 +57,9 @@ export function ReceiveForm({
         price={prev.price ?? ''}
         currency={prev.currency ?? 'PLN'}
         fxRate={prev.fxRate ?? ''}
-        suggestedRate={suggestedRate}
-          submitted={state.values !== undefined}
+        rateHistory={rateHistory}
+        purchaseDate={purchaseDate}
+        submitted={state.values !== undefined}
       />
 
       {/*
@@ -73,7 +80,8 @@ export function ReceiveForm({
         <TextInput
           name="purchaseDate"
           type="date"
-          defaultValue={prev.purchaseDate ?? item.tripCollectionDate ?? todayIso()}
+          value={purchaseDate}
+          onChange={(event) => setPurchaseDate(event.target.value)}
         />
       </Field>
 

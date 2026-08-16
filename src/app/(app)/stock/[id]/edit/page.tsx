@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { ConfirmButton } from '@/components/confirm-button';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { formatQuantity } from '@/domain/quantity';
-import { getBatch, getBatchHistory, getSuggestedFxRate } from '@/lib/queries';
+import { getBatch, getBatchHistory, getFxRateHistory } from '@/lib/queries';
 import { movementReasonLabel } from '@/lib/labels';
 import { deleteBatch } from '../../../actions';
 import { BatchEditForm } from './batch-edit-form';
@@ -32,11 +32,9 @@ export default async function EditBatchPage({
   const box = await getBatch(Number(id));
   if (!box) notFound();
 
-  const [history, suggestedRate] = await Promise.all([
+  const [history, rateHistory] = await Promise.all([
     getBatchHistory(box.batchId),
-    // Against this box's own purchase date: repairing a 2024 box wants the 2024
-    // rate, not this year's.
-    getSuggestedFxRate(box.purchaseDate),
+    getFxRateHistory(),
   ]);
 
   // Reached from two screens; cancelling and saving should both go back to
@@ -59,7 +57,7 @@ export default async function EditBatchPage({
         {formatQuantity(box.quantityRemaining, box.unitName, box.packSize)}
       </p>
 
-      <BatchEditForm box={box} from={cameFromExpiring ? 'expiring' : null} suggestedRate={suggestedRate} />
+      <BatchEditForm box={box} from={cameFromExpiring ? 'expiring' : null} rateHistory={rateHistory} />
 
       {/*
         Why the number above is what it is.

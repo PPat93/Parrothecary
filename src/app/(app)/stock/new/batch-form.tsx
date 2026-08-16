@@ -8,16 +8,17 @@ import { PriceFields } from '@/components/price-fields';
 import { toneStyle } from '@/components/tone';
 import { todayIso } from '@/domain/date';
 import { addBatch, linkBarcode, resolveScan, type FormResult, type ScanResult } from '../../actions';
-import type { SuggestedFxRate, VariantRow } from '@/lib/queries';
+import type { VariantRow } from '@/lib/queries';
+import type { FxRateOnDate } from '@/domain/money';
 
 const initialState: FormResult = { error: null };
 
 export function BatchForm({
   variants,
-  suggestedRate,
+  rateHistory,
 }: {
   variants: VariantRow[];
-  suggestedRate: SuggestedFxRate | null;
+  rateHistory: FxRateOnDate[];
 }) {
   const [state, formAction, pending] = useActionState(addBatch, initialState);
   const prev = state.values ?? {};
@@ -30,10 +31,22 @@ export function BatchForm({
    * defaultValue the reset restores whatever the server echoed back.
    */
   const [variantId, setVariantId] = useState(defaultVariantId);
+
+  /*
+   * Controlled, because the offered exchange rate follows it. Which means it
+   * needs the same re-sync as the select above: a rejected submit resets the
+   * form, and state that ignores what the server echoed back would show one
+   * date while the box carries another.
+   */
+  const [purchaseDate, setPurchaseDate] = useState(prev.purchaseDate ?? todayIso());
+
   const [seenValues, setSeenValues] = useState(state.values);
   if (state.values !== seenValues) {
     setSeenValues(state.values);
     if (prev.variantId && prev.variantId !== variantId) setVariantId(prev.variantId);
+    if (prev.purchaseDate !== undefined && prev.purchaseDate !== purchaseDate) {
+      setPurchaseDate(prev.purchaseDate);
+    }
   }
 
   const [scanning, setScanning] = useState(false);
@@ -126,7 +139,8 @@ export function BatchForm({
         </Field>
 
         <PriceFields
-          suggestedRate={suggestedRate}
+          rateHistory={rateHistory}
+          purchaseDate={purchaseDate}
           submitted={state.values !== undefined}
           price={prev.price ?? ''}
           currency={prev.currency ?? 'PLN'}
@@ -139,7 +153,12 @@ export function BatchForm({
           trend — and nothing about an empty date field says that.
         */}
         <Field label="Purchase date">
-          <TextInput name="purchaseDate" type="date" defaultValue={prev.purchaseDate ?? todayIso()} />
+          <TextInput
+            name="purchaseDate"
+            type="date"
+            value={purchaseDate}
+            onChange={(event) => setPurchaseDate(event.target.value)}
+          />
         </Field>
 
         <Field label="Batch / lot number" hint="Filled in automatically by a DataMatrix scan.">

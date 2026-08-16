@@ -26,7 +26,7 @@ import type { IsoDate } from '@/domain/date';
 import { todayIso } from '@/domain/date';
 import { isDosable, type ExpiryInput } from '@/domain/expiry';
 import { nextBatchToOpen, totalAvailable, type FefoBatch } from '@/domain/fefo';
-import { money, toEurOrNull, unusedValue } from '@/domain/money';
+import { money, toEurOrNull, unusedValue, type FxRateOnDate } from '@/domain/money';
 import { summariseMovements, type Movement, type MovementSummary } from '@/domain/ledger';
 import { expiresDuringTrip, suggestKit } from '@/domain/travel';
 import { checkBox } from '@/domain/integrity';
@@ -1226,59 +1226,33 @@ export async function getDoseTakersByProduct(
   return map;
 }
 
-export interface SuggestedFxRate {
-  rate: number;
-  /** The purchase date the rate was taken from, so the form can say where it came from. */
-  fromDate: string;
-  /** True when that is the very date being asked about, rather than an earlier one. */
-  sameDay: boolean;
-}
-
 /**
- * The exchange rate to offer for a box bought on a given day.
+ * Every day that has a rate on record, newest first, one entry per day.
  *
- * Restocking happens in runs: eight boxes bought on 2026-03-05 all carry
- * 0,2312, five bought on 2024-10-11 all carry 0,2295. So for all but the first
- * box of a run the app already knows the answer, and asking again — with an
- * empty field, on a phone, twenty boxes in — is how a złoty price ends up with
- * no rate against it and drops out of every euro total.
+ * Small by nature — one row per shopping run, six of them after three years —
+ * so it goes to the form whole and the choice is made there. It has to be: the
+ * right rate depends on the purchase date, and that is a field the person can
+ * still change.
  *
- * Same day first, then the nearest earlier one. Never a later one: a rate from
- * after the purchase is a rate that had not happened yet, and the whole reason
- * this is stored per box is that last year's spend must not move when the rate
- * does.
- *
- * A suggestion only. It is filled into the field where it can be read and
- * changed before saving, never written on the quiet.
+ * Where a day carries two different rates, the last box entered for it wins.
+ * A day normally has one rate across all its boxes, which is the whole reason
+ * this works, but nothing enforces it — and one mistyped rate in a run of eight
+ * would otherwise make the suggestion a coin flip. On a day with two answers,
+ * the later correction is the better guess.
  */
-export async function getSuggestedFxRate(
-  purchaseDate: string | null,
-): Promise<SuggestedFxRate | null> {
-  const dated = and(isNotNull(batches.fxRateToEur), isNotNull(batches.purchaseDate));
-
+export async function getFxRateHistory(): Promise<FxRateOnDate[]> {
   const rows = await db
-    .select({ rate: batches.fxRateToEur, fromDate: batches.purchaseDate })
+    .select({ date: batches.purchaseDate, rate: batches.fxRateToEur, id: batches.id })
     .from(batches)
-    .where(
-      purchaseDate === null
-        ? dated
-        : and(dated, sql`${batches.purchaseDate} <= ${purchaseDate}`),
-    )
-    /*
-     * The id breaks a tie, so the answer is the same every time it is asked.
-     * A day normally carries one rate across all its boxes — that is the whole
-     * reason this works — but nothing enforces it, and one mistyped rate in a
-     * run of eight would otherwise make the suggestion a coin flip. Last
-     * entered wins: on a day with two answers, the later correction is the
-     * better guess.
-     */
-    .orderBy(sql`${batches.purchaseDate} desc`, sql`${batches.id} desc`)
-    .limit(1);
+    .where(and(isNotNull(batches.fxRateToEur), isNotNull(batches.purchaseDate)))
+    .orderBy(sql`${batches.purchaseDate} desc`, sql`${batches.id} desc`);
 
-  const row = rows[0];
-  if (!row || row.rate === null || row.fromDate === null) return null;
-
-  return { rate: row.rate, fromDate: row.fromDate, sameDay: row.fromDate === purchaseDate };
+  const byDate = new Map<string, number>();
+  for (const row of rows) {
+    if (row.date === null || row.rate === null) continue;
+    if (!byDate.has(row.date)) byDate.set(row.date, row.rate);
+  }
+  return [...byDate].map(([date, rate]) => ({ date, rate }));
 }
 
 export async function getBatchesForProducts(

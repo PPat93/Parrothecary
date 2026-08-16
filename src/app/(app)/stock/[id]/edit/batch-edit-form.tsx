@@ -1,10 +1,11 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { ErrorText, Field, SubmitButton, TextInput } from '@/components/form';
 import { PriceFields } from '@/components/price-fields';
 import { updateBatch, type FormResult } from '../../../actions';
-import type { BatchDetail, SuggestedFxRate } from '@/lib/queries';
+import type { BatchDetail } from '@/lib/queries';
+import type { FxRateOnDate } from '@/domain/money';
 
 const initialState: FormResult = { error: null };
 
@@ -24,17 +25,17 @@ function formatExpiryInput(box: BatchDetail): string {
 export function BatchEditForm({
   box,
   from,
-  suggestedRate,
+  rateHistory,
 }: {
   box: BatchDetail;
   from: string | null;
   /*
-   * Only ever seen on a box that has no rate of its own — `PriceFields` leaves
-   * a stored value alone. This is the screen that repairs a złoty box sitting
-   * outside the euro totals, so the rate its neighbours were bought at is
-   * exactly what is wanted here.
+   * Only ever consulted for a box that has no rate of its own — `PriceFields`
+   * leaves a stored value alone. This is the screen that repairs a złoty box
+   * sitting outside the euro totals, so the rate its neighbours were bought at
+   * is exactly what is wanted here.
    */
-  suggestedRate: SuggestedFxRate | null;
+  rateHistory: FxRateOnDate[];
 }) {
   const [state, formAction, pending] = useActionState(updateBatch, initialState);
 
@@ -42,6 +43,17 @@ export function BatchEditForm({
   const prev = state.values ?? {};
   const rejected = state.error !== null;
   const value = (key: string, stored: string) => (rejected ? (prev[key] ?? '') : stored);
+
+  // Controlled, because the offered rate follows it: repairing a 2024 box has
+  // to reach for the 2024 rate, and moving the date has to move the answer.
+  const [purchaseDate, setPurchaseDate] = useState(value('purchaseDate', box.purchaseDate ?? ''));
+  const [seenValues, setSeenValues] = useState(state.values);
+  if (state.values !== seenValues) {
+    setSeenValues(state.values);
+    if (prev.purchaseDate !== undefined && prev.purchaseDate !== purchaseDate) {
+      setPurchaseDate(prev.purchaseDate);
+    }
+  }
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -74,15 +86,17 @@ export function BatchEditForm({
         price={value('price', formatAmount(box.purchasePriceMinor))}
         currency={rejected ? (prev.currency ?? 'PLN') : (box.purchaseCurrency ?? 'PLN')}
         fxRate={value('fxRate', box.fxRateToEur === null ? '' : String(box.fxRateToEur))}
-        suggestedRate={suggestedRate}
-          submitted={state.values !== undefined}
+        rateHistory={rateHistory}
+        purchaseDate={purchaseDate === '' ? null : purchaseDate}
+        submitted={state.values !== undefined}
       />
 
       <Field label="Purchase date">
         <TextInput
           name="purchaseDate"
           type="date"
-          defaultValue={value('purchaseDate', box.purchaseDate ?? '')}
+          value={purchaseDate}
+          onChange={(event) => setPurchaseDate(event.target.value)}
         />
       </Field>
 

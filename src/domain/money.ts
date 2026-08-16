@@ -178,3 +178,53 @@ export function sumMoney(values: Money[], currency: Currency): Money {
   }
   return money(total, currency);
 }
+
+/** A rate that was actually paid, and the day it belonged to. */
+export interface FxRateOnDate {
+  date: string;
+  rate: number;
+}
+
+export interface SuggestedFxRate {
+  rate: number;
+  /** The day the rate was taken from, so the form can say where it came from. */
+  fromDate: string;
+  /** True when that is the day being asked about, rather than an earlier one. */
+  sameDay: boolean;
+}
+
+/**
+ * The rate to offer for a box bought on a given day.
+ *
+ * Restocking happens in runs: eight boxes bought on 2026-03-05 all carry
+ * 0,2312, five bought on 2024-10-11 all carry 0,2295. So for all but the first
+ * box of a run the app already knows the answer, and asking again — empty
+ * field, on a phone, twenty boxes in — is how a złoty price ends up with no
+ * rate against it and drops out of every euro total.
+ *
+ * Same day first, then the nearest earlier one. Never a later one: a rate from
+ * after the purchase had not happened yet, and the whole reason it is stored
+ * per box is that last year's spend must not move when the rate does.
+ *
+ * A pure choice over a handful of dates rather than a query, because the answer
+ * has to change when the person changes the purchase date. Asking the database
+ * once, when the form was drawn, meant a box backdated to an earlier trip kept
+ * the rate of the day the form happened to open with — quietly breaking the one
+ * rule above, on the screen built to uphold it.
+ *
+ * `history` is newest first; `date` null means nothing to go on but the latest.
+ */
+export function suggestFxRate(
+  history: readonly FxRateOnDate[],
+  date: string | null,
+): SuggestedFxRate | null {
+  const usable = date === null ? history : history.filter((entry) => entry.date <= date);
+
+  let best: FxRateOnDate | undefined;
+  for (const entry of usable) {
+    if (best === undefined || entry.date > best.date) best = entry;
+  }
+
+  if (best === undefined) return null;
+  return { rate: best.rate, fromDate: best.date, sameDay: best.date === date };
+}
