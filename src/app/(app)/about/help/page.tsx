@@ -134,6 +134,22 @@ export default function HelpPage() {
           alternatives live. An <em>archived</em> chip means the product is no longer kept — it is
           off the products list and cannot be added to a new box — but what is here is still here.
         </p>
+        <p>
+          <strong>Add box</strong> asks one question worth understanding: whether the box has just
+          arrived or was <em>already in the cupboard</em>. Tick it for stock that was here before
+          the app knew about it, and its history will say so instead of claiming it turned up
+          today. Set the purchase date to when it was really bought while you are there — it opens
+          at today, which would file an old purchase under this year’s spending. A box entered
+          holding less than a full pack is treated as opened, because it plainly is, and that is
+          what keeps it out of the “binned unopened” waste figure later.
+        </p>
+        <p>
+          The pencil on a box opens more than the form: underneath is{' '}
+          <em>what happened to it</em> — every movement in order, each with a running total, ending
+          in whether they add up to what the box says. That is where a box named by the Audit
+          screen as not adding up will show which movement went astray, and it is the only place
+          the whole life of one box can be read in one go.
+        </p>
       </Panel>
 
       <Panel title="Doses" id="doses">
@@ -304,7 +320,9 @@ export default function HelpPage() {
           </span>{' '}
           comes from the purchase history and was complete on day one: what the cupboard is worth,
           spend by year and by trip, what a unit costs now against the first time it was bought,
-          and the waste split.
+          and the waste split. That last one is deliberately two figures and never one total: money
+          spent on boxes binned <em>unopened</em>, which is waste worth reducing, and money left in
+          packs that were opened and used, which mostly is not — you cannot buy half a bottle.
         </p>
         <p>
           <span className="font-medium" style={{ color: 'var(--text)' }}>
@@ -347,6 +365,22 @@ export default function HelpPage() {
         </Term>
         <Term term="The − on a box is disabled">
           The box is empty, or the amount typed is not a number the app can use.
+        </Term>
+        <Term term="A count is refused as too big">
+          The number typed is larger than that box has ever held. A count says what is on the
+          shelf, and a fifty-tablet pack does not hold five hundred — a stray nought would
+          otherwise be recorded as a real difference and quietly enlarge the box. If the box truly
+          holds that much, correct it with the pencil instead.
+        </Term>
+        <Term term="“Add to stock” refuses a delivery">
+          The product was archived after the order went out. Nothing more of a retired product
+          enters the cupboard, so either restore it — the line is still waiting — or clear the
+          line if it is no longer wanted.
+        </Term>
+        <Term term="No “Delete this trip” button">
+          Boxes arrived on it. A box records no trip of its own, so those shopping lines are the
+          only thing saying which restock it came in on, and deleting the trip would take what
+          they cost with it. Unassign the lines one by one first if the trip really has to go.
         </Term>
         <Term term="“Expires” will not switch off">
           Boxes of it have dates written on them. Turning expiry off would make those dates mean

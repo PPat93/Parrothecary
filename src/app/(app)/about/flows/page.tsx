@@ -38,6 +38,12 @@ export default function FlowsPage() {
           <code>received</code>. From that moment it counts towards the cupboard’s value and
           towards what is available for doses.
         </Step>
+        <Step>
+          Unless it did not arrive at all. Ticking <b>already in the cupboard</b> records the same
+          units as <code>opening</code> instead — the word for stock that was here before the app
+          was. Worth reaching for when setting up against a full cupboard, along with the real
+          purchase date, or a shelf of things bought over three years all lands in this one.
+        </Step>
       </Panel>
 
       <Panel title="Buying for a restock">
