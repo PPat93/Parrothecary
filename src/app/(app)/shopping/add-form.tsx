@@ -24,7 +24,17 @@ export function AddShoppingForm({
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <Field label="What to buy">
+        {/*
+          The empty option is what makes `required` mean anything. Without it
+          the browser had nothing blank to land on, so the field opened already
+          showing whichever product sorts first — and a form filled in from the
+          top down (packs, note, Add) put that product on the list without
+          anybody choosing it. The same picker on the product page has always
+          had its "Pick a product…" row; this one was the odd one out, which is
+          also why the action's "Pick which pack to buy" error was unreachable.
+        */}
         <Select name="variantId" required defaultValue={prev.variantId ?? ''}>
+          <option value="">Pick a pack…</option>
           {variants.map((variant) => (
             <option key={variant.id} value={variant.id}>
               {variant.productLabel}

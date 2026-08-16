@@ -1703,7 +1703,7 @@ export async function removeAlternative(formData: FormData): Promise<void> {
 export async function addKitItem(formData: FormData): Promise<void> {
   const tripId = await parseTripId(formData.get('tripId'));
   const productId = Number(formData.get('productId'));
-  if (tripId === null || !Number.isInteger(productId)) return;
+  if (tripId === null || tripId === UNUSABLE_TRIP || !Number.isInteger(productId)) return;
 
   const units = parseUnits(String(formData.get('units') ?? '')) ?? 0;
   if (units < 0 || (units > 0 && !isTrackableQuantity(units))) return;
@@ -1855,7 +1855,19 @@ export async function setBatchStatus(formData: FormData): Promise<void> {
 const MAX_PACKS_PER_LINE = 999;
 
 export async function addShoppingItem(_prev: FormResult, formData: FormData): Promise<FormResult> {
-  const variantId = Number(formData.get('variantId'));
+  /*
+   * Empty is "nothing chosen", not "pack number zero". `Number('')` is 0, which
+   * is a perfectly good integer, so a form submitted without a choice sailed
+   * past the check below and came back with "that pack size no longer exists" —
+   * about a pack the person had never named. The picker now opens on a blank
+   * row, so this is a reachable state rather than a theoretical one.
+   */
+  const variantRaw = String(formData.get('variantId') ?? '').trim();
+  if (variantRaw === '') {
+    return { error: 'Pick which pack to buy.', values: snapshot(formData) };
+  }
+
+  const variantId = Number(variantRaw);
   const quantityPacks = Number(formData.get('quantityPacks') ?? 1);
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
   const tripId = await parseTripId(formData.get('tripId'), 'restock');
@@ -1906,6 +1918,20 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
     };
   }
 
+  /*
+   * Said, not swallowed. A stale form naming a trip that has since been deleted
+   * used to add the line with no trip at all — off the restock it was chosen
+   * for, out of its estimate, and silently. The pack-no-longer-exists case one
+   * block up has always been reported; this is the same kind of staleness and
+   * gets the same treatment.
+   */
+  if (tripId === UNUSABLE_TRIP) {
+    return {
+      error: 'That trip is no longer there. Pick another one, or "No trip".',
+      values: snapshot(formData),
+    };
+  }
+
   await db.insert(shoppingItems).values({ variantId, quantityPacks, notes, tripId });
   refreshAll();
   return { error: null, ok: true };
@@ -1925,12 +1951,12 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
 async function parseTripId(
   raw: FormDataEntryValue | null,
   kind?: (typeof TRIP_KINDS)[number],
-): Promise<number | null> {
+): Promise<number | null | typeof UNUSABLE_TRIP> {
   const value = String(raw ?? '').trim();
   if (value === '') return null;
 
   const id = Number(value);
-  if (!Number.isInteger(id)) return null;
+  if (!Number.isInteger(id)) return UNUSABLE_TRIP;
 
   /*
    * Optionally the right sort of trip, too. The picker only ever offers planned
@@ -1943,17 +1969,33 @@ async function parseTripId(
     .from(trips)
     .where(kind === undefined ? eq(trips.id, id) : and(eq(trips.id, id), eq(trips.kind, kind)))
     .limit(1);
-  return rows[0]?.id ?? null;
+  return rows[0]?.id ?? UNUSABLE_TRIP;
 }
+
+/**
+ * A trip was named, and it cannot be used: deleted since the form was drawn, or
+ * the wrong sort of trip for what is being written. Distinct from null, which
+ * means "no trip", a deliberate and ordinary answer.
+ */
+const UNUSABLE_TRIP = Symbol('unusable trip');
 
 /** Move a line to another trip, or off trips entirely. */
 export async function setShoppingTrip(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
 
+  const tripId = await parseTripId(formData.get('tripId'), 'restock');
+  /*
+   * Moving a line to a trip that has gone is not the same as taking it off
+   * trips, and doing the second when the first was asked for is how a line
+   * disappears from the restock it was meant for. Leave it where it is; the
+   * list will be showing the truth again by the time this returns.
+   */
+  if (tripId === UNUSABLE_TRIP) return;
+
   await db
     .update(shoppingItems)
-    .set({ tripId: await parseTripId(formData.get('tripId'), 'restock'), updatedAt: new Date() })
+    .set({ tripId, updatedAt: new Date() })
     .where(eq(shoppingItems.id, id));
   refreshAll();
 }
@@ -2782,7 +2824,7 @@ export async function addAuditSelection(formData: FormData): Promise<void> {
    * on the foreign key and put a crash page in front of a completed audit.
    */
   const tripId = await parseTripId(formData.get('tripId'));
-  if (tripId === null) redirect('/trips');
+  if (tripId === null || tripId === UNUSABLE_TRIP) redirect('/trips');
 
   /*
    * And it has to be a restock. This writes shopping lines, and a holiday with
