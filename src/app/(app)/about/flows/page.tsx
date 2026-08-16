@@ -38,6 +38,12 @@ export default function FlowsPage() {
           <code>received</code>. From that moment it counts towards the cupboard’s value and
           towards what is available for doses.
         </Step>
+        <Step>
+          Unless it did not arrive at all. Ticking <b>already in the cupboard</b> records the same
+          units as <code>opening</code> instead — the word for stock that was here before the app
+          was. Worth reaching for when setting up against a full cupboard, along with the real
+          purchase date, or a shelf of things bought over three years all lands in this one.
+        </Step>
       </Panel>
 
       <Panel title="Buying for a restock">
@@ -155,6 +161,19 @@ export default function FlowsPage() {
         <Step>
           It warns when you want more than the cupboard holds, and when the box FEFO would reach
           for expires before you are home. Ticking a line off does not change any stock.
+        </Step>
+        <Step>
+          While you are away this app is still at home — it lives on the house network, so unless
+          you are on the household VPN there is nothing to tap. Doses taken on the trip simply go
+          unrecorded, and the cupboard carries on believing it has them.
+        </Step>
+        <Step>
+          So the trip ends back on <b>Stock</b>. Confirm whatever the dose board still shows —
+          it reaches back three days, or one full interval for anything less frequent — then take
+          the rest off with the stepper: type the amount and press <b>−</b> on the box that
+          travelled. Eleven days at two a day is one press of 22, recorded as taken, which is what
+          it was. Only reach for <b>Count</b> if you are not sure what went: that files the gap as
+          drift rather than claiming it was swallowed.
         </Step>
       </Panel>
 
