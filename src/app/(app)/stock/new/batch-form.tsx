@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useActionState } from 'react';
 import { BarcodeScanner } from '@/components/barcode-scanner';
-import { ErrorText, Field, Select, SubmitButton, TextInput } from '@/components/form';
+import { Checkbox, ErrorText, Field, Select, SubmitButton, TextInput } from '@/components/form';
 import { PriceFields } from '@/components/price-fields';
 import { toneStyle } from '@/components/tone';
 import { todayIso } from '@/domain/date';
@@ -168,6 +168,19 @@ export function BatchForm({
             onChange={(event) => setPurchaseDate(event.target.value)}
           />
         </Field>
+
+        {/*
+          The ledger has always had a word for a box that was in the drawer
+          before the app existed — "already in the cupboard when this started" —
+          and no way to say it. Setting up against a full cupboard is the case
+          it was written for, and without this every box entered that day would
+          have read "arrived" beside a purchase date from two years earlier.
+        */}
+        <Checkbox
+          name="alreadyHad"
+          label="Already in the cupboard (not a new arrival)"
+          defaultChecked={state.values !== undefined && prev.alreadyHad === 'on'}
+        />
 
         <Field label="Batch / lot number" hint="Filled in automatically by a DataMatrix scan.">
           <TextInput name="lotNumber" defaultValue={prev.lotNumber ?? ''} />

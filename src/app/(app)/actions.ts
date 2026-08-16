@@ -1041,9 +1041,22 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
   if ('error' in parsed) return fail(parsed.error);
 
   /*
-   * The box and the row saying it arrived go in together. A torn write here
-   * would leave the ledger disagreeing with the shelf, which is the one thing
-   * it exists not to do.
+   * Did this box arrive, or was it already in the drawer?
+   *
+   * The ledger has had both words since it was written — `opening` reads back
+   * as "already in the cupboard when this started" — and nothing in the app
+   * could ever write the second one. Every box entered by hand was recorded as
+   * having arrived that day, which is exactly wrong for the case that matters
+   * most: setting the app up against a cupboard that is already full. Sixteen
+   * boxes would each have said "arrived" on the day they were typed in, with a
+   * purchase date from two years earlier sitting beside it in the same history.
+   */
+  const alreadyHad = formData.get('alreadyHad') === 'on';
+
+  /*
+   * The box and the row saying where it came from go in together. A torn write
+   * here would leave the ledger disagreeing with the shelf, which is the one
+   * thing it exists not to do.
    */
   try {
     db.transaction((tx) => {
@@ -1057,7 +1070,11 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
       if (batchId === undefined) throw new Error('insert produced no row');
 
       tx.insert(stockMovements)
-        .values({ batchId, delta: parsed.fields.quantityRemaining, reason: 'received' })
+        .values({
+          batchId,
+          delta: parsed.fields.quantityRemaining,
+          reason: alreadyHad ? 'opening' : 'received',
+        })
         .run();
     });
   } catch {
