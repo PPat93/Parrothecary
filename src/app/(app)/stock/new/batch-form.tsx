@@ -8,11 +8,17 @@ import { PriceFields } from '@/components/price-fields';
 import { toneStyle } from '@/components/tone';
 import { todayIso } from '@/domain/date';
 import { addBatch, linkBarcode, resolveScan, type FormResult, type ScanResult } from '../../actions';
-import type { VariantRow } from '@/lib/queries';
+import type { SuggestedFxRate, VariantRow } from '@/lib/queries';
 
 const initialState: FormResult = { error: null };
 
-export function BatchForm({ variants }: { variants: VariantRow[] }) {
+export function BatchForm({
+  variants,
+  suggestedRate,
+}: {
+  variants: VariantRow[];
+  suggestedRate: SuggestedFxRate | null;
+}) {
   const [state, formAction, pending] = useActionState(addBatch, initialState);
   const prev = state.values ?? {};
   const defaultVariantId = prev.variantId ?? String(variants[0]?.id ?? '');
@@ -120,6 +126,7 @@ export function BatchForm({ variants }: { variants: VariantRow[] }) {
         </Field>
 
         <PriceFields
+          suggestedRate={suggestedRate}
           price={prev.price ?? ''}
           currency={prev.currency ?? 'PLN'}
           fxRate={prev.fxRate ?? ''}

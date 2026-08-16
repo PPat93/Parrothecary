@@ -4,7 +4,7 @@ import { useActionState } from 'react';
 import { ErrorText, Field, SubmitButton, TextInput } from '@/components/form';
 import { PriceFields } from '@/components/price-fields';
 import { updateBatch, type FormResult } from '../../../actions';
-import type { BatchDetail } from '@/lib/queries';
+import type { BatchDetail, SuggestedFxRate } from '@/lib/queries';
 
 const initialState: FormResult = { error: null };
 
@@ -21,7 +21,21 @@ function formatExpiryInput(box: BatchDetail): string {
   return box.expiryPrecision === 'month' ? `${month}.${year}` : `${day}.${month}.${year}`;
 }
 
-export function BatchEditForm({ box, from }: { box: BatchDetail; from: string | null }) {
+export function BatchEditForm({
+  box,
+  from,
+  suggestedRate,
+}: {
+  box: BatchDetail;
+  from: string | null;
+  /*
+   * Only ever seen on a box that has no rate of its own — `PriceFields` leaves
+   * a stored value alone. This is the screen that repairs a złoty box sitting
+   * outside the euro totals, so the rate its neighbours were bought at is
+   * exactly what is wanted here.
+   */
+  suggestedRate: SuggestedFxRate | null;
+}) {
   const [state, formAction, pending] = useActionState(updateBatch, initialState);
 
   // On a rejected submit show what they typed; otherwise what is stored.
@@ -60,6 +74,7 @@ export function BatchEditForm({ box, from }: { box: BatchDetail; from: string | 
         price={value('price', formatAmount(box.purchasePriceMinor))}
         currency={rejected ? (prev.currency ?? 'PLN') : (box.purchaseCurrency ?? 'PLN')}
         fxRate={value('fxRate', box.fxRateToEur === null ? '' : String(box.fxRateToEur))}
+        suggestedRate={suggestedRate}
       />
 
       <Field label="Purchase date">

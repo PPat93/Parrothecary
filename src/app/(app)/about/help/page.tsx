@@ -314,6 +314,13 @@ export default function HelpPage() {
           exchange rate recorded, so the total is a floor rather than a sum. Adding a rate to the
           box makes it exact.
         </p>
+        <p>
+          The rate arrives filled in — whatever the other boxes bought that day were priced at, or
+          failing that the last rate recorded before then. Never a later one: the rate is kept per
+          box so that last year’s spend does not move when the rate does. It is a suggestion sitting
+          in the field, so change it if that day was different, and clear it to leave the price in
+          złoty.
+        </p>
       </Panel>
 
       <Panel title="Why won’t it let me?" id="refusals">

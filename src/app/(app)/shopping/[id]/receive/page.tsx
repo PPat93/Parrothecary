@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
-import { getShoppingItem } from '@/lib/queries';
+import { getShoppingItem, getSuggestedFxRate } from '@/lib/queries';
 import { ReceiveForm } from './receive-form';
 
 export default async function ReceivePage({ params }: { params: Promise<{ id: string }> }) {
@@ -9,6 +9,10 @@ export default async function ReceivePage({ params }: { params: Promise<{ id: st
   const item = await getShoppingItem(Number(id));
 
   if (!item) notFound();
+
+  // The date the form will default to, so the rate offered belongs to the same
+  // shopping run as the box being entered.
+  const suggestedRate = await getSuggestedFxRate(item.tripCollectionDate);
 
   // Settled lines have already produced their box, or explicitly never will.
   // Offering the form again is how you end up with the same delivery in stock
@@ -64,7 +68,7 @@ export default async function ReceivePage({ params }: { params: Promise<{ id: st
             becomes a real box in the cupboard.
           </p>
 
-          <ReceiveForm item={item} />
+          <ReceiveForm item={item} suggestedRate={suggestedRate} />
         </>
       )}
     </div>

@@ -1,5 +1,6 @@
 import { Field, Select, TextInput } from '@/components/form';
 import { CURRENCIES } from '@/db/schema';
+import type { SuggestedFxRate } from '@/lib/queries';
 
 /**
  * What a box cost: amount, currency, and the rate that ties the two together.
@@ -17,11 +18,27 @@ export function PriceFields({
   price,
   currency,
   fxRate,
+  suggestedRate = null,
 }: {
   price: string;
   currency: string;
   fxRate: string;
+  /**
+   * What this box's neighbours were bought at. Filled into the field when there
+   * is nothing there yet — see `getSuggestedFxRate` for why the app usually
+   * already knows this, and why it is offered rather than applied.
+   */
+  suggestedRate?: SuggestedFxRate | null;
 }) {
+  // Comma, like every other number this app shows and accepts.
+  const suggested = suggestedRate === null ? '' : String(suggestedRate.rate).replace('.', ',');
+  const value = fxRate === '' ? suggested : fxRate;
+
+  const hint =
+    suggestedRate !== null && fxRate === ''
+      ? `Filled in from ${suggestedRate.sameDay ? 'the other boxes bought that day' : `the last rate recorded, on ${suggestedRate.fromDate}`}. Change it if it was different, or clear it to leave this price in złoty.`
+      : 'Złoty only: what one złoty was worth in euro that day, around 0,23. Leave it blank and this price stays in złoty, out of the euro totals.';
+
   return (
     <>
       <div className="grid grid-cols-[1fr_auto] gap-3">
@@ -39,11 +56,8 @@ export function PriceFields({
         </Field>
       </div>
 
-      <Field
-        label="Rate to euro"
-        hint="Złoty only: what one złoty was worth in euro that day, around 0,23. Leave it blank and this price stays in złoty, out of the euro totals."
-      >
-        <TextInput name="fxRate" inputMode="decimal" placeholder="0,23" defaultValue={fxRate} />
+      <Field label="Rate to euro" hint={hint}>
+        <TextInput name="fxRate" inputMode="decimal" placeholder="0,23" defaultValue={value} />
       </Field>
     </>
   );

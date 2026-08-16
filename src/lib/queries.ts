@@ -1226,6 +1226,53 @@ export async function getDoseTakersByProduct(
   return map;
 }
 
+export interface SuggestedFxRate {
+  rate: number;
+  /** The purchase date the rate was taken from, so the form can say where it came from. */
+  fromDate: string;
+  /** True when that is the very date being asked about, rather than an earlier one. */
+  sameDay: boolean;
+}
+
+/**
+ * The exchange rate to offer for a box bought on a given day.
+ *
+ * Restocking happens in runs: eight boxes bought on 2026-03-05 all carry
+ * 0,2312, five bought on 2024-10-11 all carry 0,2295. So for all but the first
+ * box of a run the app already knows the answer, and asking again — with an
+ * empty field, on a phone, twenty boxes in — is how a złoty price ends up with
+ * no rate against it and drops out of every euro total.
+ *
+ * Same day first, then the nearest earlier one. Never a later one: a rate from
+ * after the purchase is a rate that had not happened yet, and the whole reason
+ * this is stored per box is that last year's spend must not move when the rate
+ * does.
+ *
+ * A suggestion only. It is filled into the field where it can be read and
+ * changed before saving, never written on the quiet.
+ */
+export async function getSuggestedFxRate(
+  purchaseDate: string | null,
+): Promise<SuggestedFxRate | null> {
+  const dated = and(isNotNull(batches.fxRateToEur), isNotNull(batches.purchaseDate));
+
+  const rows = await db
+    .select({ rate: batches.fxRateToEur, fromDate: batches.purchaseDate })
+    .from(batches)
+    .where(
+      purchaseDate === null
+        ? dated
+        : and(dated, sql`${batches.purchaseDate} <= ${purchaseDate}`),
+    )
+    .orderBy(sql`${batches.purchaseDate} desc`)
+    .limit(1);
+
+  const row = rows[0];
+  if (!row || row.rate === null || row.fromDate === null) return null;
+
+  return { rate: row.rate, fromDate: row.fromDate, sameDay: row.fromDate === purchaseDate };
+}
+
 export async function getBatchesForProducts(
   productIds: number[],
 ): Promise<Map<number, FefoBatch[]>> {

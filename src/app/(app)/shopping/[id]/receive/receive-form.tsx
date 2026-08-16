@@ -5,11 +5,17 @@ import { ErrorText, Field, SubmitButton, TextInput } from '@/components/form';
 import { todayIso } from '@/domain/date';
 import { PriceFields } from '@/components/price-fields';
 import { receiveShoppingItem, type FormResult } from '../../../actions';
-import type { ShoppingRow } from '@/lib/queries';
+import type { ShoppingRow, SuggestedFxRate } from '@/lib/queries';
 
 const initialState: FormResult = { error: null };
 
-export function ReceiveForm({ item }: { item: ShoppingRow }) {
+export function ReceiveForm({
+  item,
+  suggestedRate,
+}: {
+  item: ShoppingRow;
+  suggestedRate: SuggestedFxRate | null;
+}) {
   const [state, formAction, pending] = useActionState(receiveShoppingItem, initialState);
   const prev = state.values ?? {};
 
@@ -45,6 +51,7 @@ export function ReceiveForm({ item }: { item: ShoppingRow }) {
         price={prev.price ?? ''}
         currency={prev.currency ?? 'PLN'}
         fxRate={prev.fxRate ?? ''}
+        suggestedRate={suggestedRate}
       />
 
       {/*
