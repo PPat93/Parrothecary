@@ -1490,6 +1490,19 @@ export interface ScheduledProduct {
  * Deliberately not filtered by stock: a product with nothing left is the most
  * important row in a "what do we need to order" list, and a query built from
  * the stock table would silently drop it.
+ *
+ * Archived products ARE filtered, because this feeds a list of things to order
+ * and an archived product cannot be ordered — the shopping form refuses it by
+ * name and the picker never offers it. Without this the trip page asked for
+ * fifty tablets of a retired product in red, while the audit worksheet beside
+ * it — which has always filtered them — showed nothing to tick and the shopping
+ * list would not take it. Three answers to one question.
+ *
+ * Reachable because archiving only refuses a course that is *running*: a course
+ * that starts next month leaves the product free to retire, and then quietly
+ * comes due. The dose board still shows it, badged "archived product", which is
+ * where that disagreement belongs — with the person whose dose it is, not in a
+ * shopping plan that cannot act on it.
  */
 export async function getScheduledProducts(): Promise<ScheduledProduct[]> {
   const rows = await db
@@ -1507,7 +1520,13 @@ export async function getScheduledProducts(): Promise<ScheduledProduct[]> {
     .from(doseSchedules)
     .innerJoin(products, eq(doseSchedules.productId, products.id))
     .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
-    .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)))
+    .where(
+      and(
+        isNull(doseSchedules.archivedAt),
+        isNull(householdMembers.archivedAt),
+        isNull(products.archivedAt),
+      ),
+    )
     .orderBy(byName);
 
   const map = new Map<number, ScheduledProduct>();
