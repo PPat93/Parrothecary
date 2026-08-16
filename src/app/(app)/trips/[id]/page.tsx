@@ -321,12 +321,30 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                 style={{ borderColor: 'var(--border)' }}
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
+                  <p className="text-sm font-medium break-words">
                     {item.name}
                     {item.strength ? (
                       <span className="font-normal" style={{ color: 'var(--muted)' }}>
                         {' '}
                         {item.strength}
+                      </span>
+                    ) : null}
+                    {/*
+                      The shopping list badges these and this page did not, on
+                      the same line for the same product — so a trip could sit
+                      there planning to collect something the app will refuse to
+                      take into stock, and say nothing about it. Retiring a
+                      product does not clear the lines already on a trip; this
+                      is the page you read before ordering.
+                    */}
+                    {item.productArchivedAt !== null ? (
+                      <span
+                        className="ml-2 inline-flex shrink-0 items-center rounded-md px-2 py-0.5 align-middle text-xs font-medium"
+                        test-data="archived-product"
+                        style={{ background: 'var(--color-warning)', color: 'black' }}
+                        title="This product is archived, so this cannot be added to stock when it arrives. Restore the product, or clear the line from the shopping list."
+                      >
+                        archived
                       </span>
                     ) : null}
                   </p>
