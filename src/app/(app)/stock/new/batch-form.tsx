@@ -179,6 +179,14 @@ export function BatchForm({
         <Checkbox
           name="alreadyHad"
           label="Already in the cupboard (not a new arrival)"
+          /*
+           * The date above defaults to today, which is right for a box that
+           * just came in and wrong for every box this tick describes. Entering
+           * a full cupboard at setup without noticing would file three years of
+           * purchases as this year's spending — the figure the money page leads
+           * with. Cheap to say, expensive to discover later.
+           */
+          hint="Set the purchase date to when you actually bought it — it starts at today, which would count an old purchase as this year's spending."
           defaultChecked={state.values !== undefined && prev.alreadyHad === 'on'}
         />
 
