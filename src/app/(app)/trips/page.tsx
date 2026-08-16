@@ -80,9 +80,20 @@ function Section({
                                     {trip.kind === 'travel'
                                         ? `away ${trip.collectionDate} → ${trip.returnDate ?? '?'}`
                                         : `collect ${trip.collectionDate}`}
-                                    {trip.itemCount > 0
-                                        ? ` · ${trip.itemCount} ${trip.itemCount === 1 ? 'item' : 'items'}`
-                                        : ' · nothing on the list yet'}
+                                    {/*
+                                      A holiday's list is its packing list. It
+                                      cannot hold shopping lines at all — those
+                                      are refused — so counting them told every
+                                      holiday it had "nothing on the list yet"
+                                      however full the bag was.
+                                    */}
+                                    {trip.kind === 'travel'
+                                        ? trip.kitCount > 0
+                                            ? ` · ${trip.kitCount} in the bag`
+                                            : ' · nothing packed yet'
+                                        : trip.itemCount > 0
+                                            ? ` · ${trip.itemCount} ${trip.itemCount === 1 ? 'item' : 'items'}`
+                                            : ' · nothing on the list yet'}
                                     {trip.spentMinorEur > 0
                                         ? ` · ${formatMoney(money(trip.spentMinorEur, 'EUR'), {showCurrency: true})}`
                                         : ''}

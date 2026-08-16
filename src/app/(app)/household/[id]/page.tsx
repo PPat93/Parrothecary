@@ -98,7 +98,21 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
                     <ConfirmButton
                       label="Remove"
                       title="Remove this schedule?"
-                      message={`${s.productName} will no longer show on the daily board. If a dose was ever confirmed against it, that history is kept and the schedule is only retired, not erased; otherwise it is deleted outright.`}
+                      /*
+                        The board is the only place a confirmed dose can be
+                        undone from, and removing the schedule takes it off the
+                        board — so any undo still within reach goes with it.
+                        Tapped by mistake, that leaves the tablets deducted and
+                        the dose counted in the usage figures with nothing left
+                        to reverse it. Said before the tap, and only when there
+                        is actually something to lose.
+                      */
+                      message={
+                        `${s.productName} will no longer show on the daily board. If a dose was ever confirmed against it, that history is kept and the schedule is only retired, not erased; otherwise it is deleted outright.` +
+                        (s.undoableDoses > 0
+                          ? ` ${s.undoableDoses} recently confirmed ${s.undoableDoses === 1 ? 'dose is' : 'doses are'} still undoable on the board — undo ${s.undoableDoses === 1 ? 'it' : 'them'} first if any were tapped by mistake, because that will not be possible afterwards.`
+                          : '')
+                      }
                       confirmLabel="Yes, remove it"
                       tone="critical"
                     />

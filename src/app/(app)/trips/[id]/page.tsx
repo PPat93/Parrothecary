@@ -66,6 +66,25 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
     .filter((row) => row.shortBy > 0)
     .sort((a, b) => b.shortBy - a.shortBy);
 
+  /*
+   * Packs already on this trip's list, per product.
+   *
+   * The worksheet has always judged "already handled" per product rather than
+   * per pack — the sixties being on the list means this product is dealt with,
+   * whichever size it was — and it marks those rows so you do not order them
+   * twice. This page asked the same question and answered it without looking:
+   * three of trip 7's four shortfalls were already ordered, and all four sat
+   * here in red, a few hundred pixels above the very list that covered them.
+   *
+   * Terminal lines are left out for the same reason the worksheet leaves them
+   * out: something that never arrived is not on order any more.
+   */
+  const onList = new Map<number, number>();
+  for (const item of trip.items) {
+    if (item.status !== 'to_buy' && item.status !== 'ordered' && item.status !== 'arrived') continue;
+    onList.set(item.productId, (onList.get(item.productId) ?? 0) + item.quantityPacks);
+  }
+
   const days = trip.orderByDate ? daysUntilOrderBy(trip.orderByDate, today) : null;
 
   return (
@@ -254,15 +273,28 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                       {row.schedules.length > 1 ? ` across ${row.schedules.length} schedules` : ''}
                     </p>
                   </div>
-                  <span
-                    className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium tabular-nums"
-                    style={{
-                      background: 'color-mix(in oklch, var(--color-critical) 18%, transparent)',
-                      color: 'var(--color-critical)',
-                    }}
-                  >
-                    {formatQuantity(row.shortBy, row.unitName)} short
-                  </span>
+                  {onList.has(row.productId) ? (
+                    <span
+                      className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium tabular-nums"
+                      style={{
+                        background: 'color-mix(in oklch, var(--color-ok) 18%, transparent)',
+                        color: 'var(--color-ok)',
+                      }}
+                      title={`${formatQuantity(row.shortBy, row.unitName)} short, and already on this trip's list.`}
+                    >
+                      {onList.get(row.productId)} on the list
+                    </span>
+                  ) : (
+                    <span
+                      className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium tabular-nums"
+                      style={{
+                        background: 'color-mix(in oklch, var(--color-critical) 18%, transparent)',
+                        color: 'var(--color-critical)',
+                      }}
+                    >
+                      {formatQuantity(row.shortBy, row.unitName)} short
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -289,12 +321,30 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                 style={{ borderColor: 'var(--border)' }}
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
+                  <p className="text-sm font-medium break-words">
                     {item.name}
                     {item.strength ? (
                       <span className="font-normal" style={{ color: 'var(--muted)' }}>
                         {' '}
                         {item.strength}
+                      </span>
+                    ) : null}
+                    {/*
+                      The shopping list badges these and this page did not, on
+                      the same line for the same product — so a trip could sit
+                      there planning to collect something the app will refuse to
+                      take into stock, and say nothing about it. Retiring a
+                      product does not clear the lines already on a trip; this
+                      is the page you read before ordering.
+                    */}
+                    {item.productArchivedAt !== null ? (
+                      <span
+                        className="ml-2 inline-flex shrink-0 items-center rounded-md px-2 py-0.5 align-middle text-xs font-medium"
+                        test-data="archived-product"
+                        style={{ background: 'var(--color-warning)', color: 'black' }}
+                        title="This product is archived, so this cannot be added to stock when it arrives. Restore the product, or clear the line from the shopping list."
+                      >
+                        archived
                       </span>
                     ) : null}
                   </p>

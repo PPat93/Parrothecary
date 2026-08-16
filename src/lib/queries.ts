@@ -23,14 +23,15 @@ import {
   variants,
 } from '@/db/schema';
 import type { IsoDate } from '@/domain/date';
-import { todayIso } from '@/domain/date';
+import { addDays, todayIso } from '@/domain/date';
 import { isDosable, type ExpiryInput } from '@/domain/expiry';
 import { nextBatchToOpen, totalAvailable, type FefoBatch } from '@/domain/fefo';
 import { money, toEurOrNull, unusedValue, type FxRateOnDate } from '@/domain/money';
 import { summariseMovements, type Movement, type MovementSummary } from '@/domain/ledger';
 import { expiresDuringTrip, suggestKit } from '@/domain/travel';
 import { checkBox } from '@/domain/integrity';
-import { unitsDueBetween } from '@/domain/dosing';
+import { barcodeVariants } from '@/domain/barcode';
+import { doseWindowDays, HISTORY_DAYS, unitsDueBetween } from '@/domain/dosing';
 
 /**
  * SQLite compares TEXT byte-by-byte by default, so every lowercase name sorts
@@ -575,6 +576,13 @@ export interface BatchDetail extends StockRow {
   hasDoseEvents: boolean;
   /** Received against a shopping line, so it is a purchase record. */
   cameFromAnOrder: boolean;
+  /**
+   * The most this box could hold — its pack, or more if more ever came in.
+   *
+   * Here so the history can apply the same integrity rule the Audit screen and
+   * the check script apply, rather than a narrower one of its own.
+   */
+  capacity: number;
 }
 
 /** One box, with everything its edit form needs. */
@@ -683,6 +691,7 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
       purchasePriceMinor: batches.purchasePriceMinor,
       purchaseCurrency: batches.purchaseCurrency,
       fxRateToEur: batches.fxRateToEur,
+      capacity: unitsWhenFull,
     })
     .from(batches)
     .innerJoin(variants, eq(batches.variantId, variants.id))
@@ -722,10 +731,17 @@ export async function getBatch(id: number): Promise<BatchDetail | null> {
  * scanner offers to attach it, and the cabinet teaches itself.
  */
 export async function findVariantByBarcode(code: string): Promise<VariantRow | null> {
+  /*
+   * Matched against every way the same code can be written, not just the
+   * canonical one — see `barcodeVariants`. A catalogue holding a twelve-digit
+   * UPC-A or a fourteen-digit GTIN is not wrong, it is just written differently
+   * from what a camera hands back, and an exact match made those packs
+   * permanently unrecognisable.
+   */
   const rows = await db
     .select({ variantId: variantBarcodes.variantId })
     .from(variantBarcodes)
-    .where(eq(variantBarcodes.code, code))
+    .where(inArray(variantBarcodes.code, barcodeVariants(code)))
     .limit(1);
 
   const variantId = rows[0]?.variantId;
@@ -1005,6 +1021,16 @@ export interface MemberScheduleRow {
   startDate: string;
   endDate: string | null;
   notes: string | null;
+  /**
+   * Confirmed doses still inside the window the dose board draws pills for —
+   * the ones you could still tap to undo.
+   *
+   * Removing a schedule takes it off the board, and the board is the only place
+   * a dose can be undone from, so those undos go with it. Counted here so the
+   * confirmation can say how many are about to become permanent instead of
+   * finding out afterwards.
+   */
+  undoableDoses: number;
 }
 
 export interface HouseholdMemberDetail extends HouseholdMemberRow {
@@ -1047,6 +1073,34 @@ export async function getHouseholdMember(id: number): Promise<HouseholdMemberDet
     .where(and(eq(doseSchedules.memberId, id), isNull(doseSchedules.archivedAt)))
     .orderBy(sql`${products.name} collate nocase`);
 
+  /*
+   * Doses still within reach of the board, per schedule. One query for all of
+   * them, cut at the widest window any of these schedules draws, then narrowed
+   * per schedule below — the same `doseWindowDays` the board itself uses, so
+   * "still undoable" here means exactly what it means there.
+   */
+  const today = todayIso();
+  const widest = Math.max(HISTORY_DAYS, ...scheduleRows.map(doseWindowDays));
+  const recentDoses =
+    scheduleRows.length === 0
+      ? []
+      : await db
+          .selectDistinct({
+            scheduleId: doseEvents.scheduleId,
+            date: doseEvents.date,
+            occurrence: doseEvents.occurrence,
+          })
+          .from(doseEvents)
+          .where(
+            and(
+              inArray(
+                doseEvents.scheduleId,
+                scheduleRows.map((row) => row.id),
+              ),
+              sql`${doseEvents.date} >= ${addDays(today, -(widest - 1))}`,
+            ),
+          );
+
   // Deliberately over ALL schedules, including already-removed ones — a
   // schedule that logged doses and was then removed still means this person
   // has real history, which is what blocks a permanent delete.
@@ -1071,7 +1125,14 @@ export async function getHouseholdMember(id: number): Promise<HouseholdMemberDet
     archivedAt: member.archivedAt,
     activeScheduleCount: scheduleRows.length,
     hasDoseEvents,
-    schedules: scheduleRows,
+    schedules: scheduleRows.map((row) => ({
+      ...row,
+      undoableDoses: recentDoses.filter(
+        (dose) =>
+          dose.scheduleId === row.id &&
+          dose.date >= addDays(today, -(doseWindowDays(row) - 1)),
+      ).length,
+    })),
   };
 }
 
@@ -1331,6 +1392,12 @@ export interface TripRow {
   notes: string | null;
   /** Shopping lines assigned to this trip, whatever their status. */
   itemCount: number;
+  /**
+   * Things on the packing list. A holiday cannot carry shopping lines at all,
+   * so `itemCount` is always zero for one and the list said "nothing on the
+   * list yet" however full the bag was.
+   */
+  kitCount: number;
   /** Euro actually spent: boxes received against this trip. */
   spentMinorEur: number;
   /** Boxes that figure had to leave out — złoty with no rate recorded. */
@@ -1383,7 +1450,23 @@ export async function getTrips(): Promise<TripRow[]> {
     // Soonest collection first: the next trip is the one you act on.
     .orderBy(asc(trips.collectionDate));
 
-  return rows;
+  /*
+   * Packing lists counted separately rather than as a third join.
+   *
+   * The spend above is a `sum` over the joined rows, and joining a second
+   * one-to-many would multiply it by however many things were in the bag. It
+   * happens to come to zero today, because a trip that carries a packing list
+   * carries no purchases — but that is a coincidence holding the figure up, not
+   * a rule, and one query for the whole page is cheap enough not to lean on it.
+   */
+  const kits = await db
+    .select({ tripId: travelKitItems.tripId, kitCount: sql<number>`count(*)` })
+    .from(travelKitItems)
+    .groupBy(travelKitItems.tripId);
+
+  const kitByTrip = new Map(kits.map((row) => [row.tripId, row.kitCount]));
+
+  return rows.map((row) => ({ ...row, kitCount: kitByTrip.get(row.id) ?? 0 }));
 }
 
 /**
@@ -1490,6 +1573,19 @@ export interface ScheduledProduct {
  * Deliberately not filtered by stock: a product with nothing left is the most
  * important row in a "what do we need to order" list, and a query built from
  * the stock table would silently drop it.
+ *
+ * Archived products ARE filtered, because this feeds a list of things to order
+ * and an archived product cannot be ordered — the shopping form refuses it by
+ * name and the picker never offers it. Without this the trip page asked for
+ * fifty tablets of a retired product in red, while the audit worksheet beside
+ * it — which has always filtered them — showed nothing to tick and the shopping
+ * list would not take it. Three answers to one question.
+ *
+ * Reachable because archiving only refuses a course that is *running*: a course
+ * that starts next month leaves the product free to retire, and then quietly
+ * comes due. The dose board still shows it, badged "archived product", which is
+ * where that disagreement belongs — with the person whose dose it is, not in a
+ * shopping plan that cannot act on it.
  */
 export async function getScheduledProducts(): Promise<ScheduledProduct[]> {
   const rows = await db
@@ -1507,7 +1603,13 @@ export async function getScheduledProducts(): Promise<ScheduledProduct[]> {
     .from(doseSchedules)
     .innerJoin(products, eq(doseSchedules.productId, products.id))
     .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
-    .where(and(isNull(doseSchedules.archivedAt), isNull(householdMembers.archivedAt)))
+    .where(
+      and(
+        isNull(doseSchedules.archivedAt),
+        isNull(householdMembers.archivedAt),
+        isNull(products.archivedAt),
+      ),
+    )
     .orderBy(byName);
 
   const map = new Map<number, ScheduledProduct>();

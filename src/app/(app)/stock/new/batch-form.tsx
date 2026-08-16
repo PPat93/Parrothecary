@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useActionState } from 'react';
 import { BarcodeScanner } from '@/components/barcode-scanner';
-import { ErrorText, Field, Select, SubmitButton, TextInput } from '@/components/form';
+import { Checkbox, ErrorText, Field, Select, SubmitButton, TextInput } from '@/components/form';
 import { PriceFields } from '@/components/price-fields';
 import { toneStyle } from '@/components/tone';
 import { todayIso } from '@/domain/date';
@@ -168,6 +168,27 @@ export function BatchForm({
             onChange={(event) => setPurchaseDate(event.target.value)}
           />
         </Field>
+
+        {/*
+          The ledger has always had a word for a box that was in the drawer
+          before the app existed — "already in the cupboard when this started" —
+          and no way to say it. Setting up against a full cupboard is the case
+          it was written for, and without this every box entered that day would
+          have read "arrived" beside a purchase date from two years earlier.
+        */}
+        <Checkbox
+          name="alreadyHad"
+          label="Already in the cupboard (not a new arrival)"
+          /*
+           * The date above defaults to today, which is right for a box that
+           * just came in and wrong for every box this tick describes. Entering
+           * a full cupboard at setup without noticing would file three years of
+           * purchases as this year's spending — the figure the money page leads
+           * with. Cheap to say, expensive to discover later.
+           */
+          hint="Set the purchase date to when you actually bought it — it starts at today, which would count an old purchase as this year's spending."
+          defaultChecked={state.values !== undefined && prev.alreadyHad === 'on'}
+        />
 
         <Field label="Batch / lot number" hint="Filled in automatically by a DataMatrix scan.">
           <TextInput name="lotNumber" defaultValue={prev.lotNumber ?? ''} />

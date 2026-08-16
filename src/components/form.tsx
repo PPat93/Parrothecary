@@ -56,28 +56,38 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 export function Checkbox({
   name,
   label,
+  hint,
   defaultChecked,
   checked,
   onChange,
 }: {
   name: string;
   label: string;
+  /** Shown under the label, for a tick whose consequence is not obvious. */
+  hint?: string;
   defaultChecked?: boolean;
   checked?: boolean;
   onChange?: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-3">
-      <input
-        {...(checked === undefined
-          ? { defaultChecked }
-          : { checked, onChange: (event) => onChange?.(event.target.checked) })}
-        type="checkbox"
-        name={name}
-        className="h-5 w-5 shrink-0"
-      />
-      <span className="text-sm">{label}</span>
-    </label>
+    <div>
+      <label className="flex items-center gap-3">
+        <input
+          {...(checked === undefined
+            ? { defaultChecked }
+            : { checked, onChange: (event) => onChange?.(event.target.checked) })}
+          type="checkbox"
+          name={name}
+          className="h-5 w-5 shrink-0"
+        />
+        <span className="text-sm">{label}</span>
+      </label>
+      {hint ? (
+        <p className="mt-1 ml-8 text-xs" style={{ color: 'var(--muted)' }}>
+          {hint}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

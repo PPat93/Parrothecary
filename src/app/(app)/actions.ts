@@ -33,7 +33,7 @@ import {
   variantBarcodes,
   variants,
 } from '@/db/schema';
-import { isValidEan13, parseScan } from '@/domain/barcode';
+import { barcodeVariants, isValidEan13, parseScan } from '@/domain/barcode';
 import { addDays, isIsoDate, todayIso } from '@/domain/date';
 import { allocateFefo, type FefoBatch } from '@/domain/fefo';
 import { isScheduleActiveOn } from '@/domain/dosing';
@@ -53,7 +53,7 @@ import {
 } from '@/lib/queries';
 import { defaultOrderByDate } from '@/domain/trip';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
-import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
+import { UNIT_PRECISION, formatQuantity, isTrackableQuantity, parseUnits } from '@/domain/quantity';
 import { parseAmount, parseFxRate } from '@/domain/money';
 import { destroyAllSessions } from '@/lib/auth';
 import { endSession } from '@/lib/session';
@@ -1023,7 +1023,12 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
    * as archived instead.
    */
   const packRows = await db
-    .select({ id: variants.id, productName: products.name, archivedAt: products.archivedAt })
+    .select({
+      id: variants.id,
+      packSize: variants.packSize,
+      productName: products.name,
+      archivedAt: products.archivedAt,
+    })
     .from(variants)
     .innerJoin(products, eq(variants.productId, products.id))
     .where(eq(variants.id, variantId))
@@ -1041,15 +1046,48 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
   if ('error' in parsed) return fail(parsed.error);
 
   /*
-   * The box and the row saying it arrived go in together. A torn write here
-   * would leave the ledger disagreeing with the shelf, which is the one thing
-   * it exists not to do.
+   * Did this box arrive, or was it already in the drawer?
+   *
+   * The ledger has had both words since it was written — `opening` reads back
+   * as "already in the cupboard when this started" — and nothing in the app
+   * could ever write the second one. Every box entered by hand was recorded as
+   * having arrived that day, which is exactly wrong for the case that matters
+   * most: setting the app up against a cupboard that is already full. Sixteen
+   * boxes would each have said "arrived" on the day they were typed in, with a
+   * purchase date from two years earlier sitting beside it in the same history.
+   */
+  const alreadyHad = formData.get('alreadyHad') === 'on';
+
+  /*
+   * A box holding less than one full pack has been opened. Nobody says so on
+   * the form, and nothing else was inferring it: `openedAt` was only ever set
+   * by the stepper and by dosing, so a box typed in part-used stayed "sealed"
+   * for the rest of its life.
+   *
+   * That is not cosmetic. The waste figures split on this exact field, and they
+   * split the wrong way: a box entered at six of a sixty-pack and later binned
+   * was reported as "bought and binned without being used" — the number the
+   * page calls the one worth pushing down — when a part-used box is precisely
+   * what that split exists to keep out of it.
+   *
+   * Compared against one pack rather than against what was ordered, so a
+   * three-pack line that arrives two packes short is still two sealed packs.
+   * Dated to the purchase rather than to today: "opened" on a box bought two
+   * years ago did not happen this afternoon.
+   */
+  const partUsed = pack.packSize > 0 && parsed.fields.quantityRemaining < pack.packSize;
+  const openedAt = partUsed ? (parsed.fields.purchaseDate ?? todayIso()) : null;
+
+  /*
+   * The box and the row saying where it came from go in together. A torn write
+   * here would leave the ledger disagreeing with the shelf, which is the one
+   * thing it exists not to do.
    */
   try {
     db.transaction((tx) => {
       const inserted = tx
         .insert(batches)
-        .values({ variantId, ...parsed.fields })
+        .values({ variantId, ...parsed.fields, openedAt })
         .returning({ id: batches.id })
         .all();
 
@@ -1057,7 +1095,11 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
       if (batchId === undefined) throw new Error('insert produced no row');
 
       tx.insert(stockMovements)
-        .values({ batchId, delta: parsed.fields.quantityRemaining, reason: 'received' })
+        .values({
+          batchId,
+          delta: parsed.fields.quantityRemaining,
+          reason: alreadyHad ? 'opening' : 'received',
+        })
         .run();
     });
   } catch {
@@ -1099,6 +1141,7 @@ export async function receiveShoppingItem(
     .select({
       variantId: shoppingItems.variantId,
       status: shoppingItems.status,
+      packSize: variants.packSize,
       productName: products.name,
       productArchivedAt: products.archivedAt,
     })
@@ -1150,6 +1193,16 @@ export async function receiveShoppingItem(
   if ('error' in parsed) return fail(parsed.error);
 
   /*
+   * Less than one full pack means the pack is open — the same inference the
+   * add-box path makes, for the same reason the waste figures need it. Against
+   * one pack, not against what was ordered: a three-pack line that turns up two
+   * packs short is still sealed packs.
+   */
+  const partUsed =
+    item.packSize > 0 && parsed.fields.quantityRemaining < item.packSize;
+  const openedAt = partUsed ? (parsed.fields.purchaseDate ?? todayIso()) : null;
+
+  /*
    * Three writes that only make sense together: the box, the row saying it
    * arrived, and the shopping line that becomes it.
    */
@@ -1158,7 +1211,7 @@ export async function receiveShoppingItem(
     batchId = db.transaction((tx) => {
       const inserted = tx
         .insert(batches)
-        .values({ variantId: item.variantId, ...parsed.fields })
+        .values({ variantId: item.variantId, ...parsed.fields, openedAt })
         .returning({ id: batches.id })
         .all();
 
@@ -1370,10 +1423,17 @@ async function attachBarcode(
     return `${code} is not a valid barcode — its check digit does not match. Re-read the digits under the stripe.`;
   }
 
+  /*
+   * Compared against every shape of the same code, not just the canonical one.
+   * The lookup that resolves a scan does the same — see `barcodeVariants` — and
+   * an exact match here let one physical stripe be stored twice on one pack,
+   * once as twelve digits and once as thirteen, which is precisely the "same
+   * pack failing to match itself" this normalising exists to prevent.
+   */
   const existing = await db
     .select({ variantId: variantBarcodes.variantId })
     .from(variantBarcodes)
-    .where(eq(variantBarcodes.code, code))
+    .where(inArray(variantBarcodes.code, barcodeVariants(code)))
     .limit(1);
 
   const owner = existing[0]?.variantId;
@@ -1624,6 +1684,48 @@ export async function recordStockCount(
 
   if (counts.length === 0) {
     return fail('Nothing counted yet. Fill in the boxes you have checked and leave the rest blank.');
+  }
+
+  /*
+   * A count is absolute where the stepper is relative — you are stating a fact,
+   * not asking for a change — so it does not get clamped. But a fifty-tablet
+   * pack still does not hold five hundred, and this was the one number-entry
+   * screen in the app that never said so.
+   *
+   * The consequence was silent and self-concealing. A stray zero wrote an
+   * `audit` movement of +478, and because a box's capacity is "the most it has
+   * ever held", that movement redefined the capacity from 50 to 500 — so the
+   * integrity check, whose whole job is catching a box holding more than it
+   * can, looked at the box afterwards and agreed with it. The cupboard's value
+   * moved and the stock list read "500 tablets" of a 50-tablet pack.
+   *
+   * Refused with the same reasoning the stepper gives for the same mistake,
+   * and pointing at the same tool: correcting a quantity that was never right
+   * is the edit form's job, not the count sheet's.
+   */
+  const capacities = await getBatchCapacities(counts.map((c) => c.batchId));
+  const named = await db
+    .select({ id: batches.id, name: products.name, unitName: products.unitName })
+    .from(batches)
+    .innerJoin(variants, eq(batches.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
+    .where(
+      inArray(
+        batches.id,
+        counts.map((c) => c.batchId),
+      ),
+    );
+  const labels = new Map(named.map((row) => [row.id, row]));
+
+  for (const { batchId, counted } of counts) {
+    const capacity = capacities.get(batchId);
+    if (capacity === undefined || capacity <= 0 || counted <= capacity) continue;
+
+    const box = labels.get(batchId);
+    const most = box ? formatQuantity(capacity, box.unitName) : `${capacity} units`;
+    return fail(
+      `${box?.name ?? 'That box'}: counted ${counted} in a box that has never held more than ${most}. If that really is what is in it, correct the box with the pencil — the count sheet records what is on the shelf, not what a box turned out to hold.`,
+    );
   }
 
   let changed = 0;
