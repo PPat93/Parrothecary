@@ -38,6 +38,22 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
   const nights = daysAway(trip.collectionDate, trip.returnDate);
   const packed = kit.filter((row) => row.packed).length;
 
+  /*
+   * Once you are home this is a record, not a plan.
+   *
+   * The audit worksheet next door already redirects away from a trip that is
+   * no longer planned — "a collected trip cannot be planned for" — and this,
+   * its twin, kept working as though the suitcase were still open: a holiday
+   * three months past still offered four things to add and called itself
+   * "11 days away", with the courses worked out over dates that have been and
+   * gone.
+   *
+   * Not a redirect, though. Marking a trip finished promises the list stays
+   * "so it can still be looked back at", and sending you to another page is
+   * not that. What goes is the suggesting.
+   */
+  const finished = trip.status !== 'planned';
+
   return (
     <div className="mx-auto w-full max-w-2xl">
       <BackLink href={`/trips/${tripId}`} label={trip.label} />
@@ -46,8 +62,17 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
         Packing list
       </h1>
       <p className="mb-4 text-sm" style={{ color: 'var(--muted)' }} test-data="kit-days">
-        {trip.collectionDate} to {trip.returnDate} — {nights} {nights === 1 ? 'day' : 'days'} away.
-        Doses are worked out from that; everything else is a standing choice.
+        {finished ? (
+          <>
+            {`${trip.collectionDate} to ${trip.returnDate} — ${nights} ${nights === 1 ? 'day' : 'days'}. This trip is finished, so the list is kept as it was rather than added to. `}
+            <Link href={`/trips/${tripId}`} className="underline underline-offset-4">
+              Reopen it
+            </Link>
+            {' to change what it suggests.'}
+          </>
+        ) : (
+          `${trip.collectionDate} to ${trip.returnDate} — ${nights} ${nights === 1 ? 'day' : 'days'} away. Doses are worked out from that; everything else is a standing choice.`
+        )}
       </p>
 
       {kit.length > 0 ? (
@@ -110,13 +135,17 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
                     {formatQuantity(row.available, row.unitName)} in the cupboard
                   </p>
 
-                  {/* Two things worth knowing before the bag is closed. */}
-                  {row.units > row.available ? (
+                  {/*
+                    Worth knowing before the bag is closed, and nothing but
+                    noise after it has been unpacked again — these are measured
+                    against the cupboard as it is today, not as it was.
+                  */}
+                  {!finished && row.units > row.available ? (
                     <p className="text-xs font-medium" style={{ color: 'var(--color-critical)' }}>
                       only {formatQuantity(row.available, row.unitName)} to take
                     </p>
                   ) : null}
-                  {row.expiresAway ? (
+                  {!finished && row.expiresAway ? (
                     <p className="text-xs font-medium" style={{ color: 'var(--color-warning)' }}>
                       the box you would take goes off before you get home
                     </p>
@@ -127,7 +156,7 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
                     ten tablets for what is now twenty days — with nothing
                     saying the sum had moved on.
                   */}
-                  {row.dueUnits > row.units ? (
+                  {!finished && row.dueUnits > row.units ? (
                     <p className="text-xs font-medium" style={{ color: 'var(--color-warning)' }}>
                       {formatQuantity(row.dueUnits, row.unitName)} due over {nights}{' '}
                       {nights === 1 ? 'day' : 'days'} — the bag has{' '}
@@ -154,7 +183,7 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
         </section>
       ) : null}
 
-      {suggestions.length > 0 ? (
+      {!finished && suggestions.length > 0 ? (
         <section test-data="kit-suggestions">
           <h2 className="text-sm font-semibold uppercase tracking-wide">Suggested</h2>
           <p className="mb-2 text-xs" style={{ color: 'var(--muted)' }}>
@@ -202,16 +231,22 @@ export default async function TripKitPage({ params }: { params: Promise<{ id: st
         </section>
       ) : null}
 
-      {kit.length === 0 && suggestions.length === 0 ? (
+      {kit.length === 0 && (finished || suggestions.length === 0) ? (
         <div
           className="rounded-2xl border border-dashed p-8 text-center text-sm"
           style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
         >
-          <p>Nothing to suggest.</p>
-          <p className="mt-2">
-            Mark the things that always travel on their product pages, and any dose running while
-            you are away will work itself out.
-          </p>
+          {finished ? (
+            <p>Nothing was packed for this trip.</p>
+          ) : (
+            <>
+              <p>Nothing to suggest.</p>
+              <p className="mt-2">
+                Mark the things that always travel on their product pages, and any dose running
+                while you are away will work itself out.
+              </p>
+            </>
+          )}
         </div>
       ) : null}
     </div>
