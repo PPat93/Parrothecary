@@ -74,9 +74,20 @@ export async function GET(
   }
 
   const csv = toCsv([...spec.headers], await spec.rows());
-  // Dated, because these pile up in a downloads folder and "which one is newer"
-  // should not need a file listing to answer.
-  const filename = `parrothecary-${kind}-${new Date().toISOString().slice(0, 10)}.csv`;
+
+  /*
+   * Dated, because these pile up in a downloads folder and "which one is newer"
+   * should not need a file listing to answer.
+   *
+   * The date the person pressing the button is living in, not UTC — an export
+   * taken at half past midnight was named with yesterday, which is precisely
+   * the moment the name has to be right. Same mistake the CSV timestamps and
+   * the Audit screen's "last counted" both made before they were fixed.
+   */
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const filename = `parrothecary-${kind}-${today}.csv`;
 
   return new NextResponse(csv, {
     headers: {

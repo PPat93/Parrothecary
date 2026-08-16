@@ -2,10 +2,10 @@ import Link from 'next/link';
 import {ConfirmButton} from '@/components/confirm-button';
 import {ExpiryBadge} from '@/components/expiry-badge';
 import {differenceInDays, todayIso} from '@/domain/date';
-import {DEFAULT_THRESHOLDS, daysUntilExpiry, expiryStatus, type ExpiryStatus} from '@/domain/expiry';
+import {DEFAULT_THRESHOLDS, daysUntilExpiry, expiryStatus, isDosable, type ExpiryStatus} from '@/domain/expiry';
 import {formatQuantity} from '@/domain/quantity';
 import {formatMoney, money} from '@/domain/money';
-import {getExpiringStock, getTripOptions, getWaste, summariseWaste, toExpiryInput, type StockRow, type TripOption} from '@/lib/queries';
+import {getDoseTakersByProduct, getExpiringStock, getTripOptions, getWaste, summariseWaste, toExpiryInput, type StockRow, type TripOption} from '@/lib/queries';
 import {setBatchStatus} from '../actions';
 
 const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
@@ -45,8 +45,25 @@ const SECTIONS: { status: ExpiryStatus; title: string; blurb: string }[] = [
  * The threshold stays fixed; only the claim is checked. Naming the trip is
  * worth more than the generic line, so it is named whenever it is true.
  */
-function criticalBlurb(nextRestock: TripOption | null, today: string): string {
-    if (nextRestock === null) return 'Less than two months left, and no restock trip is planned.';
+function criticalBlurb(restocks: TripOption[], today: string): string {
+    // The soonest restock still ahead of us. A planned trip whose collection
+    // date has passed is somebody forgetting to close one out, and cannot be
+    // what stock is measured against.
+    const nextRestock = restocks.find((t) => t.collectionDate >= today) ?? null;
+
+    if (nextRestock === null) {
+        /*
+         * "No restock is planned" and "the planned restock is overdue" are
+         * different problems with different fixes, and this said the first
+         * about both. The trip page already tells you the dates have passed —
+         * so the two screens contradicted each other about a trip that exists,
+         * and the reading that sends you off to plan a duplicate is the one
+         * this page was giving.
+         */
+        return restocks.length > 0
+            ? 'Less than two months left. Every restock still marked planned was due to be collected in the past — close one out or move its dates, and this can say whether these boxes survive the next one.'
+            : 'Less than two months left, and no restock trip is planned.';
+    }
 
     const days = differenceInDays(today, nextRestock.collectionDate);
     return days > DEFAULT_THRESHOLDS.criticalDays
@@ -62,9 +79,19 @@ export default async function ExpiringPage() {
         getTripOptions(),
     ]);
 
-    // The soonest restock still ahead of us. Past planned trips are somebody
-    // forgetting to close one out, and cannot be what stock is measured against.
-    const nextRestock = tripOptions.find((t) => t.collectionDate >= today) ?? null;
+    const doseTakers = await getDoseTakersByProduct([...new Set(rows.map((r) => r.productId))]);
+
+    /*
+     * Usable boxes per product, so binning can say when it is taking the last
+     * one. Counted from `rows` rather than a second query: a product either
+     * expires or it does not, and every in-stock box of one that does is
+     * already on this page.
+     */
+    const usableBoxes = new Map<number, number>();
+    for (const row of rows) {
+        if (row.quantityRemaining <= 0 || !isDosable(toExpiryInput(row), today)) continue;
+        usableBoxes.set(row.productId, (usableBoxes.get(row.productId) ?? 0) + 1);
+    }
 
     /*
      * Two different things, deliberately not added together.
@@ -119,12 +146,32 @@ export default async function ExpiringPage() {
                             <section key={section.status} test-data={section.title.replace(/\s/g, "").toLowerCase()}>
                                 <h2 className="text-sm font-semibold uppercase tracking-wide" test-data="section-title">{section.title}</h2>
                                 <p className="mb-2 text-xs" style={{color: 'var(--muted)'}} test-data="section-description">
-                                    {section.status === 'critical' ? criticalBlurb(nextRestock, today) : section.blurb}
+                                    {section.status === 'critical' ? criticalBlurb(tripOptions, today) : section.blurb}
                                 </p>
 
                                 <ul className="flex flex-col gap-2">
                                     {items.map((row) => {
                                         const days = daysUntilExpiry(toExpiryInput(row), today);
+
+                                        /*
+                                         * Binning the last usable box of something
+                                         * somebody is on a course for empties the
+                                         * dose board, and the confirmation said
+                                         * only that waste would be recorded.
+                                         * Archiving the same product is refused
+                                         * outright for this reason, and names the
+                                         * person; this is the same consequence
+                                         * arrived at from a different screen, so it
+                                         * says the same thing. Not a refusal —
+                                         * binning an expired box is often exactly
+                                         * right — just not a surprise.
+                                         */
+                                        const takers = doseTakers.get(row.productId) ?? [];
+                                        const lastUsable =
+                                            takers.length > 0 &&
+                                            row.quantityRemaining > 0 &&
+                                            isDosable(toExpiryInput(row), today) &&
+                                            (usableBoxes.get(row.productId) ?? 0) === 1;
 
                                         return (
                                             <li
@@ -214,8 +261,12 @@ export default async function ExpiringPage() {
                                                     />
                                                     <ConfirmButton
                                                         label="Binned"
-                                                        title="Bin this box?"
-                                                        message={`${row.name} — ${formatQuantity(row.quantityRemaining, row.unitName, row.packSize)} will leave your stock and be recorded as waste. Nothing is deleted: if this was a mistake, the product page can put the box back.`}
+                                                        title={lastUsable ? 'Bin the last usable box?' : 'Bin this box?'}
+                                                        message={`${row.name} — ${formatQuantity(row.quantityRemaining, row.unitName, row.packSize)} will leave your stock and be recorded as waste.${
+                                                            lastUsable
+                                                                ? ` This is the last box of it anyone can still take a dose from, and ${listNames(takers)} ${takers.length === 1 ? 'is' : 'are'} on a course for it — the dose board will have nothing left to take from.`
+                                                                : ''
+                                                        } Nothing is deleted: if this was a mistake, the product page can put the box back.`}
                                                         confirmLabel="Yes, bin it"
                                                         tone="critical"
                                                     />
@@ -263,13 +314,20 @@ export default async function ExpiringPage() {
 
                     {uncosted > 0 ? (
                         <p className="mt-2 text-xs" style={{color: 'var(--muted)'}} test-data="uncosted-waste">
-                            {uncosted} binned {uncosted === 1 ? 'box has' : 'boxes have'} a złoty price with no
-                            exchange rate recorded, so {uncosted === 1 ? 'it is' : 'they are'} not in either
-                            figure. Add the rate by editing the box.
+                            {uncosted} binned {uncosted === 1 ? 'box has' : 'boxes have'} no price these
+                            figures can use — either none was recorded, or it is in złoty with no exchange
+                            rate against it — so {uncosted === 1 ? 'it is' : 'they are'} in neither figure.
+                            Editing the box fixes {uncosted === 1 ? 'it' : 'them'}.
                         </p>
                     ) : null}
                 </div>
             ) : null}
         </div>
     );
+}
+
+/** "Piotrek", "Piotrek and Żona", "A, B and C" — a warning has to read as a sentence. */
+function listNames(names: string[]): string {
+    if (names.length <= 1) return names[0] ?? 'somebody';
+    return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }

@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
-import { getVariantOptions } from '@/lib/queries';
+import { getFxRateHistory, getVariantOptions } from '@/lib/queries';
 import { BatchForm } from './batch-form';
 
 export default async function NewBatchPage() {
-  const variants = await getVariantOptions();
+  // Chosen against the date in the form, which the person can still change.
+  const [variants, rateHistory] = await Promise.all([getVariantOptions(), getFxRateHistory()]);
 
   return (
     <div className="mx-auto w-full max-w-lg">
@@ -30,7 +31,7 @@ export default async function NewBatchPage() {
           </p>
         </div>
       ) : (
-        <BatchForm variants={variants} />
+        <BatchForm variants={variants} rateHistory={rateHistory} />
       )}
     </div>
   );

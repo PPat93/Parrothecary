@@ -19,7 +19,16 @@ const STAGES: { status: (typeof SHOPPING_STATUSES)[number]; title: string; blurb
     {
         status: 'in_stock',
         title: 'In the cupboard',
-        blurb: 'Added to stock. Clear the line when you no longer need it.',
+        /*
+         * This used to say "clear the line when you no longer need it", which
+         * invited the one action on this page that quietly destroys something.
+         * A box carries no trip of its own: the only thing tying it to the
+         * restock it came on is this line, so clearing one takes its cost out
+         * of that trip's total — while the yearly figures, which read the boxes
+         * directly, carry on counting it. Two screens, two answers, no warning.
+         */
+        blurb:
+            'Added to stock. Each of these still ties its box to the trip it came on, which is how that trip knows what it cost — so they are worth keeping.',
     },
     {
         status: 'not_received',
@@ -224,11 +233,17 @@ export default async function ShoppingPage() {
                                                     <input type="hidden" name="id" value={item.id}/>
                                                     <ConfirmButton
                                                         label="Clear"
-                                                        title="Clear this line?"
+                                                        title={
+                                                            seversTripCost(item)
+                                                                ? 'Clear this line and drop its cost from the trip?'
+                                                                : 'Clear this line?'
+                                                        }
                                                         message={
-                                                            stage.status === 'in_stock'
-                                                                ? `${item.quantityPacks} × ${item.name} will be removed from the shopping list. The box itself stays in your stock — only the line goes.`
-                                                                : `${item.quantityPacks} × ${item.name} will be removed from the shopping list.`
+                                                            seversTripCost(item)
+                                                                ? `${item.quantityPacks} × ${item.name} will be removed from the shopping list. The box itself stays in your stock — but this line is the only thing recording that it came on ${item.tripLabel}, so what it cost will drop out of that trip's total. The yearly figures keep it, so the two will stop agreeing.`
+                                                                : stage.status === 'in_stock'
+                                                                    ? `${item.quantityPacks} × ${item.name} will be removed from the shopping list. The box itself stays in your stock — only the line goes.`
+                                                                    : `${item.quantityPacks} × ${item.name} will be removed from the shopping list.`
                                                         }
                                                         confirmLabel="Yes, clear it"
                                                         tone="critical"
@@ -278,4 +293,18 @@ function StatusButton({
             </ActionButton>
         </form>
     );
+}
+
+/**
+ * Would clearing this line take a box's cost out of a trip's total?
+ *
+ * A box has no trip of its own — the join runs trip → shopping line → box. So
+ * the line is the only record that this box came on that restock, and deleting
+ * it is the difference between "€30.70, 5 boxes" and "€25.77, 4 boxes" on the
+ * trip page, with the yearly total unchanged because that reads the boxes
+ * directly. Both conditions matter: a line with no box has no cost to lose, and
+ * one bought locally has no trip to lose it from.
+ */
+function seversTripCost(item: ShoppingRow): boolean {
+    return item.receivedBatchId !== null && item.tripId !== null;
 }

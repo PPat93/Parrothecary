@@ -4,41 +4,46 @@ import {RunOutBadge} from '@/components/run-out-badge';
 import {LINK_BUTTON, toneStyle} from '@/components/tone';
 import {addDays, todayIso} from '@/domain/date';
 import {
-    doseOccurrenceStatus,
+    boardDates,
+    boardDoseStatus,
+    doseWindowDays,
     formatDoseCadence,
+    HISTORY_DAYS,
     isScheduleRunning,
     nextDueDate,
-    recentScheduleDates,
     type DoseStatus,
 } from '@/domain/dosing';
 import {daysPastDate} from '@/domain/expiry';
 import {nextBatchToOpen, totalAvailable} from '@/domain/fefo';
 import {formatQuantity} from '@/domain/quantity';
-import {projectRunOut, scheduleDailyRate} from '@/domain/runout';
+import {projectRunOut} from '@/domain/runout';
 import {scheduleClashes} from '@/domain/substances';
 import {
     getActiveDoseSchedules,
     getBatchesForProducts,
+    getProductDailyRates,
     getSubstanceLinks,
     getTakenOccurrences,
     type DoseScheduleBoardRow,
 } from '@/lib/queries';
 import {confirmDose, undoDose} from '../actions';
 
-const HISTORY_DAYS = 3;
-
 export default async function DosesPage() {
     const today = todayIso();
-    const cutoff = addDays(today, -(HISTORY_DAYS - 1));
 
     const schedules = await getActiveDoseSchedules();
-    const [taken, stockByProduct, substanceLinks] = await Promise.all([
+
+    // Far enough back to colour in every pill the page draws — see doseWindowDays.
+    const cutoff = addDays(today, -(Math.max(HISTORY_DAYS, ...schedules.map(doseWindowDays)) - 1));
+
+    const [taken, stockByProduct, substanceLinks, dailyRates] = await Promise.all([
         getTakenOccurrences(
             schedules.map((s) => s.scheduleId),
             cutoff,
         ),
         getBatchesForProducts([...new Set(schedules.map((s) => s.productId))]),
         getSubstanceLinks(),
+        getProductDailyRates(),
     ]);
 
     /*
@@ -49,9 +54,16 @@ export default async function DosesPage() {
      *
      * Two people each on their own paracetamol is not this, and is not
      * flagged — see `scheduleClashes`.
+     *
+     * Only courses running today. A course that finished last week is not
+     * being taken alongside anything, and warning about it in red is worse
+     * than saying nothing: a banner that cries wolf is one nobody reads on the
+     * day it is real.
      */
+    const running = schedules.filter((schedule) => isScheduleRunning(schedule, today));
+
     const clashesByMember = new Map<number, { substance: string; products: string[] }[]>();
-    for (const clash of scheduleClashes(schedules, substanceLinks)) {
+    for (const clash of scheduleClashes(running, substanceLinks)) {
         const substance =
             substanceLinks.find((link) => link.substanceId === clash.substanceId)?.substanceName ??
             'the same ingredient';
@@ -73,20 +85,6 @@ export default async function DosesPage() {
         const group = byMember.get(schedule.memberId);
         if (group) group.schedules.push(schedule);
         else byMember.set(schedule.memberId, {name: schedule.memberName, schedules: [schedule]});
-    }
-
-    // Summed per product, not per schedule — two people can share one
-    // medication, and the cupboard runs out for both of them at once.
-    const productDailyRate = new Map<number, number>();
-    for (const schedule of schedules) {
-        // A course that has finished, or has not started, consumes nothing —
-        // including it projects a run-out from a rate nobody is taking.
-        if (!isScheduleRunning(schedule, today)) continue;
-
-        productDailyRate.set(
-            schedule.productId,
-            (productDailyRate.get(schedule.productId) ?? 0) + scheduleDailyRate(schedule),
-        );
     }
 
     return (
@@ -154,16 +152,11 @@ export default async function DosesPage() {
                                             endDate: schedule.endDate,
                                             intervalDays: schedule.intervalDays,
                                         };
-                                        /*
-                                         * A three-day window shows nothing at all for a weekly dose on
-                                         * four days out of seven, which reads as broken rather than as
-                                         * "not today". Widen it past one full interval so the last
-                                         * dosing day is always on screen.
-                                         */
-                                        const dates = recentScheduleDates(
-                                            window,
+                                        const dates = boardDates(
+                                            {...window, createdOn: schedule.createdOn},
                                             today,
-                                            Math.max(HISTORY_DAYS, schedule.intervalDays + 1),
+                                            doseWindowDays(schedule),
+                                            (date) => taken.has(`${schedule.scheduleId}:${date}`),
                                         );
                                         const dueToday = dates.includes(today);
                                         const nextDue = dueToday ? null : nextDueDate(window, today);
@@ -219,11 +212,25 @@ export default async function DosesPage() {
                                             )
                                             : null;
 
-                                        const projection = projectRunOut(
-                                            available,
-                                            productDailyRate.get(schedule.productId) ?? scheduleDailyRate(schedule),
-                                            today,
-                                        );
+                                        /*
+                                         * From `getProductDailyRates`, the same
+                                         * query the stock list reads — summed
+                                         * per product, because two people can
+                                         * share one medication and the cupboard
+                                         * runs out for both at once.
+                                         *
+                                         * This screen used to sum it itself, in
+                                         * TypeScript, and the two agreed only by
+                                         * luck. They stopped: a product whose
+                                         * only course had ended fell through to
+                                         * that finished course's own rate, so it
+                                         * still announced "4 days left" here
+                                         * while the stock list showed no
+                                         * projection at all. One number, one
+                                         * source.
+                                         */
+                                        const rate = dailyRates.get(schedule.productId);
+                                        const projection = rate ? projectRunOut(available, rate, today) : null;
 
                                         return (
                                             <li
@@ -299,7 +306,13 @@ export default async function DosesPage() {
                             archived product
                           </span>
                                                     ) : null}
-                                                    {pastDateDays !== null ? (
+                                                    {/*
+                                                      Not on a course that has
+                                                      finished: there is no next
+                                                      dose for that box to come
+                                                      out of.
+                                                    */}
+                                                    {pastDateDays !== null && !courseEnded ? (
                                                         <span
                                                             className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums"
                                                             style={{background: 'var(--color-warning)', color: 'black'}}
@@ -331,7 +344,7 @@ export default async function DosesPage() {
                                                                             scheduleId={schedule.scheduleId}
                                                                             date={date}
                                                                             occurrence={occurrence}
-                                                                            status={doseOccurrenceStatus(occurrence, date, today, takenHere)}
+                                                                            status={boardDoseStatus(occurrence, date, today, takenHere, schedule.createdOn)}
                                                                             showNumber={schedule.timesPerDay > 1}
                                                                             outOfStock={outOfStock}
                                                                             onlyPastDate={onlyPastDate}
@@ -393,16 +406,18 @@ function DosePill({
      * title — is the same "explain instead of allow a dead action" rule the
      * rest of the app already follows (e.g. the archived-product picker).
      */
-    if (status === 'future' || (outOfStock && !taken)) {
+    if (status === 'future' || status === 'unknown' || (outOfStock && !taken)) {
         return (
             <span
                 aria-hidden
                 title={
-                    outOfStock && !taken
-                        ? onlyPastDate
-                            ? 'The only stock left is too far past its date to use — bin it from Expiring and add a new box'
-                            : 'No stock to confirm this from'
-                        : undefined
+                    status === 'unknown'
+                        ? 'Before this course was added — the app cannot know whether this one was taken'
+                        : outOfStock && !taken
+                            ? onlyPastDate
+                                ? 'The only stock left is too far past its date to use — bin it from Expiring and add a new box'
+                                : 'No stock to confirm this from'
+                            : undefined
                 }
                 className="flex h-8 w-8 items-center justify-center rounded-lg border text-xs"
                 style={{borderColor: 'var(--border)', color: 'var(--muted)', opacity: 0.4}}

@@ -205,7 +205,16 @@ export default async function StatsPage() {
         </Section>
       ) : null}
 
-      {wasted.neverOpenedBoxes > 0 || wasted.openedBoxes > 0 ? (
+      {/*
+        Shown whenever anything has been binned — including when none of it
+        could be priced.
+
+        Gated on the two money figures alone, this section disappeared entirely
+        when every binned box was złoty with no rate against it, taking the
+        count of what it could not price with it. Expiring already said so; this
+        is the same panel on the other screen, and it did not.
+      */}
+      {wasted.neverOpenedBoxes > 0 || wasted.openedBoxes > 0 || wasted.uncostedBoxes > 0 ? (
         <Section title="Binned">
           {wasted.neverOpenedBoxes > 0 ? (
             <p className="text-sm" style={{ color: 'var(--muted)' }} test-data="stats-wasted">
@@ -228,6 +237,16 @@ export default async function StatsPage() {
               A further {eur(wasted.leftInOpenedMinorEur)} was left in {wasted.openedBoxes} opened{' '}
               {wasted.openedBoxes === 1 ? 'pack' : 'packs'}. Not really waste: they were opened
               because they were needed, and you cannot buy half a bottle.
+            </p>
+          ) : null}
+
+          {/* Counted, never folded in — the same sentence Expiring gives. */}
+          {wasted.uncostedBoxes > 0 ? (
+            <p className="mt-2 text-xs" style={{ color: 'var(--muted)' }} test-data="stats-uncosted-waste">
+              {wasted.uncostedBoxes} binned {wasted.uncostedBoxes === 1 ? 'box has' : 'boxes have'} no
+              price these figures can use — either none was recorded, or it is in złoty with no
+              exchange rate against it — so {wasted.uncostedBoxes === 1 ? 'it is' : 'they are'} in
+              neither figure. Editing the box fixes {wasted.uncostedBoxes === 1 ? 'it' : 'them'}.
             </p>
           ) : null}
         </Section>

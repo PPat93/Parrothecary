@@ -26,7 +26,7 @@ import type { IsoDate } from '@/domain/date';
 import { todayIso } from '@/domain/date';
 import { isDosable, type ExpiryInput } from '@/domain/expiry';
 import { nextBatchToOpen, totalAvailable, type FefoBatch } from '@/domain/fefo';
-import { money, toEurOrNull, unusedValue } from '@/domain/money';
+import { money, toEurOrNull, unusedValue, type FxRateOnDate } from '@/domain/money';
 import { summariseMovements, type Movement, type MovementSummary } from '@/domain/ledger';
 import { expiresDuringTrip, suggestKit } from '@/domain/travel';
 import { checkBox } from '@/domain/integrity';
@@ -1090,6 +1090,12 @@ export interface DoseScheduleBoardRow {
   startDate: string;
   endDate: string | null;
   /**
+   * The calendar day this schedule was entered, which is not the day the course
+   * started — courses are normally typed in after the fact. The board will not
+   * draw a missed pill for a day before this one; see `boardDates`.
+   */
+  createdOn: string;
+  /**
    * Set when the product behind this live schedule has been archived — a state
    * `archiveProduct` refuses to create, but that older data and direct database
    * edits can still be in. The board shows the schedule anyway and marks it:
@@ -1115,6 +1121,9 @@ export async function getActiveDoseSchedules(): Promise<DoseScheduleBoardRow[]> 
       intervalDays: doseSchedules.intervalDays,
       startDate: doseSchedules.startDate,
       endDate: doseSchedules.endDate,
+      // Local calendar day, to match `todayIso` — a UTC day would shift the
+      // cut-off by one for anything entered late in the evening.
+      createdOn: sql<string>`date(${doseSchedules.createdAt}, 'unixepoch', 'localtime')`,
       productArchivedAt: products.archivedAt,
     })
     .from(doseSchedules)
@@ -1182,6 +1191,68 @@ export async function getProductDailyRates(): Promise<Map<number, number>> {
     .groupBy(doseSchedules.productId);
 
   return new Map(rows.map((r) => [r.productId, r.rate]));
+}
+
+/**
+ * Who is on a running course for each of these products, by name.
+ *
+ * For warnings that have to name a person. Archiving a product already refuses
+ * while someone is being dosed from it, and says whose dose it would have
+ * stopped; binning the last usable box does the same thing to the same person
+ * and said nothing at all, which is the more surprising of the two — one is a
+ * refusal, the other just quietly empties the dose board.
+ *
+ * Same `runningSchedulesOn` predicate as everything else, so it cannot decide a
+ * course is live when the dose board thinks it finished.
+ */
+export async function getDoseTakersByProduct(
+  productIds: number[],
+): Promise<Map<number, string[]>> {
+  const map = new Map<number, string[]>();
+  if (productIds.length === 0) return map;
+
+  const rows = await db
+    .selectDistinct({ productId: doseSchedules.productId, memberName: householdMembers.name })
+    .from(doseSchedules)
+    .innerJoin(householdMembers, eq(doseSchedules.memberId, householdMembers.id))
+    .where(and(inArray(doseSchedules.productId, productIds), runningSchedulesOn(todayIso())))
+    .orderBy(sql`${householdMembers.name} collate nocase`);
+
+  for (const row of rows) {
+    const names = map.get(row.productId);
+    if (names) names.push(row.memberName);
+    else map.set(row.productId, [row.memberName]);
+  }
+  return map;
+}
+
+/**
+ * Every day that has a rate on record, newest first, one entry per day.
+ *
+ * Small by nature — one row per shopping run, six of them after three years —
+ * so it goes to the form whole and the choice is made there. It has to be: the
+ * right rate depends on the purchase date, and that is a field the person can
+ * still change.
+ *
+ * Where a day carries two different rates, the last box entered for it wins.
+ * A day normally has one rate across all its boxes, which is the whole reason
+ * this works, but nothing enforces it — and one mistyped rate in a run of eight
+ * would otherwise make the suggestion a coin flip. On a day with two answers,
+ * the later correction is the better guess.
+ */
+export async function getFxRateHistory(): Promise<FxRateOnDate[]> {
+  const rows = await db
+    .select({ date: batches.purchaseDate, rate: batches.fxRateToEur, id: batches.id })
+    .from(batches)
+    .where(and(isNotNull(batches.fxRateToEur), isNotNull(batches.purchaseDate)))
+    .orderBy(sql`${batches.purchaseDate} desc`, sql`${batches.id} desc`);
+
+  const byDate = new Map<string, number>();
+  for (const row of rows) {
+    if (row.date === null || row.rate === null) continue;
+    if (!byDate.has(row.date)) byDate.set(row.date, row.rate);
+  }
+  return [...byDate].map(([date, rate]) => ({ date, rate }));
 }
 
 export async function getBatchesForProducts(
@@ -2404,71 +2475,6 @@ export async function getPriceTrends(): Promise<PriceTrend[]> {
     .sort((a, b) => b.latestPerUnit - b.firstPerUnit - (a.latestPerUnit - a.firstPerUnit));
 }
 
-export interface WasteSummary {
-  /** Bought, never opened, binned. The figure worth pushing down. */
-  thrownAwayMinorEur: number;
-  neverOpenedBoxes: number;
-  /** Left in packs that were opened and used. Not really waste. */
-  leftInOpenedMinorEur: number;
-  openedBoxes: number;
-  /** Binned boxes whose price could not be converted, so are in neither figure. */
-  uncostedBoxes: number;
-}
-
-/**
- * The two waste figures, deliberately not added together.
- *
- * A sealed box that expired is money thrown away. A box that was opened is
- * not: half a bottle left at its expiry date did its job on the wounds it was
- * opened for, and that size was the smallest one sold. Adding them would
- * flatter one and slander the other.
- *
- * Shared with the Expiring page rather than written out twice — the split is
- * the kind of rule that drifts the moment there are two copies of it.
- */
-export function summariseWaste(rows: WasteRow[]): WasteSummary {
-  const summary: WasteSummary = {
-    thrownAwayMinorEur: 0,
-    neverOpenedBoxes: 0,
-    leftInOpenedMinorEur: 0,
-    openedBoxes: 0,
-    uncostedBoxes: 0,
-  };
-
-  for (const row of rows) {
-    /*
-     * A box binned with nothing left in it was used up, not wasted. It costs
-     * zero either way, but counting it inflates the box count next to the
-     * figure — "€2.76 left in 2 opened packs" when only one pack had anything
-     * in it reads as if the money were spread over both.
-     */
-    if (row.quantityRemaining <= 0) continue;
-    if (row.priceMinor === null || row.currency === null) continue;
-
-    const unused = unusedValue(
-      money(row.priceMinor, row.currency),
-      row.unitsWhenFull,
-      row.quantityRemaining,
-    );
-    const eur = toEurOrNull(unused, row.fxRateToEur);
-
-    if (eur === null) {
-      summary.uncostedBoxes++;
-      continue;
-    }
-
-    if (row.openedAt === null) {
-      summary.thrownAwayMinorEur += eur.amountMinor;
-      summary.neverOpenedBoxes++;
-    } else {
-      summary.leftInOpenedMinorEur += eur.amountMinor;
-      summary.openedBoxes++;
-    }
-  }
-
-  return summary;
-}
-
 /* ------------------------------------------------------------------ */
 /* Statistics — usage, read from the ledger                            */
 /* ------------------------------------------------------------------ */
@@ -2752,6 +2758,8 @@ export async function getProductPurchases(productId: number): Promise<PurchaseRo
       })),
     );
 }
+
+export { summariseWaste, type WasteSummary } from '@/domain/waste';
 
 export interface WasteRow {
   batchId: number;

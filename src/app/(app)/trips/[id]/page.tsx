@@ -28,6 +28,10 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   const trip = await getTrip(Number(id));
   if (!trip) notFound();
 
+  // Boxes that actually arrived on this trip. Counted from the lines already
+  // loaded rather than asked for again — see the delete section below.
+  const received = trip.items.filter((item) => item.receivedBatchId !== null).length;
+
   const today = todayIso();
   const [scheduled, unassigned, spend] = await Promise.all([
     getScheduledProducts(),
@@ -431,40 +435,79 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
             }
             message={
               trip.status === 'planned'
-                ? `${trip.label} moves to the done list. Its shopping lines stay exactly as they are — receiving a box is still what records what actually arrived.`
-                : `${trip.label} goes back to planned and starts counting down to its order deadline again.`
+                ? /*
+                   * The kind matters here too. The label and the title above
+                   * were both written for a holiday as well as a restock, and
+                   * this sentence was left behind — so coming home from Kraków
+                   * was explained in terms of shopping lines and receiving
+                   * boxes, neither of which a holiday can have.
+                   */
+                  trip.kind === 'travel'
+                  ? `${trip.label} moves to the done list. Its packing list stays exactly as it is, ticks and all, so it can still be looked back at.`
+                  : `${trip.label} moves to the done list. Its shopping lines stay exactly as they are — receiving a box is still what records what actually arrived.`
+                : trip.kind === 'travel'
+                  ? `${trip.label} goes back to planned, and its packing list can be changed again.`
+                  : `${trip.label} goes back to planned and starts counting down to its order deadline again.`
             }
-            confirmLabel={trip.status === 'planned' ? 'Yes, collected' : 'Yes, reopen'}
+            confirmLabel={
+              trip.status === 'planned'
+                ? trip.kind === 'travel'
+                  ? 'Yes, back home'
+                  : 'Yes, collected'
+                : 'Yes, reopen'
+            }
             tone={trip.status === 'planned' ? 'ok' : 'accent'}
             className="rounded-lg border px-4 py-2 text-sm font-medium"
           />
         </form>
 
-        <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
-          Deleting a trip keeps every box bought on it — purchase dates and prices live on the boxes
-          themselves. Shopping lines assigned to it are put back on the unassigned list. A packing
-          list is part of the trip and goes with it.
-        </p>
-        <form action={deleteTrip}>
-          <input type="hidden" name="id" value={trip.id} />
-          <ConfirmButton
-            label="Delete this trip"
-            title="Delete this trip?"
-            message={`${trip.label} will be removed.${
-              trip.itemCount > 0
-                ? ` Its ${trip.itemCount} shopping ${trip.itemCount === 1 ? 'line' : 'lines'} are not deleted — they go back to being unassigned.`
-                : ''
-            }${
-              /* Unlike the shopping lines, these do go — say so before, not after. */
-              trip.kitCount > 0
-                ? ` Its packing list of ${trip.kitCount} ${trip.kitCount === 1 ? 'thing' : 'things'} goes with it.`
-                : ''
-            }`}
-            confirmLabel="Yes, delete it"
-            tone="critical"
-            className="rounded-lg border px-4 py-2 text-sm font-medium"
-          />
-        </form>
+        {/*
+          A box records no trip of its own: the only thing saying it arrived on
+          this one is its shopping line, and deleting the trip sets that to
+          null. So a trip that boxes actually came in on cannot be deleted — the
+          old wording promised the opposite, that deleting "keeps every box",
+          which is true of the boxes and false of everything that made them a
+          restock. Unassigning the lines by hand is the way out, one considered
+          decision per box instead of one tap over all of them.
+        */}
+        {received > 0 ? (
+          <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
+            This trip cannot be deleted: {received}{' '}
+            {received === 1 ? 'box arrived' : 'boxes arrived'} on it, and these lines are the only
+            record of that. The {received === 1 ? 'box stays' : 'boxes stay'} in the cupboard either
+            way, but deleting the trip would take away what {received === 1 ? 'it' : 'they'} cost
+            and where {received === 1 ? 'it' : 'they'} came from. Unassign{' '}
+            {received === 1 ? 'that line' : 'those lines'} above first if the trip really has to go.
+          </p>
+        ) : (
+          <>
+            <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
+              Nothing has arrived on this trip, so deleting it loses no purchase history. Shopping
+              lines assigned to it are put back on the unassigned list. A packing list is part of
+              the trip and goes with it.
+            </p>
+            <form action={deleteTrip}>
+              <input type="hidden" name="id" value={trip.id} />
+              <ConfirmButton
+                label="Delete this trip"
+                title="Delete this trip?"
+                message={`${trip.label} will be removed.${
+                  trip.itemCount > 0
+                    ? ` Its ${trip.itemCount} shopping ${trip.itemCount === 1 ? 'line' : 'lines'} are not deleted — they go back to being unassigned.`
+                    : ''
+                }${
+                  /* Unlike the shopping lines, these do go — say so before, not after. */
+                  trip.kitCount > 0
+                    ? ` Its packing list of ${trip.kitCount} ${trip.kitCount === 1 ? 'thing' : 'things'} goes with it.`
+                    : ''
+                }`}
+                confirmLabel="Yes, delete it"
+                tone="critical"
+                className="rounded-lg border px-4 py-2 text-sm font-medium"
+              />
+            </form>
+          </>
+        )}
       </div>
     </div>
   );

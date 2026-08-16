@@ -311,8 +311,14 @@ relies on, and this is the part that needs learning rather than reviewing.
 
 Backups ship *with* it, not after. Deployment day is when real stock and fresh photos get entered,
 and that data is valuable immediately — while today there is exactly one copy of the database on
-one machine. `VACUUM INTO` gives a consistent single-file backup while the app keeps running,
+one machine. `VACUUM INTO` gives a consistent copy of the database while the app keeps running,
 which is also the safe way to take a copy for testing a migration against realistic data.
+
+**A backup is the folder, not the file.** `VACUUM INTO` copies the database and nothing else, while
+the box photographs sit beside it in `data/uploads` as ordinary files. A backup of the database
+alone restores a cabinet whose every picture is missing — which is not hypothetical: a broken
+thumbnail found during the bug hunt turned out to be exactly that shape. Whatever the backup job
+ends up being, it copies both, and a restore is tested by looking at a photo.
 
 The database is wiped for this: a clean start, entered fresh against the real cupboard.
 
@@ -376,8 +382,11 @@ somebody's memory, which is how a small good idea quietly disappears.
   CSV instead.
 - **Push notifications** — the app is used daily, so reminders would be noise, and they would have
   forced the first background scheduler into an app that deliberately derives everything on read.
-- **Passkeys** — sessions already last 90 days and renew on use, so "remember me" exists in all
-  but name; a password manager covers the rest.
+- **Passkeys** — a session lasts 90 days from the login that created it, so "remember me" exists in
+  all but name; a password manager covers the rest. (It does *not* slide forward with use, as this
+  line claimed until 2026-08-15: expiry is fixed at login, so each phone signs in about twice a
+  year however often it is opened. Sliding expiry would mean a database write on every request, for
+  a login nobody minds doing at that interval.)
 - **Audit log as a changelog** — who-changed-what has no audience in a two-person household. The
   reconciliation people actually mean by "audit" is item 2 above.
 

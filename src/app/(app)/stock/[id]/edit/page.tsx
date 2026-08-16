@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { ConfirmButton } from '@/components/confirm-button';
 import { LINK_BUTTON, toneStyle } from '@/components/tone';
 import { formatQuantity } from '@/domain/quantity';
-import { getBatch, getBatchHistory } from '@/lib/queries';
+import { getBatch, getBatchHistory, getFxRateHistory } from '@/lib/queries';
 import { movementReasonLabel } from '@/lib/labels';
 import { deleteBatch } from '../../../actions';
 import { BatchEditForm } from './batch-edit-form';
@@ -32,7 +32,10 @@ export default async function EditBatchPage({
   const box = await getBatch(Number(id));
   if (!box) notFound();
 
-  const history = await getBatchHistory(box.batchId);
+  const [history, rateHistory] = await Promise.all([
+    getBatchHistory(box.batchId),
+    getFxRateHistory(),
+  ]);
 
   // Reached from two screens; cancelling and saving should both go back to
   // whichever one it was.
@@ -54,7 +57,7 @@ export default async function EditBatchPage({
         {formatQuantity(box.quantityRemaining, box.unitName, box.packSize)}
       </p>
 
-      <BatchEditForm box={box} from={cameFromExpiring ? 'expiring' : null} />
+      <BatchEditForm box={box} from={cameFromExpiring ? 'expiring' : null} rateHistory={rateHistory} />
 
       {/*
         Why the number above is what it is.

@@ -55,6 +55,7 @@ import { defaultOrderByDate } from '@/domain/trip';
 import { formatExpiry, normaliseExpiry, parseGraceDays } from '@/domain/expiry';
 import { UNIT_PRECISION, isTrackableQuantity, parseUnits } from '@/domain/quantity';
 import { parseAmount, parseFxRate } from '@/domain/money';
+import { destroyAllSessions } from '@/lib/auth';
 import { endSession } from '@/lib/session';
 
 function refreshAll() {
@@ -80,13 +81,50 @@ const optionalText = z
     return trimmed === '' ? null : trimmed;
   });
 
+/*
+ * Long enough for anything on a real box — "Solgar Omega 3-6-9 Fish, Flax,
+ * Borage" is 37 — and short enough that a name is still a name.
+ *
+ * A person's name has been capped at 80 and a substance's Polish alias at 100
+ * since those were written; a product's was capped at nothing, and it is the
+ * one that appears on every screen in the app. Three thousand characters
+ * pasted into it rendered in full on Stock, Expiring, Products and Shopping,
+ * taking that last page from 20 KB to 160 KB, and went into the middle of the
+ * bin confirmation as one unbroken word.
+ */
+const MAX_PRODUCT_NAME = 120;
+const MAX_PRODUCT_TEXT = 200;
+
+/**
+ * An ingredient name, not an essay. Long enough for "Pyridoxine hydrochloride".
+ *
+ * Up here with the others because both doors into the substance and symptom
+ * catalogues now use it, and the second of those is the product form above.
+ */
+const MAX_TAG_NAME = 100;
+
 const productSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required'),
-  nameAlt: optionalText,
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name is required')
+    .max(MAX_PRODUCT_NAME, `A name longer than ${MAX_PRODUCT_NAME} characters is not a name — put the detail in the notes.`),
+  nameAlt: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_NAME,
+    `That other name is longer than ${MAX_PRODUCT_NAME} characters.`,
+  ),
   form: z.enum(DOSE_FORMS),
   unitName: z.enum(UNIT_NAMES),
-  strength: optionalText,
-  manufacturer: optionalText,
+  strength: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_TEXT,
+    `That strength is longer than ${MAX_PRODUCT_TEXT} characters.`,
+  ),
+  manufacturer: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_TEXT,
+    `That manufacturer is longer than ${MAX_PRODUCT_TEXT} characters.`,
+  ),
+  // Notes are deliberately uncapped: they are prose, they render in their own
+  // wrapping block, and they appear on one screen rather than on every one.
   notes: optionalText,
   isPrescription: z.coerce.boolean(),
   hasExpiry: z.coerce.boolean(),
@@ -109,10 +147,28 @@ const productSchema = z.object({
    * end that was easy to create and easy to miss.
    */
   packSize: optionalText,
-  packLabel: optionalText,
-  substance: optionalText,
-  substanceAmount: optionalText,
-  symptom: optionalText,
+  packLabel: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_TEXT,
+    `That pack label is longer than ${MAX_PRODUCT_TEXT} characters.`,
+  ),
+  /*
+   * The new-product form is the second door into the substance and symptom
+   * catalogues; `addSubstanceToProduct` is the first. Capping only that one
+   * would have left this one open, and a catalogue entry made here is shared
+   * with every product that later links to it.
+   */
+  substance: optionalText.refine(
+    (value) => value === null || value.length <= MAX_TAG_NAME,
+    `That substance name is longer than ${MAX_TAG_NAME} characters.`,
+  ),
+  substanceAmount: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_TEXT,
+    `That amount is longer than ${MAX_PRODUCT_TEXT} characters.`,
+  ),
+  symptom: optionalText.refine(
+    (value) => value === null || value.length <= MAX_TAG_NAME,
+    `That is longer than ${MAX_TAG_NAME} characters — a symptom is a word or two.`,
+  ),
 });
 
 export async function createProduct(_prev: FormResult, formData: FormData): Promise<FormResult> {
@@ -291,6 +347,18 @@ export async function addSubstanceToProduct(
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter a substance name.', values: snapshot(formData) };
+  /*
+   * The alias below has always been capped and the name it aliases never was —
+   * and this one is the worse of the two to leave open, because a substance is
+   * shared: one long name lands on every product linked to it and on the
+   * substance list beside them.
+   */
+  if (name.length > MAX_TAG_NAME) {
+    return {
+      error: `That substance name is longer than ${MAX_TAG_NAME} characters.`,
+      values: snapshot(formData),
+    };
+  }
   if (namePl !== null && namePl.length > MAX_TAG_NAME) {
     return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.` };
   }
@@ -344,6 +412,13 @@ export async function addSymptomToProduct(
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter what it is used for.', values: snapshot(formData) };
+  // Same as substances: the alias was capped, the name was not.
+  if (name.length > MAX_TAG_NAME) {
+    return {
+      error: `That is longer than ${MAX_TAG_NAME} characters — a symptom is a word or two.`,
+      values: snapshot(formData),
+    };
+  }
   if (namePl !== null && namePl.length > MAX_TAG_NAME) {
     return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.` };
   }
@@ -837,10 +912,26 @@ interface BatchFields {
  * Shared by "add box" and by receiving a shopping item — both describe the same
  * physical thing arriving in the house, so they parse identically.
  */
-function parseBatchFields(formData: FormData): { fields: BatchFields } | { error: string } {
+function parseBatchFields(
+  formData: FormData,
+  /*
+   * A box arriving must hold something — an empty new box is a typo. A box
+   * being corrected may hold nothing at all, because used-up and binned-empty
+   * are ordinary states, and refusing them closed the only door to the rest of
+   * the form. That is not theoretical: a złoty box with no exchange rate sits
+   * outside every euro total until somebody adds the rate, and the one in this
+   * cabinet that needs it most was long since used up — so the screen built to
+   * repair it turned the save away over a quantity nobody was trying to change.
+   */
+  { allowEmpty = false }: { allowEmpty?: boolean } = {},
+): { fields: BatchFields } | { error: string } {
   const quantity = parseUnits(String(formData.get('quantityRemaining') ?? ''));
-  if (quantity === null || quantity <= 0) {
-    return { error: 'Quantity must be a positive number — 30, 32.5 or 32,5 all work.' };
+  if (quantity === null || quantity < 0 || (!allowEmpty && quantity === 0)) {
+    return {
+      error: allowEmpty
+        ? 'Quantity cannot be negative — 0, 30, 32.5 or 32,5 all work.'
+        : 'Quantity must be a positive number — 30, 32.5 or 32,5 all work.',
+    };
   }
 
   let expiryDate: string | null = null;
@@ -1005,8 +1096,15 @@ export async function receiveShoppingItem(
    * belongs to, and that is not something a stale form should get to choose.
    */
   const itemRows = await db
-    .select({ variantId: shoppingItems.variantId, status: shoppingItems.status })
+    .select({
+      variantId: shoppingItems.variantId,
+      status: shoppingItems.status,
+      productName: products.name,
+      productArchivedAt: products.archivedAt,
+    })
     .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
     .where(eq(shoppingItems.id, itemId))
     .limit(1);
 
@@ -1016,7 +1114,36 @@ export async function receiveShoppingItem(
     return fail('This one is already in the cupboard — it was received before.');
   }
   if (item.status === 'not_received') {
-    return fail('This line is marked as never arrived. Move it back into the flow first.');
+    /*
+     * Not "move it back into the flow first": there is no control that does
+     * that. A settled line gets a Clear button and nothing else, and
+     * `setShoppingStatus` refuses to walk one backwards. The receive page used
+     * to give the same wrong instruction — this was its twin, one screen
+     * deeper, and fixing only the page would have left the advice alive here.
+     */
+    return fail(
+      'This line is marked as never arrived, and that cannot be walked back. Clear it on the shopping list and add the item again.',
+    );
+  }
+
+  /*
+   * The product must not be retired — the same rule `addBatch` enforces, for
+   * the same reason, and it was missing here.
+   *
+   * Archiving refuses only while somebody is on a course; an open shopping line
+   * does not stop it. So the ordinary sequence — retire something, then collect
+   * the order that was already on its way — put a box of it straight back into
+   * a cupboard it had just been retired from. The row on the shopping list even
+   * says "it cannot be added to the list any more", while the Add-to-stock
+   * button beside it did exactly that.
+   *
+   * Refused rather than warned: unlike binning, there is no hurry here. The
+   * line keeps its place, and restoring the product makes it work.
+   */
+  if (item.productArchivedAt !== null) {
+    return fail(
+      `${item.productName} has been archived, so nothing more of it can enter the cupboard. Restore the product first, or clear this line if it is no longer wanted.`,
+    );
   }
 
   const parsed = parseBatchFields(formData);
@@ -1086,7 +1213,9 @@ export async function updateBatch(_prev: FormResult, formData: FormData): Promis
 
   if (!Number.isInteger(id)) return fail('That box no longer exists.');
 
-  const parsed = parseBatchFields(formData);
+  // Empty allowed here: this is the screen that corrects a box, and a used-up
+  // or binned-empty one still has a price, a date and a rate worth fixing.
+  const parsed = parseBatchFields(formData, { allowEmpty: true });
   if ('error' in parsed) return fail(parsed.error);
 
   const before = await db
@@ -1666,7 +1795,7 @@ export async function removeAlternative(formData: FormData): Promise<void> {
 export async function addKitItem(formData: FormData): Promise<void> {
   const tripId = await parseTripId(formData.get('tripId'));
   const productId = Number(formData.get('productId'));
-  if (tripId === null || !Number.isInteger(productId)) return;
+  if (tripId === null || tripId === UNUSABLE_TRIP || !Number.isInteger(productId)) return;
 
   const units = parseUnits(String(formData.get('units') ?? '')) ?? 0;
   if (units < 0 || (units > 0 && !isTrackableQuantity(units))) return;
@@ -1818,7 +1947,19 @@ export async function setBatchStatus(formData: FormData): Promise<void> {
 const MAX_PACKS_PER_LINE = 999;
 
 export async function addShoppingItem(_prev: FormResult, formData: FormData): Promise<FormResult> {
-  const variantId = Number(formData.get('variantId'));
+  /*
+   * Empty is "nothing chosen", not "pack number zero". `Number('')` is 0, which
+   * is a perfectly good integer, so a form submitted without a choice sailed
+   * past the check below and came back with "that pack size no longer exists" —
+   * about a pack the person had never named. The picker now opens on a blank
+   * row, so this is a reachable state rather than a theoretical one.
+   */
+  const variantRaw = String(formData.get('variantId') ?? '').trim();
+  if (variantRaw === '') {
+    return { error: 'Pick which pack to buy.', values: snapshot(formData) };
+  }
+
+  const variantId = Number(variantRaw);
   const quantityPacks = Number(formData.get('quantityPacks') ?? 1);
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
   const tripId = await parseTripId(formData.get('tripId'), 'restock');
@@ -1869,6 +2010,20 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
     };
   }
 
+  /*
+   * Said, not swallowed. A stale form naming a trip that has since been deleted
+   * used to add the line with no trip at all — off the restock it was chosen
+   * for, out of its estimate, and silently. The pack-no-longer-exists case one
+   * block up has always been reported; this is the same kind of staleness and
+   * gets the same treatment.
+   */
+  if (tripId === UNUSABLE_TRIP) {
+    return {
+      error: 'That trip is no longer there. Pick another one, or "No trip".',
+      values: snapshot(formData),
+    };
+  }
+
   await db.insert(shoppingItems).values({ variantId, quantityPacks, notes, tripId });
   refreshAll();
   return { error: null, ok: true };
@@ -1888,12 +2043,12 @@ export async function addShoppingItem(_prev: FormResult, formData: FormData): Pr
 async function parseTripId(
   raw: FormDataEntryValue | null,
   kind?: (typeof TRIP_KINDS)[number],
-): Promise<number | null> {
+): Promise<number | null | typeof UNUSABLE_TRIP> {
   const value = String(raw ?? '').trim();
   if (value === '') return null;
 
   const id = Number(value);
-  if (!Number.isInteger(id)) return null;
+  if (!Number.isInteger(id)) return UNUSABLE_TRIP;
 
   /*
    * Optionally the right sort of trip, too. The picker only ever offers planned
@@ -1906,17 +2061,33 @@ async function parseTripId(
     .from(trips)
     .where(kind === undefined ? eq(trips.id, id) : and(eq(trips.id, id), eq(trips.kind, kind)))
     .limit(1);
-  return rows[0]?.id ?? null;
+  return rows[0]?.id ?? UNUSABLE_TRIP;
 }
+
+/**
+ * A trip was named, and it cannot be used: deleted since the form was drawn, or
+ * the wrong sort of trip for what is being written. Distinct from null, which
+ * means "no trip", a deliberate and ordinary answer.
+ */
+const UNUSABLE_TRIP = Symbol('unusable trip');
 
 /** Move a line to another trip, or off trips entirely. */
 export async function setShoppingTrip(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
 
+  const tripId = await parseTripId(formData.get('tripId'), 'restock');
+  /*
+   * Moving a line to a trip that has gone is not the same as taking it off
+   * trips, and doing the second when the first was asked for is how a line
+   * disappears from the restock it was meant for. Leave it where it is; the
+   * list will be showing the truth again by the time this returns.
+   */
+  if (tripId === UNUSABLE_TRIP) return;
+
   await db
     .update(shoppingItems)
-    .set({ tripId: await parseTripId(formData.get('tripId'), 'restock'), updatedAt: new Date() })
+    .set({ tripId, updatedAt: new Date() })
     .where(eq(shoppingItems.id, id));
   refreshAll();
 }
@@ -1970,10 +2141,17 @@ export async function removeShoppingItem(formData: FormData): Promise<void> {
 /* Household members and dosing                                       */
 /* ------------------------------------------------------------------ */
 
+/** Long enough for any name anyone actually has. */
+const MAX_PERSON_NAME = 80;
+
 export async function createMember(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const name = String(formData.get('name') ?? '').trim();
   const notes = emptyToNull(String(formData.get('notes') ?? '').trim());
   if (!name) return { error: 'Enter a name.', values: snapshot(formData) };
+  /* A name, not a paragraph — it goes in a heading beside a dose board. */
+  if (name.length > MAX_PERSON_NAME) {
+    return { error: `That name is longer than ${MAX_PERSON_NAME} characters.`, values: snapshot(formData) };
+  }
 
   const inserted = await db
     .insert(householdMembers)
@@ -1994,6 +2172,22 @@ export async function updateMember(_prev: FormResult, formData: FormData): Promi
 
   if (!Number.isInteger(id)) return { error: 'Unknown person.' };
   if (!name) return { error: 'Enter a name.', values: snapshot(formData) };
+  if (name.length > MAX_PERSON_NAME) {
+    return { error: `That name is longer than ${MAX_PERSON_NAME} characters.`, values: snapshot(formData) };
+  }
+
+  /*
+   * Saving a person who has since been deleted updated nothing and then sent
+   * you to their page, which 404s — the same dead end product editing had.
+   */
+  const present = await db
+    .select({ id: householdMembers.id })
+    .from(householdMembers)
+    .where(eq(householdMembers.id, id))
+    .limit(1);
+  if (present.length === 0) {
+    return { error: 'That person is no longer on the list.', values: snapshot(formData) };
+  }
 
   await db
     .update(householdMembers)
@@ -2140,6 +2334,38 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
     return fail('That product is archived or no longer exists — restore it first.');
   }
 
+  /*
+   * The identical schedule twice is a double tap, not a plan.
+   *
+   * Two schedules for one product are legitimate and sometimes the only way to
+   * say what is actually happening: one tablet in the morning and two at night
+   * cannot be written as a single "twice a day", so the app adds them up. But
+   * the *same* dose at the same frequency, again, is a resubmitted form — and
+   * it does real damage quietly, because the rates are summed. A duplicate of
+   * two-a-day turned a cupboard with four days left into one with two, and the
+   * board showed two cards nothing could tell apart.
+   */
+  const identical = await db
+    .select({ id: doseSchedules.id })
+    .from(doseSchedules)
+    .where(
+      and(
+        eq(doseSchedules.memberId, memberId),
+        eq(doseSchedules.productId, productId),
+        eq(doseSchedules.doseUnits, doseUnits),
+        eq(doseSchedules.timesPerDay, timesPerDay),
+        eq(doseSchedules.intervalDays, intervalDays),
+        isNull(doseSchedules.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  if (identical.length > 0) {
+    return fail(
+      'That exact course is already running for this person. Change the dose or how often it is taken if this is meant to be a second one.',
+    );
+  }
+
   await db.insert(doseSchedules).values({
     memberId,
     productId,
@@ -2261,8 +2487,13 @@ export async function confirmDose(formData: FormData): Promise<void> {
    */
   if (occurrence < 1 || occurrence > schedule.timesPerDay) return;
   if (!isScheduleActiveOn(schedule, date)) return;
-  // Tomorrow is offered on the board — taking the evening dose early is real.
-  // Anything beyond that is a stale form or a crafted one.
+  /*
+   * The board only ever draws today and the days behind it, so nothing it
+   * renders can land here with a future date at all. The extra day of slack is
+   * for the phone left open overnight: the form was drawn before midnight and
+   * submitted after it, and the dose it describes is real. Anything past that
+   * is a crafted request.
+   */
   if (date > addDays(todayIso(), 1)) return;
 
   const batchRows = await db
@@ -2426,15 +2657,28 @@ export async function logout(): Promise<void> {
 }
 
 /**
+ * Sign every device out at once.
+ *
+ * `destroyAllSessions` was written for the case it names — a phone left
+ * somewhere — and then nothing ever called it. The capability existed in the
+ * code and not in the app, which is the same as not existing: recovering a lost
+ * phone meant opening the database by hand.
+ *
+ * Deliberately not beside the everyday logout in the header. It is the thing
+ * you want twice in a lifetime and never by accident.
+ */
+export async function logoutEverywhere(): Promise<void> {
+  await destroyAllSessions();
+  redirect('/login');
+}
+
+/**
  * What a rename came back with.
  *
  * `merge` is set when the new name is already taken: nothing has happened yet,
  * and the form asks before folding the two together, because that step cannot
  * be undone.
  */
-/** An ingredient name, not an essay. Long enough for "Pyridoxine hydrochloride". */
-const MAX_TAG_NAME = 100;
-
 export interface RenameResult {
   error: string | null;
   merge: { name: string; products: number } | null;
@@ -2636,14 +2880,34 @@ export async function setTripStatus(formData: FormData): Promise<void> {
 }
 
 /**
- * No archive step and no guard, unlike products and people. A trip carries no
- * history of its own — the boxes bought on it keep their own purchase dates and
- * prices, and shopping lines are only unassigned (the FK is `set null`), never
- * deleted. So a mistyped trip can simply go.
+ * A mistyped trip can simply go. One that boxes actually arrived on cannot.
+ *
+ * The old reasoning here was that a trip "carries no history of its own",
+ * because the boxes keep their own dates and prices and the shopping lines are
+ * only unassigned. Half true, and the missing half matters: a box records no
+ * trip at all, so the line's `trip_id` is the only thing that says which
+ * restock it came on. `set null` erases that. Deleting October 2024 left its
+ * six boxes sitting in the cupboard with their prices intact and no way to
+ * learn where they came from — the price history stopped saying "October 2024"
+ * beside them, and what that restock cost stopped being answerable.
+ *
+ * So: refused, in the way products and people with history are refused. The
+ * way out is on the same page — unassign those lines one by one, which is a
+ * deliberate act per box rather than a single tap over the lot.
  */
 export async function deleteTrip(formData: FormData): Promise<void> {
   const id = Number(formData.get('id'));
   if (!Number.isInteger(id)) return;
+
+  const received = await db
+    .select({ id: shoppingItems.id })
+    .from(shoppingItems)
+    .where(and(eq(shoppingItems.tripId, id), isNotNull(shoppingItems.receivedBatchId)))
+    .limit(1);
+
+  // The page offers an explanation instead of the button in this case; this is
+  // the backstop for a page left open while the last box was received.
+  if (received.length > 0) return;
 
   await db.delete(trips).where(eq(trips.id, id));
   refreshAll();
@@ -2669,7 +2933,7 @@ export async function addAuditSelection(formData: FormData): Promise<void> {
    * on the foreign key and put a crash page in front of a completed audit.
    */
   const tripId = await parseTripId(formData.get('tripId'));
-  if (tripId === null) redirect('/trips');
+  if (tripId === null || tripId === UNUSABLE_TRIP) redirect('/trips');
 
   /*
    * And it has to be a restock. This writes shopping lines, and a holiday with

@@ -10,7 +10,13 @@ import type { IsoDate } from './date';
  * that were actually taken.
  */
 
-export type DoseStatus = 'taken' | 'missed' | 'pending' | 'future';
+export type DoseStatus =
+  | 'taken'
+  | 'missed'
+  | 'pending'
+  | 'future'
+  /** A day before this course was entered — the app has nothing to say about it. */
+  | 'unknown';
 
 export interface DoseScheduleWindow {
   startDate: IsoDate;
@@ -95,6 +101,32 @@ export function doseOccurrenceStatus(
 }
 
 /**
+ * The same status, told it when the course was entered.
+ *
+ * `boardDates` already drops the days before that, so this only matters for the
+ * one kind of day it keeps: an older day carrying a confirmation, kept so the
+ * dose recorded on it can still be undone. On a twice-a-day course that day
+ * arrives with a second occurrence attached, and calling that one *missed*
+ * brings back the accusation the day was kept in spite of — about a morning the
+ * app was not installed for.
+ *
+ * `unknown` rather than silently dropping the pill: a gap in the row is the
+ * thing this codebase keeps mistaking for a broken screen. Grey, with a reason
+ * on it, is the same answer the board already gives for everything else it will
+ * not let you tap.
+ */
+export function boardDoseStatus(
+  occurrence: number,
+  date: IsoDate,
+  today: IsoDate,
+  takenOccurrences: ReadonlySet<number>,
+  createdOn: IsoDate,
+): DoseStatus {
+  const status = doseOccurrenceStatus(occurrence, date, today, takenOccurrences);
+  return status === 'missed' && date < createdOn ? 'unknown' : status;
+}
+
+/**
  * Total units this schedule will consume between two dates, both inclusive.
  *
  * Counts actual dosing days rather than multiplying an average rate by the
@@ -153,6 +185,29 @@ export function formatDoseCadence(timesPerDay: number, intervalDays = 1): string
   return `${timesPerDay}×/${intervalDays} days`;
 }
 
+/** Days of history the dose board shows for an everyday schedule. */
+export const HISTORY_DAYS = 3;
+
+/**
+ * How far back one schedule's row of pills reaches.
+ *
+ * Three days shows nothing at all for a weekly dose on four days out of seven,
+ * which reads as broken rather than as "not today" — so the row widens past one
+ * full interval and the last dosing day is always on screen.
+ *
+ * Here, rather than on the board, because the board is not the only thing that
+ * needs it: the query fetching which doses were confirmed has to reach back at
+ * least as far as the furthest pill drawn. It did not. The row widened to eight
+ * days for a weekly schedule while the query kept its three-day cutoff, so the
+ * dose taken last Saturday came back unconfirmed and its pill rendered red —
+ * permanently, since `confirmDose` rightly refuses to record the same
+ * occurrence twice. The board accused you of missing a dose you had taken and
+ * gave you no way to argue.
+ */
+export function doseWindowDays(schedule: { intervalDays: number }): number {
+  return Math.max(HISTORY_DAYS, schedule.intervalDays + 1);
+}
+
 /**
  * The dates worth showing on the "today" board — recent days clipped to when
  * the schedule actually existed, so a course started three days ago does not
@@ -161,7 +216,7 @@ export function formatDoseCadence(timesPerDay: number, intervalDays = 1): string
 export function recentScheduleDates(
   schedule: DoseScheduleWindow,
   today: IsoDate,
-  days = 3,
+  days = HISTORY_DAYS,
 ): IsoDate[] {
   const dates: IsoDate[] = [];
   for (let i = days - 1; i >= 0; i--) {
@@ -169,4 +224,34 @@ export function recentScheduleDates(
     if (isScheduleActiveOn(schedule, date)) dates.push(date);
   }
   return dates;
+}
+
+/**
+ * The dates the dose board draws a pill on — `recentScheduleDates`, minus the
+ * days this app was never in a position to know about.
+ *
+ * A course is almost always entered after it began. Four of the five schedules
+ * in the real cabinet were backdated on the day they were typed in, one of them
+ * by five months, because that is simply how you record something you are
+ * already taking. The board took the start date at face value and immediately
+ * drew two days of red "missed" pills for every one of them: an accusation
+ * about days when the app did not exist, that could not be dismissed, only
+ * waited out. At least one was cleared by confirming it — deducting a real
+ * tablet from the cupboard to silence a warning that should never have
+ * appeared.
+ *
+ * So: nothing before the day the schedule was entered. With one exception —
+ * a day that *does* have a confirmation is always drawn, however old. Hiding a
+ * recorded dose would take away the only way to undo it, and this app's rule is
+ * that the way out has to exist somewhere.
+ */
+export function boardDates(
+  schedule: DoseScheduleWindow & { createdOn: IsoDate },
+  today: IsoDate,
+  days: number,
+  isConfirmed: (date: IsoDate) => boolean,
+): IsoDate[] {
+  return recentScheduleDates(schedule, today, days).filter(
+    (date) => date >= schedule.createdOn || isConfirmed(date),
+  );
 }

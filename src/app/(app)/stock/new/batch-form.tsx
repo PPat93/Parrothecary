@@ -9,10 +9,17 @@ import { toneStyle } from '@/components/tone';
 import { todayIso } from '@/domain/date';
 import { addBatch, linkBarcode, resolveScan, type FormResult, type ScanResult } from '../../actions';
 import type { VariantRow } from '@/lib/queries';
+import type { FxRateOnDate } from '@/domain/money';
 
 const initialState: FormResult = { error: null };
 
-export function BatchForm({ variants }: { variants: VariantRow[] }) {
+export function BatchForm({
+  variants,
+  rateHistory,
+}: {
+  variants: VariantRow[];
+  rateHistory: FxRateOnDate[];
+}) {
   const [state, formAction, pending] = useActionState(addBatch, initialState);
   const prev = state.values ?? {};
   const defaultVariantId = prev.variantId ?? String(variants[0]?.id ?? '');
@@ -24,10 +31,22 @@ export function BatchForm({ variants }: { variants: VariantRow[] }) {
    * defaultValue the reset restores whatever the server echoed back.
    */
   const [variantId, setVariantId] = useState(defaultVariantId);
+
+  /*
+   * A mirror of the purchase-date field, kept only so the offered exchange rate
+   * can follow it. The field itself stays uncontrolled; this is re-synced below
+   * when the server echoes values back, because a rejected submit rebuilds that
+   * input and the mirror has to move with it.
+   */
+  const [purchaseDate, setPurchaseDate] = useState(prev.purchaseDate ?? todayIso());
+
   const [seenValues, setSeenValues] = useState(state.values);
   if (state.values !== seenValues) {
     setSeenValues(state.values);
     if (prev.variantId && prev.variantId !== variantId) setVariantId(prev.variantId);
+    if (prev.purchaseDate !== undefined && prev.purchaseDate !== purchaseDate) {
+      setPurchaseDate(prev.purchaseDate);
+    }
   }
 
   const [scanning, setScanning] = useState(false);
@@ -120,6 +139,9 @@ export function BatchForm({ variants }: { variants: VariantRow[] }) {
         </Field>
 
         <PriceFields
+          rateHistory={rateHistory}
+          purchaseDate={purchaseDate}
+          submitted={state.values !== undefined}
           price={prev.price ?? ''}
           currency={prev.currency ?? 'PLN'}
           fxRate={prev.fxRate ?? ''}
@@ -131,7 +153,20 @@ export function BatchForm({ variants }: { variants: VariantRow[] }) {
           trend — and nothing about an empty date field says that.
         */}
         <Field label="Purchase date">
-          <TextInput name="purchaseDate" type="date" defaultValue={prev.purchaseDate ?? todayIso()} />
+          <TextInput
+          /*
+           * Uncontrolled, like the rest of this form and for the same reason:
+           * a controlled field desyncs after a server action, because React
+           * resets the form and then sees no state change to put it right. The
+           * state below only mirrors it, so the offered exchange rate can
+           * follow the date — the DOM stays in charge of the value.
+           */
+            key={`date-${prev.purchaseDate ?? ''}`}
+            name="purchaseDate"
+            type="date"
+            defaultValue={prev.purchaseDate ?? todayIso()}
+            onChange={(event) => setPurchaseDate(event.target.value)}
+          />
         </Field>
 
         <Field label="Batch / lot number" hint="Filled in automatically by a DataMatrix scan.">

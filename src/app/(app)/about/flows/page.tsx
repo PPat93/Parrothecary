@@ -97,6 +97,12 @@ export default function FlowsPage() {
           Correcting a mistyped quantity with the pencil instead writes <code>adjust</code>, which
           is kept out of “used” — it is stock that was never there.
         </Step>
+        <Step>
+          Take the last of a box and it leaves the stock list, which takes the <b>+</b> with it.
+          The box is still on its <b>product</b> page, where <b>Put back</b> returns it empty; the{' '}
+          <b>+</b> then puts the units back and nets the mistake out. Same button as an
+          unbinned box, for the same reason: the way out has to exist somewhere.
+        </Step>
       </Panel>
 
       <Panel title="Counting the shelf">

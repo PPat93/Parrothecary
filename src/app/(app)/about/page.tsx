@@ -1,4 +1,7 @@
 import { BackLink } from '@/components/back-link';
+import { ConfirmButton } from '@/components/confirm-button';
+import { countActiveSessions } from '@/lib/auth';
+import { logoutEverywhere } from '../actions';
 import { AboutTabs } from './tabs';
 
 /**
@@ -8,7 +11,9 @@ import { AboutTabs } from './tabs';
  * numbers and dependency lists belong in the repository, not in front of
  * someone standing at a cupboard.
  */
-export default function AboutPage() {
+export default async function AboutPage() {
+  const devices = await countActiveSessions();
+
   return (
     <div className="mx-auto w-full max-w-lg">
       <BackLink href="/" label="Stock" />
@@ -62,9 +67,48 @@ export default function AboutPage() {
       <Section title="Where it lives">
         <p>
           On the home network and nowhere else. No cloud service, no account, no telemetry, and
-          nothing leaves the house. The database is a single file that can be copied to a memory
-          stick.
+          nothing leaves the house.
         </p>
+        <p className="mt-2">
+          {/*
+            The old wording — "the database is a single file that can be copied
+            to a memory stick" — was true and incomplete, which is worse than
+            either. Photos sit beside the database as separate files, so
+            somebody copying one file for safekeeping would find every picture
+            gone when they restored it. That is not hypothetical: a broken
+            thumbnail turned out to be exactly this shape.
+          */}
+          Everything lives in one folder: the database as a single file, and the box photographs
+          beside it. Copy the folder, not just the file — a database restored on its own comes back
+          with every photograph missing.
+        </p>
+      </Section>
+
+      {/*
+        The lost-phone button. Here rather than in the header, where the
+        everyday logout lives: this is the one you want twice in a lifetime and
+        never by accident.
+      */}
+      <Section title="Signed-in devices">
+        <p>
+          {devices === 1
+            ? 'One device is signed in — this one.'
+            : `${devices} devices are signed in. A phone stays signed in for about three months at a time.`}
+        </p>
+        <p className="mt-2">
+          If one of them has gone missing, sign them all out. Nothing is lost — the cupboard, the
+          history and the photos are untouched — everyone simply types the password again.
+        </p>
+        <form action={logoutEverywhere} className="mt-3">
+          <ConfirmButton
+            label="Sign out every device"
+            title="Sign out every device?"
+            message={`All ${devices} signed-in ${devices === 1 ? 'device' : 'devices'} will be signed out, including this one. Nothing else changes.`}
+            confirmLabel="Yes, sign them all out"
+            tone="critical"
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
+          />
+        </form>
       </Section>
 
       <footer className="mt-8 pb-4 text-center">

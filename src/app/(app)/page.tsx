@@ -242,14 +242,30 @@ export default async function StockPage({
                 </ul>
             )}
 
-            {/* What is sitting in those drawers, at what it cost. Prorated by what is
-          left in each box — the number that makes over-buying visible. */}
-            {value.minorEur > 0 && !search ? (
+            {/*
+              What is sitting in those drawers, at what it cost. Prorated by
+              what is left in each box — the number that makes over-buying
+              visible.
+
+              Shown whenever there is anything to say, including when none of it
+              could be priced. Gated on the total alone, this line vanished on a
+              cupboard whose boxes were all złoty with no rate against them,
+              taking the count of what it could not price with it. Statistics
+              says so in that case; this line, showing the same figure, did not.
+
+              Still hidden while searching: the value is the whole cupboard's,
+              not the filtered view's, and putting it under a short list of
+              matches invites reading it as their total.
+            */}
+            {(value.minorEur > 0 || value.uncostedBoxes > 0) && !search ? (
                 <p className="mt-6 text-center text-xs" style={{color: 'var(--muted)'}}>
-                    In the cupboard: {formatMoney(money(value.minorEur, 'EUR'), {showCurrency: true})} of
-                    stock at what it cost
+                    {value.minorEur > 0
+                        ? `In the cupboard: ${formatMoney(money(value.minorEur, 'EUR'), {showCurrency: true})} of stock at what it cost`
+                        : 'Nothing in the cupboard has a price this can use'}
                     {value.uncostedBoxes > 0
-                        ? `, plus ${value.uncostedBoxes} ${value.uncostedBoxes === 1 ? 'box' : 'boxes'} with no price it can use`
+                        ? value.minorEur > 0
+                            ? `, plus ${value.uncostedBoxes} ${value.uncostedBoxes === 1 ? 'box' : 'boxes'} with no price it can use`
+                            : ` — ${value.uncostedBoxes} ${value.uncostedBoxes === 1 ? 'box is' : 'boxes are'} waiting on a price or an exchange rate`
                         : ''}
                     .
                 </p>
