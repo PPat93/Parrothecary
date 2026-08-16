@@ -53,3 +53,30 @@ describe('the rate offered in the form', () => {
     expect(fxRateField('', null, fresh)).toEqual({ value: '', offered: null });
   });
 });
+
+/**
+ * Once the rate has been typed in by hand it stops being the app's business.
+ * `PriceFields` passes null for the suggestion from that point on, and these
+ * pin what that has to produce — the component wiring is a browser concern,
+ * the decision is not.
+ */
+describe('a rate somebody typed themselves', () => {
+  it('is left exactly as typed, whatever the date now says', () => {
+    // Type 0,25, then correct the purchase date: the 0,25 has to survive.
+    expect(fxRateField('0,25', null, fresh)).toEqual({ value: '0,25', offered: null });
+  });
+
+  it('is left alone even while it is still being typed', () => {
+    // Mid-entry the field can read "0," — nothing may swap it for a suggestion.
+    expect(fxRateField('0,', null, fresh)).toEqual({ value: '0,', offered: null });
+  });
+
+  it('stops claiming the number came from another box', () => {
+    expect(fxRateField('0,25', null, fresh).offered).toBeNull();
+  });
+
+  it('goes quiet rather than re-offering once the field is emptied by hand', () => {
+    // Suggestion suppressed by the caller: an emptied field stays empty.
+    expect(fxRateField('', null, fresh)).toEqual({ value: '', offered: null });
+  });
+});

@@ -44,8 +44,9 @@ export function BatchEditForm({
   const rejected = state.error !== null;
   const value = (key: string, stored: string) => (rejected ? (prev[key] ?? '') : stored);
 
-  // Controlled, because the offered rate follows it: repairing a 2024 box has
-  // to reach for the 2024 rate, and moving the date has to move the answer.
+  // A mirror of the purchase-date field, so the offered rate can follow it:
+  // repairing a 2024 box has to reach for the 2024 rate, and moving the date
+  // has to move the answer. The field itself stays uncontrolled.
   const [purchaseDate, setPurchaseDate] = useState(value('purchaseDate', box.purchaseDate ?? ''));
   const [seenValues, setSeenValues] = useState(state.values);
   if (state.values !== seenValues) {
@@ -93,9 +94,17 @@ export function BatchEditForm({
 
       <Field label="Purchase date">
         <TextInput
+        /*
+         * Uncontrolled, like the rest of this form and for the same reason:
+         * a controlled field desyncs after a server action, because React
+         * resets the form and then sees no state change to put it right. The
+         * state below only mirrors it, so the offered exchange rate can
+         * follow the date — the DOM stays in charge of the value.
+         */
+          key={`date-${value('purchaseDate', box.purchaseDate ?? '')}`}
           name="purchaseDate"
           type="date"
-          value={purchaseDate}
+          defaultValue={value('purchaseDate', box.purchaseDate ?? '')}
           onChange={(event) => setPurchaseDate(event.target.value)}
         />
       </Field>

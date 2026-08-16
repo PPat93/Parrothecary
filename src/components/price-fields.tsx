@@ -73,8 +73,17 @@ export function PriceFields({
 }) {
   const [chosenCurrency, setChosenCurrency] = useState(currency);
 
+  /*
+   * Once somebody types in the rate box it is theirs, and the suggestion stops
+   * having opinions. Without this, typing 0,25 and then correcting the purchase
+   * date threw the 0,25 away: a new suggestion meant a new key, a new key meant
+   * React rebuilt the input, and rebuilding an uncontrolled input discards
+   * whatever was in it. Adjusting one field must not silently undo another.
+   */
+  const [typedTheirOwn, setTypedTheirOwn] = useState(false);
+
   const suggestion = suggestFxRate(rateHistory, purchaseDate);
-  const { value, offered } = fxRateField(fxRate, suggestion, {
+  const { value, offered } = fxRateField(fxRate, typedTheirOwn ? null : suggestion, {
     submitted,
     currency: chosenCurrency,
   });
@@ -112,18 +121,22 @@ export function PriceFields({
       </div>
 
       {/*
-        Keyed on what it is showing, so React rebuilds the input when the
+        Keyed on what is being offered, so React rebuilds the input when the
         suggestion changes. Without that, an uncontrolled field keeps whatever
-        it was first given and the new date changes only the sentence under it —
+        it was first given and a new date changes only the sentence under it —
         which is worse than not updating at all.
+
+        The key stops moving the moment the person types their own rate, so the
+        rebuild can never take it away from them.
       */}
       <Field label="Rate to euro" hint={hint}>
         <TextInput
-          key={`fx-${value}`}
+          key={typedTheirOwn ? 'fx-theirs' : `fx-${value}`}
           name="fxRate"
           inputMode="decimal"
           placeholder="0,23"
           defaultValue={value}
+          onChange={() => setTypedTheirOwn(true)}
         />
       </Field>
     </>

@@ -22,10 +22,22 @@ export function ReceiveForm({
 
   const expectedUnits = item.quantityPacks * item.packSize;
 
-  // Owned here so the rate below can follow it — see PriceFields.
+  /*
+   * A mirror of the purchase-date field, kept only so the offered exchange rate
+   * can follow it — see PriceFields. The field itself stays uncontrolled, and
+   * this is re-synced when the server echoes values back, because a rejected
+   * submit rebuilds that input and the mirror has to move with it.
+   */
   const [purchaseDate, setPurchaseDate] = useState(
     prev.purchaseDate ?? item.tripCollectionDate ?? todayIso(),
   );
+  const [seenValues, setSeenValues] = useState(state.values);
+  if (state.values !== seenValues) {
+    setSeenValues(state.values);
+    if (prev.purchaseDate !== undefined && prev.purchaseDate !== purchaseDate) {
+      setPurchaseDate(prev.purchaseDate);
+    }
+  }
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -78,9 +90,17 @@ export function ReceiveForm({
         hint={item.tripCollectionDate !== null ? 'From the trip. Change it if it was really another day.' : undefined}
       >
         <TextInput
+        /*
+         * Uncontrolled, like the rest of this form and for the same reason:
+         * a controlled field desyncs after a server action, because React
+         * resets the form and then sees no state change to put it right. The
+         * state below only mirrors it, so the offered exchange rate can
+         * follow the date — the DOM stays in charge of the value.
+         */
+          key={`date-${prev.purchaseDate ?? ''}`}
           name="purchaseDate"
           type="date"
-          value={purchaseDate}
+          defaultValue={prev.purchaseDate ?? item.tripCollectionDate ?? todayIso()}
           onChange={(event) => setPurchaseDate(event.target.value)}
         />
       </Field>
