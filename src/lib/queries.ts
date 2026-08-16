@@ -1264,7 +1264,15 @@ export async function getSuggestedFxRate(
         ? dated
         : and(dated, sql`${batches.purchaseDate} <= ${purchaseDate}`),
     )
-    .orderBy(sql`${batches.purchaseDate} desc`)
+    /*
+     * The id breaks a tie, so the answer is the same every time it is asked.
+     * A day normally carries one rate across all its boxes — that is the whole
+     * reason this works — but nothing enforces it, and one mistyped rate in a
+     * run of eight would otherwise make the suggestion a coin flip. Last
+     * entered wins: on a day with two answers, the later correction is the
+     * better guess.
+     */
+    .orderBy(sql`${batches.purchaseDate} desc`, sql`${batches.id} desc`)
     .limit(1);
 
   const row = rows[0];

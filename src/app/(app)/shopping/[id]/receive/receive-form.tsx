@@ -52,6 +52,7 @@ export function ReceiveForm({
         currency={prev.currency ?? 'PLN'}
         fxRate={prev.fxRate ?? ''}
         suggestedRate={suggestedRate}
+          submitted={state.values !== undefined}
       />
 
       {/*

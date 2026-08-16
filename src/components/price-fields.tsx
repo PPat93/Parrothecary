@@ -14,11 +14,42 @@ import type { SuggestedFxRate } from '@/lib/queries';
  * Three forms describe the same arriving box (add, receive, correct), so this
  * lives in one place rather than being pasted into each of them.
  */
+/**
+ * What goes in the rate field, and whether it is being offered or repeated back.
+ *
+ * Three ways an empty field must NOT be filled in, all of them found by hunting
+ * this feature straight after building it:
+ *
+ * - A euro purchase has no rate and never wants one. Prefilling anyway put a
+ *   złoty conversion rate on all five of the cabinet's euro boxes — ignored on
+ *   save, and simply wrong on screen.
+ * - An empty field on a form that has already been submitted is a field
+ *   somebody emptied. Refilling it undoes a deliberate act: clear the rate,
+ *   mistype the expiry, and the rate the form bounces back has quietly returned.
+ * - No suggestion to make. Then say the ordinary thing.
+ *
+ * Exported so those three can be tested without a browser, which is where the
+ * second one lives — it only happens on a client re-render.
+ */
+export function fxRateField(
+  stored: string,
+  suggestion: SuggestedFxRate | null,
+  context: { submitted: boolean; currency: string },
+): { value: string; offered: SuggestedFxRate | null } {
+  if (stored !== '') return { value: stored, offered: null };
+  if (context.submitted || context.currency === 'EUR' || suggestion === null) {
+    return { value: '', offered: null };
+  }
+  // Comma, like every other number this app shows and accepts.
+  return { value: String(suggestion.rate).replace('.', ','), offered: suggestion };
+}
+
 export function PriceFields({
   price,
   currency,
   fxRate,
   suggestedRate = null,
+  submitted = false,
 }: {
   price: string;
   currency: string;
@@ -29,14 +60,14 @@ export function PriceFields({
    * already knows this, and why it is offered rather than applied.
    */
   suggestedRate?: SuggestedFxRate | null;
+  /** Has this form been sent once already? Then an empty field is a choice. */
+  submitted?: boolean;
 }) {
-  // Comma, like every other number this app shows and accepts.
-  const suggested = suggestedRate === null ? '' : String(suggestedRate.rate).replace('.', ',');
-  const value = fxRate === '' ? suggested : fxRate;
+  const { value, offered } = fxRateField(fxRate, suggestedRate, { submitted, currency });
 
   const hint =
-    suggestedRate !== null && fxRate === ''
-      ? `Filled in from ${suggestedRate.sameDay ? 'the other boxes bought that day' : `the last rate recorded, on ${suggestedRate.fromDate}`}. Change it if it was different, or clear it to leave this price in złoty.`
+    offered !== null
+      ? `Filled in from ${offered.sameDay ? 'another box bought that day' : `the last rate recorded, on ${offered.fromDate}`}. Change it if it was different, or clear it to leave this price in złoty.`
       : 'Złoty only: what one złoty was worth in euro that day, around 0,23. Leave it blank and this price stays in złoty, out of the euro totals.';
 
   return (

@@ -127,6 +127,7 @@ export function BatchForm({
 
         <PriceFields
           suggestedRate={suggestedRate}
+          submitted={state.values !== undefined}
           price={prev.price ?? ''}
           currency={prev.currency ?? 'PLN'}
           fxRate={prev.fxRate ?? ''}

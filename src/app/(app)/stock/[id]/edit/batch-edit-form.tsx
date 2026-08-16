@@ -75,6 +75,7 @@ export function BatchEditForm({
         currency={rejected ? (prev.currency ?? 'PLN') : (box.purchaseCurrency ?? 'PLN')}
         fxRate={value('fxRate', box.fxRateToEur === null ? '' : String(box.fxRateToEur))}
         suggestedRate={suggestedRate}
+          submitted={state.values !== undefined}
       />
 
       <Field label="Purchase date">
