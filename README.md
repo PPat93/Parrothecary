@@ -339,6 +339,17 @@ out of the cupboard, at first: that needs a "what came back" step which nobody p
 actually travelling, and a forgotten return leaves the numbers worse than never having tried. The
 ledger makes that upgrade a pair of reasons whenever the drift starts to matter.
 
+Which leaves the doses actually swallowed while away, and the answer today is manual, because the
+app is on the house network and a phone in another country is not. Nothing can be tapped at the
+time, and the dose board only reaches back `max(3, interval + 1)` days, so a fortnight away cannot
+be filled in retrospectively — the pills for those days are never drawn. The sequence on getting
+home is therefore: confirm whatever the board still shows, then take the rest off with the stepper,
+typing the whole amount in one press. That records `taken`, which is what happened. Counting the
+box instead files the same units as `audit` drift, and that is only honest when the units really
+are unaccounted for. Worth knowing before deciding the kit should move stock: the gap it would
+close is one trip's worth of doses a couple of times a year, and it is closable by hand in a
+minute.
+
 What makes it more than a notes app is that the list arrives filled in. Active dose schedules must
 come along and the app already knows how many — `unitsDueBetween` is unit-tested and is what the
 audit worksheet uses, so twelve days away with one tablet daily packs twelve and says the box only

@@ -237,6 +237,16 @@ export default function HelpPage() {
           records what came home from a holiday, and a half-done return would leave the numbers
           worse than not trying.
         </p>
+        <p>
+          Which leaves the doses you actually take while away. This app is on the house network, so
+          unless you are on the VPN you cannot tap them at the time, and the cupboard keeps
+          believing it still has them. Put it right when you get back: confirm whatever the dose
+          board still shows — three days, or one full interval for anything less frequent — and
+          take the rest off with the <strong>−</strong> stepper, typing the whole amount rather
+          than pressing it once per tablet. That records them as taken, which is what happened.
+          Counting the box instead files the same units as drift, which is the right answer only
+          when you genuinely do not know where they went.
+        </p>
       </Panel>
 
       <Panel title="Products" id="products">
