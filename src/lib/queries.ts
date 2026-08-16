@@ -1392,6 +1392,12 @@ export interface TripRow {
   notes: string | null;
   /** Shopping lines assigned to this trip, whatever their status. */
   itemCount: number;
+  /**
+   * Things on the packing list. A holiday cannot carry shopping lines at all,
+   * so `itemCount` is always zero for one and the list said "nothing on the
+   * list yet" however full the bag was.
+   */
+  kitCount: number;
   /** Euro actually spent: boxes received against this trip. */
   spentMinorEur: number;
   /** Boxes that figure had to leave out — złoty with no rate recorded. */
@@ -1444,7 +1450,23 @@ export async function getTrips(): Promise<TripRow[]> {
     // Soonest collection first: the next trip is the one you act on.
     .orderBy(asc(trips.collectionDate));
 
-  return rows;
+  /*
+   * Packing lists counted separately rather than as a third join.
+   *
+   * The spend above is a `sum` over the joined rows, and joining a second
+   * one-to-many would multiply it by however many things were in the bag. It
+   * happens to come to zero today, because a trip that carries a packing list
+   * carries no purchases — but that is a coincidence holding the figure up, not
+   * a rule, and one query for the whole page is cheap enough not to lean on it.
+   */
+  const kits = await db
+    .select({ tripId: travelKitItems.tripId, kitCount: sql<number>`count(*)` })
+    .from(travelKitItems)
+    .groupBy(travelKitItems.tripId);
+
+  const kitByTrip = new Map(kits.map((row) => [row.tripId, row.kitCount]));
+
+  return rows.map((row) => ({ ...row, kitCount: kitByTrip.get(row.id) ?? 0 }));
 }
 
 /**
