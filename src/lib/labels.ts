@@ -102,7 +102,42 @@ export const MOVEMENT_REASON_LABELS: Record<(typeof MOVEMENT_REASONS)[number], s
   audit: 'counted on the shelf',
 };
 
-export function movementReasonLabel(reason: string): string {
+/**
+ * The same movement read backwards.
+ *
+ * Three of these reasons run in both directions, and the reason alone cannot
+ * tell you which: putting units back with the stepper writes `taken` with a
+ * positive delta, undoing a dose writes `dose` with one, and returning a binned
+ * box writes `binned` with one. The ledger is right to record it that way — the
+ * correction is the opposite of the thing, not the absence of it — but a box's
+ * history rendered the reason flat and announced "taken from the stock list
+ * + 21.5", which is the one line in that history nobody can read as true.
+ *
+ * The usage figures already flip the same way, showing "put back 41 tablets"
+ * rather than a negative "used"; this is the same courtesy on the page where
+ * each movement is spelled out one per line.
+ */
+const MOVEMENT_REASON_LABELS_BACKWARDS: Partial<
+  Record<(typeof MOVEMENT_REASONS)[number], string>
+> = {
+  taken: 'put back on the stock list',
+  dose: 'a dose undone',
+  binned: 'returned to the cupboard',
+};
+
+/**
+ * How a movement reads, given which way it went.
+ *
+ * `opening` and `received` only ever add, and `adjust` and `audit` read the
+ * same in both directions — a quantity corrected downwards is still a quantity
+ * corrected.
+ */
+export function movementReasonLabel(reason: string, delta = -1): string {
+  if (delta > 0) {
+    const backwards =
+      MOVEMENT_REASON_LABELS_BACKWARDS[reason as keyof typeof MOVEMENT_REASON_LABELS_BACKWARDS];
+    if (backwards) return backwards;
+  }
   return (
     MOVEMENT_REASON_LABELS[reason as keyof typeof MOVEMENT_REASON_LABELS] ?? reason
   );

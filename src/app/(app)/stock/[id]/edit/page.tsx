@@ -82,8 +82,15 @@ export default async function EditBatchPage({
                   <span className="tabular-nums" style={{ color: 'var(--muted)' }}>
                     {movementDate(row.occurredAt)}
                   </span>{' '}
-                  {movementReasonLabel(row.reason)}
-                  {row.note ? (
+                  {movementReasonLabel(row.reason, row.delta)}
+                  {/*
+                    Some notes were written when the reason alone could not say
+                    which way a movement went, and now that it can they repeat
+                    it: "a dose undone — dose undone". Kept in the ledger, since
+                    the CSV export and older rows still carry them, but not read
+                    out twice on the one line that already says it.
+                  */}
+                  {row.note && !movementReasonLabel(row.reason, row.delta).toLowerCase().includes(row.note.toLowerCase()) ? (
                     <span style={{ color: 'var(--muted)' }}> — {row.note}</span>
                   ) : null}
                 </span>
