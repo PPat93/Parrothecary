@@ -81,13 +81,50 @@ const optionalText = z
     return trimmed === '' ? null : trimmed;
   });
 
+/*
+ * Long enough for anything on a real box — "Solgar Omega 3-6-9 Fish, Flax,
+ * Borage" is 37 — and short enough that a name is still a name.
+ *
+ * A person's name has been capped at 80 and a substance's Polish alias at 100
+ * since those were written; a product's was capped at nothing, and it is the
+ * one that appears on every screen in the app. Three thousand characters
+ * pasted into it rendered in full on Stock, Expiring, Products and Shopping,
+ * taking that last page from 20 KB to 160 KB, and went into the middle of the
+ * bin confirmation as one unbroken word.
+ */
+const MAX_PRODUCT_NAME = 120;
+const MAX_PRODUCT_TEXT = 200;
+
+/**
+ * An ingredient name, not an essay. Long enough for "Pyridoxine hydrochloride".
+ *
+ * Up here with the others because both doors into the substance and symptom
+ * catalogues now use it, and the second of those is the product form above.
+ */
+const MAX_TAG_NAME = 100;
+
 const productSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required'),
-  nameAlt: optionalText,
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name is required')
+    .max(MAX_PRODUCT_NAME, `A name longer than ${MAX_PRODUCT_NAME} characters is not a name — put the detail in the notes.`),
+  nameAlt: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_NAME,
+    `That other name is longer than ${MAX_PRODUCT_NAME} characters.`,
+  ),
   form: z.enum(DOSE_FORMS),
   unitName: z.enum(UNIT_NAMES),
-  strength: optionalText,
-  manufacturer: optionalText,
+  strength: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_TEXT,
+    `That strength is longer than ${MAX_PRODUCT_TEXT} characters.`,
+  ),
+  manufacturer: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_TEXT,
+    `That manufacturer is longer than ${MAX_PRODUCT_TEXT} characters.`,
+  ),
+  // Notes are deliberately uncapped: they are prose, they render in their own
+  // wrapping block, and they appear on one screen rather than on every one.
   notes: optionalText,
   isPrescription: z.coerce.boolean(),
   hasExpiry: z.coerce.boolean(),
@@ -110,10 +147,28 @@ const productSchema = z.object({
    * end that was easy to create and easy to miss.
    */
   packSize: optionalText,
-  packLabel: optionalText,
-  substance: optionalText,
-  substanceAmount: optionalText,
-  symptom: optionalText,
+  packLabel: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_TEXT,
+    `That pack label is longer than ${MAX_PRODUCT_TEXT} characters.`,
+  ),
+  /*
+   * The new-product form is the second door into the substance and symptom
+   * catalogues; `addSubstanceToProduct` is the first. Capping only that one
+   * would have left this one open, and a catalogue entry made here is shared
+   * with every product that later links to it.
+   */
+  substance: optionalText.refine(
+    (value) => value === null || value.length <= MAX_TAG_NAME,
+    `That substance name is longer than ${MAX_TAG_NAME} characters.`,
+  ),
+  substanceAmount: optionalText.refine(
+    (value) => value === null || value.length <= MAX_PRODUCT_TEXT,
+    `That amount is longer than ${MAX_PRODUCT_TEXT} characters.`,
+  ),
+  symptom: optionalText.refine(
+    (value) => value === null || value.length <= MAX_TAG_NAME,
+    `That is longer than ${MAX_TAG_NAME} characters — a symptom is a word or two.`,
+  ),
 });
 
 export async function createProduct(_prev: FormResult, formData: FormData): Promise<FormResult> {
@@ -292,6 +347,18 @@ export async function addSubstanceToProduct(
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter a substance name.', values: snapshot(formData) };
+  /*
+   * The alias below has always been capped and the name it aliases never was —
+   * and this one is the worse of the two to leave open, because a substance is
+   * shared: one long name lands on every product linked to it and on the
+   * substance list beside them.
+   */
+  if (name.length > MAX_TAG_NAME) {
+    return {
+      error: `That substance name is longer than ${MAX_TAG_NAME} characters.`,
+      values: snapshot(formData),
+    };
+  }
   if (namePl !== null && namePl.length > MAX_TAG_NAME) {
     return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.` };
   }
@@ -345,6 +412,13 @@ export async function addSymptomToProduct(
 
   if (!Number.isInteger(productId)) return { error: 'Unknown product.' };
   if (!name) return { error: 'Enter what it is used for.', values: snapshot(formData) };
+  // Same as substances: the alias was capped, the name was not.
+  if (name.length > MAX_TAG_NAME) {
+    return {
+      error: `That is longer than ${MAX_TAG_NAME} characters — a symptom is a word or two.`,
+      values: snapshot(formData),
+    };
+  }
   if (namePl !== null && namePl.length > MAX_TAG_NAME) {
     return { error: `That Polish name is longer than ${MAX_TAG_NAME} characters.` };
   }
@@ -2605,9 +2679,6 @@ export async function logoutEverywhere(): Promise<void> {
  * and the form asks before folding the two together, because that step cannot
  * be undone.
  */
-/** An ingredient name, not an essay. Long enough for "Pyridoxine hydrochloride". */
-const MAX_TAG_NAME = 100;
-
 export interface RenameResult {
   error: string | null;
   merge: { name: string; products: number } | null;
