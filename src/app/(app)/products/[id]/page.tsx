@@ -685,6 +685,16 @@ function PurchaseHistory({
             <p className="text-xs" style={{ color: 'var(--muted)' }}>
               {purchase.purchaseDate ?? 'date unknown'}
               {purchase.tripLabel ? ` · ${purchase.tripLabel}` : ''} ·{' '}
+              {/*
+                What was bought, not what one pack holds. The price is for the
+                whole box and the per-unit figure divides by the whole box, so
+                naming a single pack in between left three numbers on one line
+                that cannot be reconciled: "€15.00 · 60 tabletek · 8.33c each",
+                where 15.00 over 60 is 25c. A three-pack line arrives as one
+                box, which is exactly how this row gets a box bigger than a
+                pack in the first place.
+              */}
+              {packsBought(purchase.unitsWhenFull, purchase.packSize)}
               {purchase.packLabel ?? `${purchase.packSize} ${unitName}`}
               {purchase.status !== 'in_stock' ? ` · ${batchStatusLabel(purchase.status)}` : ''}
             </p>
@@ -726,4 +736,17 @@ function PurchaseHistory({
       ) : null}
     </ul>
   );
+}
+
+/**
+ * "3 × " when a box holds three packs, and nothing at all when it holds one.
+ *
+ * Only for a clean multiple: a box entered part-used, or one whose recorded
+ * quantity never matched its pack, has no honest multiplier to show and is
+ * better left described by its pack alone.
+ */
+function packsBought(unitsWhenFull: number, packSize: number): string {
+  if (packSize <= 0) return '';
+  const packs = unitsWhenFull / packSize;
+  return packs > 1 && Number.isInteger(packs) ? `${packs} × ` : '';
 }
