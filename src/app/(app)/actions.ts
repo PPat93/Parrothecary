@@ -1006,8 +1006,15 @@ export async function receiveShoppingItem(
    * belongs to, and that is not something a stale form should get to choose.
    */
   const itemRows = await db
-    .select({ variantId: shoppingItems.variantId, status: shoppingItems.status })
+    .select({
+      variantId: shoppingItems.variantId,
+      status: shoppingItems.status,
+      productName: products.name,
+      productArchivedAt: products.archivedAt,
+    })
     .from(shoppingItems)
+    .innerJoin(variants, eq(shoppingItems.variantId, variants.id))
+    .innerJoin(products, eq(variants.productId, products.id))
     .where(eq(shoppingItems.id, itemId))
     .limit(1);
 
@@ -1017,7 +1024,36 @@ export async function receiveShoppingItem(
     return fail('This one is already in the cupboard — it was received before.');
   }
   if (item.status === 'not_received') {
-    return fail('This line is marked as never arrived. Move it back into the flow first.');
+    /*
+     * Not "move it back into the flow first": there is no control that does
+     * that. A settled line gets a Clear button and nothing else, and
+     * `setShoppingStatus` refuses to walk one backwards. The receive page used
+     * to give the same wrong instruction — this was its twin, one screen
+     * deeper, and fixing only the page would have left the advice alive here.
+     */
+    return fail(
+      'This line is marked as never arrived, and that cannot be walked back. Clear it on the shopping list and add the item again.',
+    );
+  }
+
+  /*
+   * The product must not be retired — the same rule `addBatch` enforces, for
+   * the same reason, and it was missing here.
+   *
+   * Archiving refuses only while somebody is on a course; an open shopping line
+   * does not stop it. So the ordinary sequence — retire something, then collect
+   * the order that was already on its way — put a box of it straight back into
+   * a cupboard it had just been retired from. The row on the shopping list even
+   * says "it cannot be added to the list any more", while the Add-to-stock
+   * button beside it did exactly that.
+   *
+   * Refused rather than warned: unlike binning, there is no hurry here. The
+   * line keeps its place, and restoring the product makes it work.
+   */
+  if (item.productArchivedAt !== null) {
+    return fail(
+      `${item.productName} has been archived, so nothing more of it can enter the cupboard. Restore the product first, or clear this line if it is no longer wanted.`,
+    );
   }
 
   const parsed = parseBatchFields(formData);

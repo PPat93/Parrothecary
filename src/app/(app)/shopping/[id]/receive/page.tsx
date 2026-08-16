@@ -15,16 +15,31 @@ export default async function ReceivePage({ params }: { params: Promise<{ id: st
   // twice; the server refuses it too, this just stops it being offered.
   const settled = item.status === 'in_stock' || item.status === 'not_received';
 
+  /*
+   * A retired product takes no new stock — the same rule the stock form and
+   * `receiveShoppingItem` apply. Shown rather than left to the submit button,
+   * because filling in the expiry, price and lot off a real box only to be told
+   * no is the version of this that wastes your time.
+   */
+  const retired = !settled && item.productArchivedAt !== null;
+
   return (
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-1 flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Add to stock</h1>
         <Link href="/shopping" className={LINK_BUTTON} style={toneStyle('warning')}>
-          {settled ? 'Back' : 'Cancel'}
+          {settled || retired ? 'Back' : 'Cancel'}
         </Link>
       </header>
 
-      {settled ? (
+      {retired ? (
+        <p className="mb-5 text-sm" style={{ color: 'var(--muted)' }}>
+          {item.quantityPacks} × {item.name}
+          {item.strength ? ` ${item.strength}` : ''} cannot be added: this product has been
+          archived, so nothing more of it enters the cupboard. Restore it from its product page if
+          this delivery is real, or clear the line on the shopping list.
+        </p>
+      ) : settled ? (
         <p className="mb-5 text-sm" style={{ color: 'var(--muted)' }}>
           {item.quantityPacks} × {item.name}
           {item.strength ? ` ${item.strength}` : ''}{' '}
