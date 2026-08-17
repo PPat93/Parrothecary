@@ -72,8 +72,9 @@ Open http://localhost:3000.
 | `npm run db:studio` | Browse the database |
 | `npm run db:symptoms` | Load the symptom tag vocabulary (run before any seed) |
 | `npm run db:seed` | Load demo data (run `db:symptoms` first) |
-| `npm run db:reset` | **Delete all data**, keep the schema (`-- --force` to skip the prompt) |
+| `npm run db:reset` | **Delete all data and every box photograph**, keep the schema (`-- --force` to skip the prompt) |
 | `npm run db:check-ledger` | Verify every box agrees with its stock movements |
+| `npm run db:backup` | Copy the database and the photographs into `backups/`, then verify the copy (`-- --keep=N`) |
 | `npm run auth:hash -- "…"` | Generate a master-password hash |
 | `npm run audit:routes` | List routes and check each is behind the session guard |
 
@@ -159,6 +160,10 @@ so `setup` must be selected there or the stored session is never refreshed.
 - Failed logins are rate-limited per IP.
 - **Do not expose this to the internet.** It is designed for the LAN, with remote access via
   the household VPN if needed.
+- **A backup holds the cupboard, not the login.** `npm run db:backup` copies the database and the
+  photographs and deliberately leaves `.env.local` alone, because a backup folder is a thing that
+  ends up on memory sticks. `MASTER_PASSWORD_HASH` is regenerated with `npm run auth:hash`, which
+  is cheaper than copying a secret everywhere.
 
 ## Deployment
 
@@ -254,7 +259,11 @@ first, and anything that only reads it could wait.
    Stock counts come from the same helpers every other screen uses, so an alternative is never
    offered out of a box the app would refuse to take a dose from.
 5. **Travel kit — done.** See below.
-6. **Help view — done.** Two tabs alongside About, so the header gains no fourth icon.
+6. **Thumbnail plus name in search — done.** Recognising a box by sight beats reading a foreign
+   name, and the stock list already relied on it; search results returned text only. They now
+   carry the same picture, and a product whose photo file has gone shows nothing rather than a
+   broken image.
+7. **Help view — done.** Two tabs alongside About, so the header gains no fourth icon.
 
    *Help* is a glossary, then one panel per screen, then two sections that matter more than the
    per-screen ones: **why won't it let me** — an index of every disabled control and the reason
@@ -268,7 +277,7 @@ first, and anything that only reads it could wait.
    to happen — the first button that moves makes it wrong — while "doses come out of the box that
    expires first" survives any redesign. The audience is the person who was not in the room when
    these decisions were made.
-7. **CSV export — done.** Three downloads from the Money page: boxes, stock movements, and the
+8. **CSV export — done.** Three downloads from the Money page: boxes, stock movements, and the
    product catalogue. Together they are enough to rebuild the cabinet by hand if this app ever
    stops running. No dependencies; formatting is two clicks in a spreadsheet, which is why xlsx
    was dropped.
@@ -281,14 +290,14 @@ first, and anything that only reads it could wait.
 
    Served by a route handler rather than a server action, since an action cannot hand the browser
    a file, with the session checked in the handler the same way the photo route does it.
-8. **Statistics: money — done.** Cupboard value, spend per year, spend per trip, what a unit
+9. **Statistics: money — done.** Cupboard value, spend per year, spend per trip, what a unit
    costs now against the first time it was bought, and the waste split. Every figure has years
    of purchases behind it, so this half was meaningful the day it was built.
 
    A cross-product "which pack size is cheapest" section was dropped after checking the data:
    no product has ever been bought in two different pack sizes, so it would have rendered
    nothing. Price-per-unit over time replaced it, which the same data does support.
-9. **Statistics: usage — done.** What moved per product over a chosen window, and what happened
+10. **Statistics: usage — done.** What moved per product over a chosen window, and what happened
    between one restock and the next. Reads the ledger rather than the purchase history, so it is
    the half that fills in as the app gets used.
 
@@ -311,16 +320,64 @@ relies on, and this is the part that needs learning rather than reviewing.
 
 Backups ship *with* it, not after. Deployment day is when real stock and fresh photos get entered,
 and that data is valuable immediately — while today there is exactly one copy of the database on
-one machine. `VACUUM INTO` gives a consistent copy of the database while the app keeps running,
-which is also the safe way to take a copy for testing a migration against realistic data.
+one machine.
 
 **A backup is the folder, not the file.** `VACUUM INTO` copies the database and nothing else, while
 the box photographs sit beside it in `data/uploads` as ordinary files. A backup of the database
 alone restores a cabinet whose every picture is missing — which is not hypothetical: a broken
-thumbnail found during the bug hunt turned out to be exactly that shape. Whatever the backup job
-ends up being, it copies both, and a restore is tested by looking at a photo.
+thumbnail found during the bug hunt turned out to be exactly that shape.
 
-The database is wiped for this: a clean start, entered fresh against the real cupboard.
+**Done: `npm run db:backup`.** Writes `backups/2026-08-17T2311/` holding `parrothecary.db` and a
+copy of `uploads/`, then checks what it wrote — that SQLite can read it, that the box and movement
+counts match the original, that every box still passes the same `checkBox` rule the Audit screen
+uses, and that every photograph the database refers to is actually in the folder.
+
+Two kinds of problem, treated differently on purpose. If the **copy** cannot be trusted — unreadable,
+short of rows, or the database had no schema to begin with — it is deleted rather than left looking
+like a good one, and the run fails. If the **cupboard** has a fault the copy faithfully preserves —
+boxes whose ledger does not add up, a photograph the database names that is not on disk — the backup
+is kept and the fault is printed. Refusing to back up a cupboard because one thumbnail is missing
+would mean a cosmetic fault costing every backup until somebody noticed, and it would throw away a
+good backup over nothing whenever a photo happened to be replaced in the moment between copying the
+database and copying the folder. `--keep=N` prunes older
+backups, thirty by default; one is under a megabyte today. It is read-only on the live data, so it
+can run while the app is serving — that is what `VACUUM INTO` buys over copying three files by
+hand mid-write — and it exits non-zero, so a timer can tell.
+
+Two environment variables matter: `DATABASE_PATH`, which the whole app already reads and which the
+photographs are found relative to, and `BACKUP_DIR`, which defaults to `./backups` and is where to
+point a different disk. A backup that lands on the same disk as the database survives a bad deploy
+but not a dead drive, so that variable is the one that turns this from a safety net into a real
+one.
+
+Deployment day wires it to one, something like:
+
+```ini
+# /etc/systemd/system/parrothecary-backup.service
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/parrothecary
+ExecStart=/usr/bin/npm run db:backup
+
+# /etc/systemd/system/parrothecary-backup.timer
+[Timer]
+OnCalendar=daily
+Persistent=true
+```
+
+**Restoring** is deliberately by hand, because it is rare and three commands is not worth
+automating into something else to trust: stop the service, copy the backup's `parrothecary.db` and
+`uploads/` over `data/`, start it again — then **open a product photo**. That last step is the
+test, because a picture is the half a database-only backup loses silently.
+
+Still open: getting a copy off the machine. A backup on the same disk survives a bad deploy, not a
+dead disk.
+
+The database is wiped for this: a clean start, entered fresh against the real cupboard. `db:reset`
+takes the photographs with it, which it did not always — it deleted every row and left `uploads/`
+alone, so pictures outlived the rows referencing them and no screen could show or remove them
+again. Three such orphans were in the cabinet when the backup script started copying them into
+every backup.
 
 Statistics moved here from after deployment, where they were originally placed to let the ledger
 accrue first. That reasoning was wrong: the database is wiped at deployment, so nothing recorded
@@ -382,8 +439,6 @@ cupboard, and when the box FEFO would reach for goes off before you get home.
 Wanted, agreed, and deliberately not built. Written down because otherwise they exist only in
 somebody's memory, which is how a small good idea quietly disappears.
 
-- **Thumbnail plus name in search results.** Recognising a box by sight beats reading a foreign
-  name, which the stock list already relies on; search results still return text only.
 - **Prescription renewal reminders.** Prescription products already carry a flag; nothing yet
   tracks when a script needs renewing, which is a different deadline from running out.
 
