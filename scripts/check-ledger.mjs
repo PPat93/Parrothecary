@@ -22,10 +22,10 @@
  * the machine this ends up on: everything else here would run on anything.
  */
 import Database from 'better-sqlite3';
-import path from 'node:path';
+import { databasePath } from '../src/lib/data-paths.ts';
 import { inspectLedger } from './lib/inspect-ledger.mjs';
 
-const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
+const dbPath = databasePath();
 const db = new Database(dbPath, { readonly: true });
 
 const { boxes, movements, totals, problems } = inspectLedger(db);

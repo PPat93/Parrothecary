@@ -3,6 +3,6 @@
 // every migrate.
 import fs from 'node:fs';
 import path from 'node:path';
+import { databasePath } from '../src/lib/data-paths.ts';
 
-const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+fs.mkdirSync(path.dirname(databasePath()), { recursive: true });

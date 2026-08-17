@@ -160,10 +160,17 @@ so `setup` must be selected there or the stored session is never refreshed.
 - Failed logins are rate-limited per IP.
 - **Do not expose this to the internet.** It is designed for the LAN, with remote access via
   the household VPN if needed.
-- **A backup holds the cupboard, not the login.** `npm run db:backup` copies the database and the
-  photographs and deliberately leaves `.env.local` alone, because a backup folder is a thing that
-  ends up on memory sticks. `MASTER_PASSWORD_HASH` is regenerated with `npm run auth:hash`, which
-  is cheaper than copying a secret everywhere.
+- **A backup holds the cupboard, not the login.** `npm run db:backup` and the download button both
+  copy the database and the photographs and deliberately leave `.env.local` alone, because a backup
+  is a thing that ends up on memory sticks and in phone downloads. `MASTER_PASSWORD_HASH` is
+  regenerated with `npm run auth:hash`, which is cheaper than copying a secret everywhere. The
+  `restore.txt` inside a downloaded backup says so too, since that is where somebody will be
+  standing when they find out.
+- **The backup download is behind the session, not behind the proxy.** `/export/backup` checks the
+  session in the handler like the CSV exports and the photo route, and answers a request without one
+  with 404 rather than 401 — the proxy only knows whether a cookie is present, not whether it is
+  valid, and an endpoint that hands out the whole database should not confirm it exists to a
+  stranger.
 
 ## Deployment
 
@@ -365,13 +372,27 @@ OnCalendar=daily
 Persistent=true
 ```
 
+**Done: a button, on Statistics.** "Download a backup.zip" builds the same thing in memory and hands
+it over as one file: `parrothecary-backup-<stamp>/` holding the database, `uploads/`, and a
+`restore.txt` saying what it is and how to put it back. Same snapshot method, same checks on the copy
+before it is offered, same folder layout — so the restore below is the procedure for both.
+
+The zip is written by hand in `src/lib/zip.ts`, thirty lines of little-endian headers around
+`zlib.crc32` and `zlib.deflateRawSync`, both of which Node ships. A dependency for this would have
+been a dependency for four headers, the same reasoning that produced `src/lib/csv.ts`. The database
+compresses to about a fifth; the photographs are already webp and are stored as they are, since
+deflating them only makes the file bigger.
+
+The script is the one that protects data, because the machine runs it whether anybody remembers or
+not. The button is what gets a copy *off* the machine without a terminal — before a trip, or after
+an evening of typing — and answers what was still open here until now: a backup on the same disk
+survives a bad deploy, not a dead disk. It refuses above 64 MB rather than building something that
+size in memory, and says to use the script instead; today's backup is under one.
+
 **Restoring** is deliberately by hand, because it is rare and three commands is not worth
 automating into something else to trust: stop the service, copy the backup's `parrothecary.db` and
 `uploads/` over `data/`, start it again — then **open a product photo**. That last step is the
 test, because a picture is the half a database-only backup loses silently.
-
-Still open: getting a copy off the machine. A backup on the same disk survives a bad deploy, not a
-dead disk.
 
 The database is wiped for this: a clean start, entered fresh against the real cupboard. `db:reset`
 takes the photographs with it, which it did not always — it deleted every row and left `uploads/`

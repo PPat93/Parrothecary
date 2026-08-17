@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import { uploadsPath } from './data-paths';
 
 /**
  * Box photos.
@@ -16,10 +17,7 @@ import sharp from 'sharp';
  * way in, plus a thumbnail, so the stock list stays quick over wifi.
  */
 
-const UPLOAD_DIR = path.resolve(
-  path.dirname(path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db')),
-  'uploads',
-);
+const UPLOAD_DIR = uploadsPath();
 
 const MAX_BYTES = 12 * 1024 * 1024;
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];

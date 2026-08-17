@@ -23,10 +23,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { isPhotoFile } from '../src/domain/photo-name.ts';
+import { databasePath, uploadsPath as resolveUploads } from '../src/lib/data-paths.ts';
 
-const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
-// Same derivation as src/lib/photos.ts and the backup script.
-const uploadsPath = path.join(path.dirname(dbPath), 'uploads');
+const dbPath = databasePath();
+const uploadsPath = resolveUploads();
 const force = process.argv.includes('--force');
 
 const photoFiles = fs.existsSync(uploadsPath)

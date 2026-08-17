@@ -31,13 +31,15 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
+import { BACKUP_STAMP, backupStamp } from '../src/domain/backup-name.ts';
 import { isPhotoFile, photoFileNames } from '../src/domain/photo-name.ts';
+import { databasePath, uploadsPath as resolveUploads } from '../src/lib/data-paths.ts';
 import { inspectLedger } from './lib/inspect-ledger.mjs';
 
-const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
-// The same derivation src/lib/photos.ts uses, so the two cannot drift about
-// where the pictures live.
-const uploadsPath = path.join(path.dirname(dbPath), 'uploads');
+const dbPath = databasePath();
+// Asked rather than worked out, so this and the app cannot drift about where the
+// pictures live — a backup that copies the wrong folder still reports success.
+const uploadsPath = resolveUploads();
 const backupRoot = path.resolve(process.env.BACKUP_DIR ?? './backups');
 
 /*
@@ -71,26 +73,6 @@ if (!fs.existsSync(dbPath)) {
   process.exit(1);
 }
 
-/*
- * The shape of a backup folder's name, in one place.
- *
- * Pruning finds old backups by matching this, and only ever deletes folders it
- * matches — a directory somebody else put in here is not the script's to
- * remove. Which means the pattern and the name-builder have to agree, and if
- * they ever stopped, retention would silently do nothing while backups piled up
- * until the disk filled. Asserted below rather than trusted.
- */
-const FOLDER_NAME = /^\d{4}-\d{2}-\d{2}T\d{4}$/;
-
-/** Local time, not UTC: a backup taken at half past midnight is named tonight. */
-function stamp(now = new Date()) {
-  const pad = (value) => String(value).padStart(2, '0');
-  return (
-    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
-    `T${pad(now.getHours())}${pad(now.getMinutes())}`
-  );
-}
-
 function directorySize(dir) {
   let total = 0;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -100,11 +82,18 @@ function directorySize(dir) {
   return total;
 }
 
-const folderName = stamp();
-if (!FOLDER_NAME.test(folderName)) {
-  // A programming error, not a runtime one: the two definitions above have
-  // drifted, and carrying on would mean writing backups nothing ever prunes.
-  console.error(`"${folderName}" does not match the name pruning looks for. Fix FOLDER_NAME.`);
+/*
+ * The name, and the pattern pruning recognises it by, both come from
+ * src/domain/backup-name.ts — the download button names its file from the same
+ * stamp, and "the same as the other one" is not a promise a comment can keep.
+ *
+ * Still asserted here. The two are a builder and a pattern rather than one
+ * definition, and if they ever disagreed, retention would quietly stop working
+ * while backups piled up until the disk filled.
+ */
+const folderName = backupStamp(new Date());
+if (!BACKUP_STAMP.test(folderName)) {
+  console.error(`"${folderName}" does not match the name pruning looks for. Fix backup-name.ts.`);
   process.exit(1);
 }
 
@@ -348,7 +337,7 @@ for (const note of notes) console.log(`\n  Note: ${note}`);
 function prune() {
   const existing = fs
     .readdirSync(backupRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && FOLDER_NAME.test(entry.name))
+    .filter((entry) => entry.isDirectory() && BACKUP_STAMP.test(entry.name))
     .map((entry) => entry.name)
     .sort();
 

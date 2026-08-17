@@ -276,6 +276,31 @@ export default async function StatsPage() {
           />
         </ul>
       </Section>
+
+      {/*
+        Its own section rather than a fourth item in the list above, because it
+        is a different kind of thing. The three CSVs are the data in a form you
+        can read; this is the form the app can be put back from — and only this
+        one includes the photographs.
+      */}
+      <Section title="Backup">
+        <ul className="flex flex-col gap-2 text-sm" test-data="stats-backup">
+          <li>
+            <a
+              href="/export/backup"
+              download
+              className="font-medium underline underline-offset-4"
+              style={{ color: 'var(--color-accent)' }}
+            >
+              Download a backup.zip
+            </a>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              The whole cupboard and every box photograph, in one file, with a note inside on how to
+              put it back. Worth doing before a trip, or after an evening of typing.
+            </p>
+          </li>
+        </ul>
+      </Section>
     </div>
   );
 }
