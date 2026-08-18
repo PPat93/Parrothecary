@@ -165,6 +165,29 @@ describe('zipArchive', () => {
     expect(readArchive(archive)).toEqual([]);
   });
 
+  /*
+   * The slow one, deliberately: it really does build an archive at the limit,
+   * because the thing worth proving is that the member count lands in the record
+   * as 65535 rather than wrapping round to nothing, and there is no way to see
+   * that without the archive existing. Two seconds of it is 65,535 calls to the
+   * compressor.
+   *
+   * The timeout is generous rather than default for that reason. It was found by
+   * being the only test in the suite that could fail on a busy machine and pass
+   * on a quiet one, which is a worse thing to own than a slow test.
+   */
+  it('refuses more members than the format can count', { timeout: 60_000 }, () => {
+    const many = Array.from({ length: 65536 }, (_, index) => ({
+      name: `f${index}`,
+      bytes: Buffer.alloc(0),
+    }));
+
+    expect(() => zipArchive(many)).toThrow(/65535/);
+    // One fewer is fine, and the record says so rather than wrapping to zero.
+    const at = zipArchive(many.slice(0, 65535));
+    expect(at.readUInt16LE(at.length - 12)).toBe(65535);
+  });
+
   it('refuses a name that would escape the folder it is extracted into', () => {
     // Every one of these is a real extractor bug somebody has shipped. None can
     // arise from a filename this app minted, which is why they throw rather than

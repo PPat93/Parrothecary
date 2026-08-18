@@ -125,6 +125,17 @@ export function zipArchive(entries: ZipEntry[], modified = new Date()): Buffer {
 
   const centralSize = central.reduce((total, buffer) => total + buffer.length, 0);
 
+  /*
+   * Where the central directory starts is a 32-bit field, so an archive over 4 GB
+   * has nowhere to record it. Said in a sentence because the alternative is what
+   * this did before: `Buffer.writeUInt32LE` throws `ERR_OUT_OF_RANGE` with no hint
+   * of which limit was met. Unreachable through the backup download, which refuses
+   * well below this, and worth a line for whatever calls this next.
+   */
+  if (offset > MAX_ENTRY_BYTES) {
+    throw new Error('A zip without zip64 cannot hold more than 4 GB in total.');
+  }
+
   const end = Buffer.alloc(22);
   end.writeUInt32LE(END_SIGNATURE, 0);
   end.writeUInt16LE(0, 4); // this disk

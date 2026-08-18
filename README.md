@@ -377,11 +377,14 @@ it over as one file: `parrothecary-backup-<stamp>/` holding the database, `uploa
 `restore.txt` saying what it is and how to put it back. Same snapshot method, same checks on the copy
 before it is offered, same folder layout — so the restore below is the procedure for both.
 
-The zip is written by hand in `src/lib/zip.ts`, thirty lines of little-endian headers around
+The zip is written by hand in `src/lib/zip.ts`: a hundred lines of little-endian headers around
 `zlib.crc32` and `zlib.deflateRawSync`, both of which Node ships. A dependency for this would have
 been a dependency for four headers, the same reasoning that produced `src/lib/csv.ts`. The database
-compresses to about a fifth; the photographs are already webp and are stored as they are, since
-deflating them only makes the file bigger.
+compresses to about a fourteenth (204 KB to 15 KB today); the photographs are already webp and come
+out of the compressor a shade bigger, so they are stored as they are. Its output is checked against
+three readers that did not write it — a byte-level reader in `zip.test.ts`, Windows Explorer, and
+Python's `zipfile` — because a backup no other program can open is the kind of failure nobody finds
+out about until the day it matters.
 
 The script is the one that protects data, because the machine runs it whether anybody remembers or
 not. The button is what gets a copy *off* the machine without a terminal — before a trip, or after
@@ -389,10 +392,23 @@ an evening of typing — and answers what was still open here until now: a backu
 survives a bad deploy, not a dead disk. It refuses above 64 MB rather than building something that
 size in memory, and says to use the script instead; today's backup is under one.
 
-**Restoring** is deliberately by hand, because it is rare and three commands is not worth
-automating into something else to trust: stop the service, copy the backup's `parrothecary.db` and
-`uploads/` over `data/`, start it again — then **open a product photo**. That last step is the
-test, because a picture is the half a database-only backup loses silently.
+**Restoring** is deliberately by hand, because it is rare and four steps is not worth automating
+into something else to trust:
+
+1. stop the service
+2. **delete `data/parrothecary.db-wal` and `data/parrothecary.db-shm`** if either is there
+3. copy the backup's `parrothecary.db` and `uploads/` over `data/`
+4. start it again — then **open a product photo**
+
+Step 2 was missing from this list, and leaving it out fails silently, which is the worst way for a
+restore to fail. Those two files are SQLite's log of recent changes to the database that *was*
+there; left in place they are replayed on top of the one just restored, and the app comes back
+showing the pre-restore cupboard as though everything had worked. Proved with two throwaway
+databases rather than reasoned about: restoring over a stale `-wal` returned the old rows with
+`integrity_check` reporting `ok`. A clean shutdown usually checkpoints and removes them — but a
+machine that was killed, or lost power, is exactly the machine somebody is restoring.
+
+Step 4 is the test, because a picture is the half a database-only backup loses silently.
 
 The database is wiped for this: a clean start, entered fresh against the real cupboard. `db:reset`
 takes the photographs with it, which it did not always — it deleted every row and left `uploads/`

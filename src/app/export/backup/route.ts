@@ -5,7 +5,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { NextResponse } from 'next/server';
 import { backupStamp, readableStamp } from '@/domain/backup-name';
-import { isPhotoFile } from '@/domain/photo-name';
+import { isPhotoFile, photoFileNames } from '@/domain/photo-name';
 import { CSV_BOM } from '@/lib/csv';
 import { databasePath, uploadsPath } from '@/lib/data-paths';
 import { isLoggedIn } from '@/lib/session';
@@ -167,6 +167,7 @@ export async function GET() {
      * attention is still worth having.
      */
     const left: string[] = [];
+    const taken = new Set<string>();
     let photos = 0;
 
     for (const file of files) {
@@ -177,9 +178,33 @@ export async function GET() {
       }
       try {
         entries.push({ name, bytes: fs.readFileSync(path.join(uploads, file)) });
+        taken.add(file);
         if (isPhotoFile(path.posix.basename(file))) photos++;
       } catch {
         left.push(`${file} - could not be read while this was being built`);
+      }
+    }
+
+    /*
+     * Every photograph the database names ought to be in the folder it just
+     * copied. This is the check the backup script calls the whole reason for
+     * copying a folder rather than a file, and it was missing here — so a
+     * download would say nothing about a picture nobody can find, while telling
+     * whoever restores it to open a photograph as proof that it worked.
+     *
+     * Reported, never fatal, exactly as the script decided: a photograph the
+     * database refers to and cannot find is a fault in the cupboard, and refusing
+     * to hand over a backup because of it means one missing thumbnail costs every
+     * backup from then until somebody notices.
+     */
+    const referenced = copy
+      .prepare(`select photo_path from products where photo_path is not null`)
+      .all() as { photo_path: string }[];
+
+    const missing: string[] = [];
+    for (const row of referenced) {
+      for (const file of photoFileNames(row.photo_path)) {
+        if (!taken.has(file)) missing.push(file);
       }
     }
 
@@ -193,6 +218,7 @@ export async function GET() {
           movements,
           photos,
           left,
+          missing,
         }),
         'utf8',
       ),
@@ -246,10 +272,17 @@ export async function GET() {
 /**
  * Plain text and a `503`, not a JSON error.
  *
- * Whoever pressed this is looking at a browser's download shelf, so the body is
- * the whole message. `503` rather than `500` because every one of these is "not
- * right now" — the database is mid-migration, the disk is full — and none of
- * them mean the button is broken.
+ * `503` rather than `500` because every one of these is "not right now" — the
+ * database is mid-migration, the disk is full — and none of them mean the button
+ * is broken.
+ *
+ * Worth being honest about who reads the body: not the person who pressed the
+ * button. A failed download on a link with `download` on it shows up in the
+ * browser's shelf as a failure and nothing more, so these sentences are for the
+ * server log and for anyone asking with `curl`. That is acceptable because none
+ * of these are conditions a person at a cupboard can act on — the one that is,
+ * "too big, use the script", is unreachable at anything like this size — and the
+ * alternative is a `200` handing over a text file that looks like a backup.
  */
 function problem(message: string) {
   return new NextResponse(`${message}\n`, {
@@ -309,6 +342,7 @@ function restoreNotes(about: {
   movements: number;
   photos: number;
   left: string[];
+  missing: string[];
 }): string {
   /*
    * Said in the archive rather than only in a server log, because whoever reads
@@ -324,6 +358,23 @@ function restoreNotes(about: {
         about.left.map((line) => `  ${line}\n`).join('') +
         `\nEverything else is here. The database above is complete either way.\n\n`;
 
+  /*
+   * Different from the list above, and worth its own paragraph: these were
+   * already gone before the backup ran. It is the check the backup script has
+   * had all along and this did not, which showed up as a backup saying nothing
+   * while telling somebody to open a photograph as the test that the restore
+   * worked — the one photograph that could not possibly open.
+   */
+  const gone = about.missing.length;
+  const missing =
+    gone === 0
+      ? ''
+      : `The database refers to ${gone} photograph ${gone === 1 ? 'file' : 'files'} that ` +
+        `${gone === 1 ? 'is' : 'are'} not on disk:\n` +
+        about.missing.map((file) => `  ${file}\n`).join('') +
+        `\nAlready missing before this was taken, so no copy of this backup can\n` +
+        `bring ${gone === 1 ? 'it' : 'them'} back. The rest is here.\n\n`;
+
   // A good folder name is a poor sentence; the domain knows how to say it.
   const when = readableStamp(about.stamp);
 
@@ -334,19 +385,34 @@ function restoreNotes(about: {
     `      the whole cupboard: products, boxes, doses, trips, and the ledger.\n` +
     `      ${about.boxes} boxes, ${about.movements} stock movements.\n` +
     `  uploads/\n` +
-    `      the box photographs, ${about.photos} of them, named from the database.\n` +
+    /*
+     * "photograph files", not "photographs". Every picture is stored twice, full
+     * size and as a thumbnail, so this number is double what somebody counting
+     * pictures expects - and a restore that seems to have half the photographs
+     * missing is a bad thing to make anybody wonder about. The backup script says
+     * "photo files" for the same reason.
+     */
+    `      the box photographs, ${about.photos} files - each picture is kept twice,\n` +
+    `      full size and as a thumbnail.\n` +
     `\n` +
     `Both halves, or it is not a backup: a database restored on its own comes\n` +
     `back with every picture missing.\n` +
     `\n` +
     left +
+    missing +
     `To restore, on the machine that runs the app:\n` +
     `\n` +
     `  1. stop the app\n` +
-    `  2. copy ${about.database} and uploads/ into its data folder, over what is there\n` +
-    `  3. start the app, log in, and open a photograph of a box\n` +
+    `  2. delete ${about.database}-wal and ${about.database}-shm, if either is there\n` +
+    `  3. copy ${about.database} and uploads/ into its data folder, over what is there\n` +
+    `  4. start the app, log in, and open a photograph of a box\n` +
     `\n` +
-    `Step 3 is the test. Anything can restore a database; opening a picture is\n` +
+    `Step 2 is not optional, and skipping it fails quietly. Those two files are\n` +
+    `SQLite's log of recent changes to the database that was there before. Left\n` +
+    `in place they are applied on top of the one you just restored, and the app\n` +
+    `comes back showing the old cupboard as though the restore had worked.\n` +
+    `\n` +
+    `Step 4 is the test. Anything can restore a database; opening a picture is\n` +
     `what proves the other half came back with it.\n` +
     `\n` +
     `Not in here: the login. The password hash lives in .env.local on that\n` +
