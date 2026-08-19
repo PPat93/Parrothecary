@@ -47,3 +47,145 @@ export function backupStamp(now: Date): string {
 export function readableStamp(stamp: string): string {
   return `${stamp.slice(0, 10)} ${stamp.slice(11, 13)}:${stamp.slice(13)}`;
 }
+
+/**
+ * The moment a stamp names, or nothing if it is not a stamp at all.
+ *
+ * Built by hand rather than handed to `new Date(...)`, which reads a bare date as
+ * UTC and would shift every backup by the difference — enough, in a household an
+ * hour or two off UTC, to sort a late-evening backup into the wrong day and prune
+ * the wrong one.
+ */
+export function stampTaken(stamp: string): Date | null {
+  if (!BACKUP_STAMP.test(stamp)) return null;
+
+  return new Date(
+    Number(stamp.slice(0, 4)),
+    Number(stamp.slice(5, 7)) - 1,
+    Number(stamp.slice(8, 10)),
+    Number(stamp.slice(11, 13)),
+    Number(stamp.slice(13, 15)),
+  );
+}
+
+/**
+ * Which backups to keep, and which to let go.
+ *
+ * Counting is the obvious rule and the wrong one. "Keep the newest thirty" means
+ * something different every time the schedule changes — thirty nightly backups is
+ * a month, thirty twice-weekly is nearly four. What a person actually wants is
+ * stated in time: everything from the last fortnight, and one older copy far
+ * enough back to survive a mistake nobody noticed for weeks.
+ *
+ * So there are two rules:
+ *
+ *   - keep every backup from the last `days`
+ *   - beyond that, keep one per calendar month, for the last `months` of them
+ *
+ * The second is the one that matters on a bad day. Every recent backup is a
+ * faithful copy of a cupboard that may already have been wrong — a box binned by
+ * accident three weeks ago is in all of them. The older copy is the only thing
+ * that can be compared against.
+ *
+ * Pure: names in, verdict out. No filesystem, no clock of its own.
+ */
+export type RetentionPolicy = {
+  /** Keep everything at least this recent. */
+  days: number;
+  /** Beyond that, keep one backup per calendar month, for this many months. */
+  months: number;
+};
+
+export const DEFAULT_RETENTION: RetentionPolicy = { days: 14, months: 2 };
+
+export type RetentionVerdict = {
+  /** Folder names to keep, newest first. */
+  keep: string[];
+  /** Folder names safe to delete, oldest first. */
+  remove: string[];
+};
+
+export function chooseBackupsToKeep(
+  names: string[],
+  policy: RetentionPolicy,
+  now: Date,
+): RetentionVerdict {
+  /*
+   * Anything that is not a backup name is not this code's business. A folder
+   * somebody else put in there — notes, a stray unpacked copy, the
+   * `before-restore` folder the restore writes — is never proposed for deletion,
+   * which is why it does not even appear in the verdict.
+   */
+  const backups = names
+    .filter((name) => BACKUP_STAMP.test(name))
+    .sort()
+    .reverse();
+
+  const recent = new Date(now.getTime() - policy.days * 24 * 60 * 60 * 1000);
+
+  const keep: string[] = [];
+  const remove: string[] = [];
+
+  /*
+   * One per month is chosen as the *oldest* in that month, not the newest.
+   *
+   * Both keep one, and only this one is stable: the oldest backup in a month is
+   * decided the moment that month's first backup is taken and never changes
+   * again. Keeping the newest would mean the chosen copy moving forward every few
+   * days, deleting last week's choice each time — so the thing meant to be a
+   * fixed point in the past would quietly be a moving one.
+   */
+  const monthlyKept = new Set<string>();
+
+  // Oldest first for this pass, so the first backup seen in a month is the one kept.
+  for (const name of [...backups].reverse()) {
+    const taken = stampTaken(name);
+    if (taken === null) continue;
+
+    if (taken >= recent) continue; // inside the recent window, handled below
+
+    const month = `${taken.getFullYear()}-${taken.getMonth()}`;
+    if (!monthlyKept.has(month)) monthlyKept.add(month);
+  }
+
+  /*
+   * Only the most recent `months` of those are kept. Older ones go — the point is
+   * a fixed point or two behind the fortnight, not an archive that grows forever.
+   */
+  const monthsToKeep = new Set([...monthlyKept].sort().reverse().slice(0, policy.months));
+
+  const chosenForMonth = new Set<string>();
+  for (const name of [...backups].reverse()) {
+    const taken = stampTaken(name);
+    if (taken === null || taken >= recent) continue;
+
+    const month = `${taken.getFullYear()}-${taken.getMonth()}`;
+    if (monthsToKeep.has(month) && !chosenForMonth.has(month)) {
+      chosenForMonth.add(month);
+      keep.push(name);
+    } else {
+      remove.push(name);
+    }
+  }
+
+  for (const name of backups) {
+    const taken = stampTaken(name);
+    if (taken !== null && taken >= recent) keep.push(name);
+  }
+
+  keep.sort().reverse();
+  remove.sort();
+
+  return { keep, remove };
+}
+
+/** How the policy reads in the summary the backup script prints. */
+export function describeRetention(policy: RetentionPolicy): string {
+  const fortnight = `everything from the last ${policy.days} days`;
+  if (policy.months === 0) return fortnight;
+
+  return (
+    `${fortnight}, plus one a month for ${policy.months} ` +
+    `month${policy.months === 1 ? '' : 's'} before that`
+  );
+}

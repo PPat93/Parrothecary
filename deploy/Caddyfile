@@ -1,0 +1,48 @@
+# Caddy in front of Parrothecary. Install to /etc/caddy/Caddyfile
+#
+#   sudo systemctl reload caddy
+#
+# Two reasons this exists, and neither is performance. The barcode scanner needs
+# a secure context, so the phones have to reach the app over HTTPS or the camera
+# is simply unavailable. And the login rate limit counts by IP, which means
+# something has to decide what a request's IP actually is.
+
+# Replace with the name the phones will use. Caddy issues a certificate from its
+# own internal authority for it, which is why `tls internal` is here rather than
+# a public certificate: this name never resolves on the internet.
+#
+# Each phone has to trust that authority once, or every visit is a warning page:
+#   sudo cat /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt
+# and install it on the device.
+parrothecary.home.arpa {
+	tls internal
+
+	reverse_proxy 127.0.0.1:3000 {
+		# Overwritten, not appended, and this is the whole point.
+		#
+		# Caddy's default is to add the client's address to whatever
+		# X-Forwarded-For the request already carried. The app reads the first
+		# entry, so a request that arrives with a header of its own would decide
+		# its own identity — and the login rate limit counts per IP, so anybody
+		# could have as many attempts as they liked by changing that value
+		# between tries.
+		#
+		# {remote_host} is the address Caddy is actually talking to. Setting it
+		# replaces anything the client sent.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	# The app sets no-store on the things that matter (exports, backups, photos),
+	# and the pages themselves are rendered per request.
+	encode gzip
+
+	log {
+		output file /var/log/caddy/parrothecary.log
+		# Names of medication are not in the paths, but box and product ids are.
+		# Keep these on the machine rather than shipping them anywhere.
+	}
+}
+
+# Nothing else is served. The app binds to 127.0.0.1, so port 3000 is not
+# reachable from the network even if this file is wrong.

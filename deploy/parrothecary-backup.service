@@ -1,0 +1,37 @@
+# The nightly backup. Install to /etc/systemd/system/parrothecary-backup.service
+# and pair it with parrothecary-backup.timer.
+#
+# Runs while the app keeps serving: the script is read-only on the live database
+# and uses VACUUM INTO, which writes one consistent snapshot with the write-ahead
+# log folded in. Stopping the app for a backup would be the wrong trade.
+
+[Unit]
+Description=Back up the Parrothecary cupboard
+# Not After=parrothecary.service: this is worth running whether the app is up or
+# not, and a backup taken while it is down is the easiest kind to trust.
+
+[Service]
+Type=oneshot
+User=parrothecary
+Group=parrothecary
+WorkingDirectory=/srv/parrothecary
+
+# What is kept is said in time, not in numbers: everything from the last 14 days,
+# plus one a month for the 2 months before that. On the twice-weekly schedule that
+# is about seven folders, four megabytes at today's size. Override with
+# --keep-days=N and --keep-months=N.
+ExecStart=/usr/bin/node scripts/backup.mjs
+
+# The exit code answers one question — is there a usable backup? — so a failure
+# here is worth a mail or a nudge if anything on this machine sends them. Faults
+# in the cupboard itself are printed as notes and still exit zero, on purpose: a
+# faithful copy of something that needs attention is still a backup.
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/parrothecary/backups
+
+[Install]
+WantedBy=multi-user.target

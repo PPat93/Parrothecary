@@ -1,0 +1,37 @@
+# When the backup runs. Install to /etc/systemd/system/parrothecary-backup.timer
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now parrothecary-backup.timer
+#   systemctl list-timers parrothecary-backup.timer
+#
+# Check it did something, rather than assuming:
+#   journalctl -u parrothecary-backup.service -n 20
+#   ls backups/
+
+[Unit]
+Description=Back up the Parrothecary cupboard nightly
+
+[Timer]
+# 03:30, chosen to stay clear of Home Assistant, which backs itself up at 05:00
+# on the same Dell. Nothing here is heavy — a third of a second and half a
+# megabyte — but two backup jobs landing together turn three quiet moments into
+# one burst of disk activity, and Home Assistant's is much the larger.
+#
+# If Proxmox also backs this container up overnight, keep that clear of both.
+# Twice a week rather than nightly: Thursday night into Friday, and Sunday night
+# into Monday. The cost of a backup is a third of a second and half a megabyte, so
+# frequency is not what is being economised — it is how much typing a bad day can
+# cost, and two a week keeps that to a few days.
+OnCalendar=Mon,Fri 03:30
+
+# Catch up on a run the machine slept or was switched off through. This is the
+# reason the script treats "a backup already exists for this minute" as success
+# rather than failure: a timer catching up can fire twice in a minute, and being
+# paged about a cupboard that is in fact backed up teaches people to ignore it.
+Persistent=true
+
+# Spread the start so it never lands on the same second as anything else.
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

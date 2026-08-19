@@ -67,17 +67,18 @@ Open http://localhost:3000.
 | `npm run build` | Production build |
 | `npm test` | Unit tests (domain logic) |
 | `npm run typecheck` | TypeScript, no emit |
-| `npm run db:migrate` | Apply pending migrations |
+| `npm run db:migrate` | Apply pending migrations, taking a backup into `backups/before-migrate/` first |
 | `npm run db:generate` | Generate a migration after editing `src/db/schema.ts` |
 | `npm run db:studio` | Browse the database |
 | `npm run db:symptoms` | Load the symptom tag vocabulary (run before any seed) |
 | `npm run db:seed` | Load demo data (run `db:symptoms` first) |
 | `npm run db:reset` | **Delete all data and every box photograph**, keep the schema (`-- --force` to skip the prompt) |
 | `npm run db:check-ledger` | Verify every box agrees with its stock movements |
-| `npm run db:backup` | Copy the database and the photographs into `backups/`, then verify the copy (`-- --keep=N`) |
+| `npm run db:backup` | Copy the database and the photographs into `backups/`, then verify the copy (`-- --keep-days=N --keep-months=N`) |
 | `npm run db:restore -- <path>` | Put a backup back, from a folder or a downloaded zip. **Stop the app first** |
 | `npm run auth:hash -- "…"` | Generate a master-password hash |
-| `npm run audit:routes` | List routes and check each is behind the session guard |
+| `npm run audit:routes` | List routes and check each is behind the session guard (app must be running) |
+| `npm run preflight` | Is this machine ready? Node, native modules, the password hash, folders, disk space |
 
 Before entering real inventory, run `npm run db:reset` so no demo rows survive.
 
@@ -175,14 +176,27 @@ so `setup` must be selected there or the stored session is never refreshed.
 
 ## Deployment
 
-Not yet done — the app runs locally for now, and is the last phase on the roadmap rather than the
-next one. Target is an unprivileged Debian LXC on the household Proxmox host, behind Caddy with an
-internal CA (a trusted certificate is required for camera access and home-screen install, both of
-which browsers block on plain HTTP).
+Not yet done, but written down: **[`deploy/RUNBOOK.md`](deploy/RUNBOOK.md)** is the whole procedure
+in order, with the systemd units and the Caddyfile beside it. Target is an unprivileged Debian LXC on
+the household Proxmox host, behind Caddy with an internal CA (a trusted certificate is required for
+camera access and home-screen install, both of which browsers block on plain HTTP).
+
+The order in that runbook is the point: everything that can be got wrong cheaply happens while the
+test data is still in place, the restore drill runs *before* there is anything to lose, and the wipe
+is second to last. `npm run preflight` answers "is this machine ready" in one command — Node version,
+the three native modules, the password hash as Next will actually read it, folders this user can
+write, and room for the backup the timer is about to take.
+
+Two things the deployment files settle rather than leave to be checked. Caddy is configured to
+**overwrite** `X-Forwarded-For` rather than append to it: the login rate limit counts per IP and the
+app reads the first entry, so appending would let a request choose its own identity and take as many
+attempts as it liked. And the app binds to `127.0.0.1`, so port 3000 is unreachable from the network
+even if the Caddyfile is wrong.
 
 Updates are built and tested locally against a separate database, so production is never the place
-anything is tried first. Migrations are forward-only and get a backup taken immediately before
-they run.
+anything is tried first. Migrations are forward-only, and `db:migrate` now takes a verified backup
+into `backups/before-migrate/` before it runs and stops if that backup fails — the README promised
+that from Phase 1, and until now nothing did it.
 
 ## Roadmap
 
@@ -347,8 +361,17 @@ boxes whose ledger does not add up, a photograph the database names that is not 
 is kept and the fault is printed. Refusing to back up a cupboard because one thumbnail is missing
 would mean a cosmetic fault costing every backup until somebody noticed, and it would throw away a
 good backup over nothing whenever a photo happened to be replaced in the moment between copying the
-database and copying the folder. `--keep=N` prunes older
-backups, thirty by default; one is under a megabyte today. It is read-only on the live data, so it
+database and copying the folder.
+
+**What is kept is said in time, not in numbers.** Everything from the last 14 days, plus one backup a
+month for the two months before that — `--keep-days=N` and `--keep-months=N`. Counting was the
+obvious rule and the wrong one: "keep thirty" means a month of nightly backups and nearly four months
+of twice-weekly ones, so the answer changes silently whenever the schedule does. The older monthly
+copy is the one that matters on a bad day, because every recent backup is a faithful copy of a
+cupboard that may already have been wrong for weeks. The rule lives in `src/domain/backup-name.ts`
+and is tested there, since it decides what is gone forever; the script only does the deleting, and
+never deletes a folder whose name it did not write. On the household's twice-weekly schedule this
+leaves about seven folders, four megabytes. It is read-only on the live data, so it
 can run while the app is serving — that is what `VACUUM INTO` buys over copying three files by
 hand mid-write — and it exits non-zero, so a timer can tell.
 
