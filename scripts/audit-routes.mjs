@@ -39,6 +39,24 @@ const cases = [
   // Box photos are NOT public like the PWA icons — the extensionless path keeps
   // them under the proxy, and the route re-checks the session itself.
   ['/photo/00000000-0000-0000-0000-000000000000', 'page', 'protect'],
+  /*
+   * The downloads, which were missing from this list entirely — including the
+   * one that hands over the whole database and every photograph in it. Each of
+   * these re-checks the session itself and answers 404 rather than 401 to a
+   * request carrying a cookie that is not valid, so that the endpoint does not
+   * confirm it exists to a stranger. What this file checks is the layer in
+   * front: that none of them is reachable without a session at all.
+   *
+   * A guard that is never asserted is one refactor away from not being there,
+   * and these are the last four routes in the app that should lose one quietly.
+   */
+  ['/export/backup', 'download', 'protect'],
+  ['/export/stock', 'download', 'protect'],
+  ['/export/movements', 'download', 'protect'],
+  ['/export/products', 'download', 'protect'],
+  // Not a real export. It must still be behind the guard rather than answering
+  // 404 to the world, for the same reason /nonexistent is.
+  ['/export/nonsense', 'download', 'protect'],
 ];
 
 let failures = 0;

@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { databasePath } from '@/lib/data-paths';
 import * as schema from './schema';
 
 type Db = ReturnType<typeof open>;
 
 function open() {
-  const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
+  const dbPath = databasePath();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
   const sqlite = new Database(dbPath);

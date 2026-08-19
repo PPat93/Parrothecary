@@ -349,6 +349,32 @@ export default function HelpPage() {
           in the field, so change it if that day was different, and clear it to leave the price in
           złoty.
         </p>
+        <p>
+          {/*
+            The two downloads read alike and are not alike, and the difference
+            only becomes apparent on the day it matters. Spelled out here rather
+            than left to the labels.
+          */}
+          <span className="font-medium" style={{ color: 'var(--text)' }}>
+            Export
+          </span>{' '}
+          at the bottom gives three spreadsheets — boxes, the whole stock ledger, and the catalogue —
+          which are your data in a form anything can open, and enough to rebuild the cupboard by hand
+          if this app ever stops running.
+        </p>
+        <p>
+          <span className="font-medium" style={{ color: 'var(--text)' }}>
+            Backup
+          </span>{' '}
+          is a different thing: one file holding the database itself and every box photograph, which
+          is what the app can be put back from, and the only one of these that includes the pictures.
+          The machine already keeps its own copies on a timer, so this is the one to press when you
+          want a copy somewhere <em>else</em> — before a trip, or after an evening of typing. There is
+          a note inside it explaining how to restore it, so the file still makes sense years from now.
+        </p>
+        <p>
+          Neither contains the password.
+        </p>
       </Panel>
 
       <Panel title="Why won’t it let me?" id="refusals">

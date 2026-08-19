@@ -17,6 +17,8 @@
     "db:seed": "node scripts/seed.mjs",
     "db:seed:mine": "node seed/my-stock.mjs",
     "db:reset": "node scripts/reset.mjs",
+    "db:backup": "node scripts/backup.mjs",
+    "db:restore": "node scripts/restore.mjs",
     "db:check-ledger": "node scripts/check-ledger.mjs",
     "db:symptoms": "node scripts/seed-symptoms.mjs",
     "auth:hash": "node scripts/hash-password.mjs",

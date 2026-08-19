@@ -16,9 +16,9 @@
  * things that expired years ago.
  */
 import Database from 'better-sqlite3';
-import path from 'node:path';
+import { databasePath } from '../src/lib/data-paths.ts';
 
-const dbPath = path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db');
+const dbPath = databasePath();
 const db = new Database(dbPath);
 db.pragma('foreign_keys = ON');
 

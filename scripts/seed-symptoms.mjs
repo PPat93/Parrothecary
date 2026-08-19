@@ -11,9 +11,9 @@
  * The Polish column is a search alias, not a translation of the interface.
  */
 import Database from 'better-sqlite3';
-import path from 'node:path';
+import { databasePath } from '../src/lib/data-paths.ts';
 
-const db = new Database(path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db'));
+const db = new Database(databasePath());
 
 const SYMPTOMS = [
   ['pain', 'ból'],

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import { uploadsPath } from './data-paths';
 
 /**
  * Box photos.
@@ -16,18 +17,19 @@ import sharp from 'sharp';
  * way in, plus a thumbnail, so the stock list stays quick over wifi.
  */
 
-const UPLOAD_DIR = path.resolve(
-  path.dirname(path.resolve(process.env.DATABASE_PATH ?? './data/parrothecary.db')),
-  'uploads',
-);
+const UPLOAD_DIR = uploadsPath();
 
 const MAX_BYTES = 12 * 1024 * 1024;
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 
-/** Names come back from the database and go into a file path — keep them boring. */
-export function isSafePhotoName(name: string): boolean {
-  return /^[a-f0-9-]{36}(-thumb)?$/.test(name);
-}
+/*
+ * Re-exported rather than defined here: the reset script needs the same rule to
+ * know which files in the uploads folder are the app's to delete, and it cannot
+ * import this file — `server-only` above would throw, and sharp would come with
+ * it. See src/domain/photo-name.ts.
+ */
+export { isSafePhotoName } from '@/domain/photo-name';
+import { isSafePhotoName, photoFileNames } from '@/domain/photo-name';
 
 export function photoFile(name: string): string {
   return path.join(UPLOAD_DIR, `${name}.webp`);
@@ -69,7 +71,10 @@ export async function savePhoto(file: File): Promise<{ id: string } | { error: s
 
 export async function deletePhoto(id: string): Promise<void> {
   if (!isSafePhotoName(id)) return;
-  // Missing files are fine — the point is that they are gone.
-  await fs.rm(photoFile(id), { force: true });
-  await fs.rm(photoFile(`${id}-thumb`), { force: true });
+  // Missing files are fine — the point is that they are gone. Names from the
+  // one place that knows them, so the backup's "is this picture really here"
+  // check and this cannot disagree about what "here" means.
+  for (const name of photoFileNames(id)) {
+    await fs.rm(path.join(UPLOAD_DIR, name), { force: true });
+  }
 }

@@ -82,6 +82,22 @@ export default async function AboutPage() {
           beside it. Copy the folder, not just the file — a database restored on its own comes back
           with every photograph missing.
         </p>
+        <p className="mt-2">
+          The machine takes that copy itself, on a timer, and checks each one afterwards: that it
+          can be read, that nothing is missing from it, and that every photograph it mentions is
+          really in the folder. A copy nobody has checked is a hope rather than a backup.
+        </p>
+        <p className="mt-2">
+          {/*
+            Said here as well as on Statistics, because this is the section
+            somebody reads when they are worrying about losing the data, and the
+            answer to that worry is a button they can press now.
+          */}
+          Those copies sit on the same machine, which is no help if the machine itself goes. Under{' '}
+          <strong>Statistics → Backup</strong> there is a button that hands you one as a single file,
+          photographs and all, with a note inside on how to put it back. Worth pressing before a
+          trip, and keeping wherever your photos go.
+        </p>
       </Section>
 
       {/*
