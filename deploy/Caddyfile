@@ -35,6 +35,11 @@ parrothecary.home.arpa {
 
 	# The app sets no-store on the things that matter (exports, backups, photos),
 	# and the pages themselves are rendered per request.
+	#
+	# Caddy compresses text-ish content types only, so the backup zip and the box
+	# photographs — both already compressed — should pass through untouched. That
+	# is Caddy's own default rather than something set here, so if downloads ever
+	# feel slow on the phone, this line is the first thing to check.
 	encode gzip
 
 	log {

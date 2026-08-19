@@ -11,9 +11,14 @@ The machine is a Debian LXC on Proxmox. The app runs as `parrothecary` out of
 ## 1. The machine
 
 ```sh
-sudo adduser --system --group --home /srv/parrothecary parrothecary
+sudo adduser --system --group --home /srv/parrothecary --no-create-home parrothecary
+sudo mkdir -p /srv/parrothecary
+sudo chown parrothecary:parrothecary /srv/parrothecary
 sudo apt install -y git caddy build-essential python3
 ```
+
+`--no-create-home` and the explicit `mkdir` are deliberate: `adduser` would create that folder and
+put shell dotfiles in it, and `git clone` refuses to clone into a folder that is not empty.
 
 `build-essential` and `python3` are not optional: `better-sqlite3`, `sharp` and
 `@node-rs/argon2` are compiled for this machine's platform and Node version.
@@ -64,6 +69,15 @@ sudo cp deploy/Caddyfile /etc/caddy/Caddyfile      # edit the hostname first
 sudo systemctl daemon-reload
 sudo systemctl enable --now parrothecary
 sudo systemctl reload caddy
+```
+
+Two of those files were written on a machine with neither systemd nor Caddy on it, so check them
+rather than trusting them — one command each, and both are instant:
+
+```sh
+systemd-analyze calendar "Mon,Fri 03:30"     # should print the next two firing times
+sudo caddy validate --config /etc/caddy/Caddyfile
+systemctl list-timers parrothecary-backup.timer
 ```
 
 ## 4. Prove it works, with the test data still in place
@@ -130,13 +144,24 @@ dead disk.
 | Question | Command |
 |---|---|
 | Is the machine still healthy? | `npm run preflight` |
-| Did last night's backup run? | `journalctl -u parrothecary-backup.service -n 20` |
+| Did the last backup run? | `journalctl -u parrothecary-backup.service -n 20` |
 | Does the cupboard still add up? | `npm run db:check-ledger` |
 | Is every route still behind the guard? | `npm run audit:routes` (app must be running) |
 | Take a backup now | `npm run db:backup` |
 | Put one back | stop the app, `npm run db:restore -- <folder or zip>`, start it |
 
-Upgrades are `git pull`, `npm ci`, `npm run build`, `npm run db:migrate`,
-`sudo systemctl restart parrothecary`. The migration takes its own backup first,
+Upgrades, in this order — **stop first**, because `npm ci` empties `node_modules` and the running app
+is loading files out of it:
+
+```sh
+sudo systemctl stop parrothecary
+sudo -u parrothecary git pull
+sudo -u parrothecary npm ci
+sudo -u parrothecary npm run build
+sudo -u parrothecary npm run db:migrate
+sudo systemctl start parrothecary
+```
+
+The migration takes its own backup first,
 into `backups/before-migrate/`, and stops if that backup fails — migrations here
 are forward-only, so that copy is the only way back.

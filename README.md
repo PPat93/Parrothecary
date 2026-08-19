@@ -13,11 +13,16 @@ order before the deadline".
 expiry; barcode scanning; dose schedules and run-out projection; a stock ledger behind every
 quantity that changes; counting the shelf; duplicate-ingredient warnings; alternatives; restock
 trips with an order deadline and a cabinet audit; holidays with a packing list; prices, waste and
-usage statistics; CSV export; and a help view that explains the lot.
+usage statistics; CSV export and a one-file backup; and a help view that explains the lot.
 
 **Phase 5 is deployment**, deliberately last — the app should be tested before it becomes the
-thing the household relies on. Until then it runs locally against test data, which gets wiped for
-a clean start on the day it is deployed.
+thing the household relies on. The parts that do not need the machine are done: a verified backup on
+a timer, a download button that puts one on a phone, `npm run db:restore` to put either shape back,
+and the systemd units, Caddyfile and runbook in [`deploy/`](deploy/RUNBOOK.md). What is left needs
+the machine itself — install it, get a certificate the phones trust so the barcode scanner works,
+run the restore drill there, then wipe the test data and enter the real cupboard.
+
+Until that day it runs locally against test data, which gets wiped for a clean start.
 
 ## What it looks like
 
@@ -125,7 +130,8 @@ src/
   components/ Shared UI.
 e2e/          Playwright — owned by the repo owner. Page objects, fixtures, smoke and
               functional specs, with a setup project that logs in once and stores the session.
-scripts/      Password hashing, seed, reset, ledger check.
+scripts/      Password hashing, seed, reset, ledger check, backup, restore,
+              preflight, and the route audit.
 docs/         Screenshots for this file.
 ```
 
@@ -184,8 +190,8 @@ camera access and home-screen install, both of which browsers block on plain HTT
 The order in that runbook is the point: everything that can be got wrong cheaply happens while the
 test data is still in place, the restore drill runs *before* there is anything to lose, and the wipe
 is second to last. `npm run preflight` answers "is this machine ready" in one command — Node version,
-the three native modules, the password hash as Next will actually read it, folders this user can
-write, and room for the backup the timer is about to take.
+the three native modules, whether a production build is on disk, the password hash as Next will
+actually read it, folders this user can write, and room for the backup the timer is about to take.
 
 Two things the deployment files settle rather than leave to be checked. Caddy is configured to
 **overwrite** `X-Forwarded-For` rather than append to it: the login rate limit counts per IP and the
@@ -381,20 +387,15 @@ point a different disk. A backup that lands on the same disk as the database sur
 but not a dead drive, so that variable is the one that turns this from a safety net into a real
 one.
 
-Deployment day wires it to one, something like:
+The timer that runs it is a real file rather than a snippet here:
+**[`deploy/parrothecary-backup.timer`](deploy/parrothecary-backup.timer)**, with its service beside
+it. It fires twice a week — Thursday night into Friday, and Sunday night into Monday — at 03:30,
+which is chosen to stay clear of the Home Assistant backup at 05:00 on the same machine. `Persistent`
+is set, so a run the machine slept through is caught up rather than skipped.
 
-```ini
-# /etc/systemd/system/parrothecary-backup.service
-[Service]
-Type=oneshot
-WorkingDirectory=/srv/parrothecary
-ExecStart=/usr/bin/npm run db:backup
-
-# /etc/systemd/system/parrothecary-backup.timer
-[Timer]
-OnCalendar=daily
-Persistent=true
-```
+This used to be an example in this file saying `OnCalendar=daily`, which stopped being true the
+moment the real timer was written. One of them had to be the answer, and it should be the one that
+actually runs.
 
 **Done: a button, on Statistics.** "Download a backup.zip" builds the same thing in memory and hands
 it over as one file: `parrothecary-backup-<stamp>/` holding the database, `uploads/`, and a

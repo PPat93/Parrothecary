@@ -9,7 +9,7 @@
 #   ls backups/
 
 [Unit]
-Description=Back up the Parrothecary cupboard nightly
+Description=Back up the Parrothecary cupboard, twice a week
 
 [Timer]
 # 03:30, chosen to stay clear of Home Assistant, which backs itself up at 05:00

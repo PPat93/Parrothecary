@@ -358,7 +358,7 @@ export default function HelpPage() {
           <span className="font-medium" style={{ color: 'var(--text)' }}>
             Export
           </span>{' '}
-          at the bottom gives three spreadsheets — boxes, the whole stock ledger, and the catalogue —
+          near the bottom gives three spreadsheets — boxes, the whole stock ledger, and the catalogue —
           which are your data in a form anything can open, and enough to rebuild the cupboard by hand
           if this app ever stops running.
         </p>

@@ -10,7 +10,10 @@
  * platform, a password hash mangled by the shell, a data folder the service user
  * cannot write, a disk with no room for the backup the timer is about to take.
  *
- * Read-only, and safe to run against a live machine at any time.
+ * Safe to run against a live machine at any time. It creates nothing and changes
+ * nothing: the only thing it writes is a probe file in each folder it has to
+ * prove is writable, named after this process and deleted a line later. Saying
+ * "read-only" would have been the tidier sentence and not quite true.
  *
  * Exit code is the whole answer for a script: zero when the machine can run the
  * app, one when something must be fixed first. Warnings do not fail it — they are
@@ -72,6 +75,20 @@ for (const native of ['better-sqlite3', 'sharp', '@node-rs/argon2']) {
 }
 
 /*
+ * A production build has to be on disk before the service is any use.
+ *
+ * `next start` does not check at start-up: it prints "Ready", then throws on the
+ * first request and exits, so systemd restarts it and the machine sits in a
+ * restart loop with a message only visible in the journal. Cheaper to answer
+ * here, before anybody enables the service.
+ */
+if (fs.existsSync(path.join('.next', 'BUILD_ID'))) {
+  ok('production build', 'present in .next');
+} else {
+  fail('production build', 'missing — run npm run build');
+}
+
+/*
  * `.env.local` is read here rather than trusted to the shell, which is the whole
  * point of the checks below. Next loads that file itself, so the hash is normally
  * nowhere in the environment of a plain script, and a check that says "not set"
@@ -91,6 +108,18 @@ function unescapeDollars(value) {
     out += value[at];
   }
   return out;
+}
+
+/** Drop one matching pair of surrounding quotes, the way an env file reader does. */
+function unquote(value) {
+  const first = value[0];
+  const quote = String.fromCharCode(34);
+  const apostrophe = String.fromCharCode(39);
+
+  if ((first === quote || first === apostrophe) && value.endsWith(first) && value.length > 1) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 function hasBareDollar(value) {
@@ -115,8 +144,20 @@ if (fs.existsSync('.env.local')) {
       warn('.env.local', 'present, but holds no MASTER_PASSWORD_HASH');
     } else {
       ok('.env.local', 'present and readable');
-      const raw = line.slice('MASTER_PASSWORD_HASH='.length).trim();
       escapedInFile = true;
+
+      /*
+       * Quotes around the value are stripped before anything is judged, because
+       * Next strips them too. Checked against Next's own loader rather than
+       * guessed: a quoted, escaped hash works perfectly, and this used to report
+       * it as "not an Argon2id hash" — a false alarm on a working machine, which
+       * is the one thing a readiness check must never do.
+       *
+       * Quotes do not rescue an unescaped hash, though. That was checked the same
+       * way: bare dollars are eaten whether the value is quoted or not, so the
+       * warning below stands regardless.
+       */
+      const raw = unquote(line.slice('MASTER_PASSWORD_HASH='.length).trim());
 
       /*
        * The failure this exists for, and it is silent: Next does shell-style
@@ -154,37 +195,56 @@ if (hash === '') {
   ok('MASTER_PASSWORD_HASH', escapedInFile ? 'an Argon2id hash, escaped as Next needs it' : 'an Argon2id hash');
 }
 
-/** Can this user actually write there? Asked by writing, not by reading permissions. */
+/**
+ * Can this user actually write there? Asked by writing, because permissions read
+ * from the outside are a poor guide to what a service user can really do.
+ *
+ * Nothing is created. An earlier version made the folder if it was missing, which
+ * quietly contradicted the promise at the top of this file — and worse, a
+ * mistyped DATABASE_PATH would have had it building the wrong folder tree and
+ * then reporting that everything was fine. A folder that does not exist yet is a
+ * fact to report, not one to fix.
+ */
 function writable(dir) {
-  const probe = path.join(dir, `.preflight-${process.pid}`);
+  const wanted = path.resolve(dir);
+
+  let existing = wanted;
+  while (!fs.existsSync(existing)) {
+    const above = path.dirname(existing);
+    if (above === existing) return { exists: false, tested: existing, error: 'no such path' };
+    existing = above;
+  }
+
+  const probe = path.join(existing, `.preflight-${process.pid}`);
   try {
-    fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(probe, 'x');
     fs.rmSync(probe);
-    return null;
+    return { exists: existing === wanted, tested: existing, error: null };
   } catch (error) {
-    return error.message;
+    return { exists: existing === wanted, tested: existing, error: error.message };
+  }
+}
+
+/** Report on one folder the app needs, without touching it. */
+function checkFolder(label, dir) {
+  const verdict = writable(dir);
+
+  if (verdict.error !== null) {
+    fail(label, `${verdict.tested} cannot be written: ${verdict.error}`);
+  } else if (verdict.exists) {
+    ok(label, dir);
+  } else {
+    warn(label, `${dir} does not exist yet — it will be created, and ${verdict.tested} is writable`);
   }
 }
 
 const dbPath = databasePath();
 const dataDir = path.dirname(dbPath);
 
-const dataProblem = writable(dataDir);
-if (dataProblem) fail('data folder', `${dataDir} cannot be written: ${dataProblem}`);
-else ok('data folder', dataDir);
-
-const uploadsProblem = writable(uploadsPath());
-if (uploadsProblem) fail('uploads folder', `${uploadsPath()} cannot be written: ${uploadsProblem}`);
-else ok('uploads folder', uploadsPath());
-
-const backupProblem = writable(backupsPath());
-if (backupProblem) fail('backup folder', `${backupsPath()} cannot be written: ${backupProblem}`);
-else ok('backup folder', backupsPath());
-
-const tmpProblem = writable(os.tmpdir());
-if (tmpProblem) fail('temporary folder', `${os.tmpdir()} cannot be written: ${tmpProblem}`);
-else ok('temporary folder', `${os.tmpdir()} — where the download button builds its copy`);
+checkFolder('data folder', dataDir);
+checkFolder('uploads folder', uploadsPath());
+checkFolder('backup folder', backupsPath());
+checkFolder('temporary folder', os.tmpdir());
 
 /*
  * The database itself, and whether the migrations have been applied. A missing

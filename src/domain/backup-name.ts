@@ -137,6 +137,17 @@ export function chooseBackupsToKeep(
    */
   const monthlyKept = new Set<string>();
 
+  /*
+   * Padded, and that matters more than it looks. The month is a number from 0 to
+   * 11, and these keys are sorted as text to find the most recent months — so
+   * without the padding, `2026-10` (November) sorts before `2026-8` (September),
+   * and the rule keeps the older month while deleting the newer one. Found by
+   * asking it about an autumn: it threw away both November backups and kept
+   * September.
+   */
+  const monthKey = (taken: Date) =>
+    `${taken.getFullYear()}-${String(taken.getMonth()).padStart(2, '0')}`;
+
   // Oldest first for this pass, so the first backup seen in a month is the one kept.
   for (const name of [...backups].reverse()) {
     const taken = stampTaken(name);
@@ -144,8 +155,7 @@ export function chooseBackupsToKeep(
 
     if (taken >= recent) continue; // inside the recent window, handled below
 
-    const month = `${taken.getFullYear()}-${taken.getMonth()}`;
-    if (!monthlyKept.has(month)) monthlyKept.add(month);
+    if (!monthlyKept.has(monthKey(taken))) monthlyKept.add(monthKey(taken));
   }
 
   /*
@@ -159,7 +169,7 @@ export function chooseBackupsToKeep(
     const taken = stampTaken(name);
     if (taken === null || taken >= recent) continue;
 
-    const month = `${taken.getFullYear()}-${taken.getMonth()}`;
+    const month = monthKey(taken);
     if (monthsToKeep.has(month) && !chosenForMonth.has(month)) {
       chosenForMonth.add(month);
       keep.push(name);

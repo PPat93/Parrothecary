@@ -38,8 +38,15 @@ RestartSec=5s
 # Hardening. ProtectSystem=strict makes the whole filesystem read-only apart from
 # what is listed below, which for this app is three folders:
 #   data/    the database and the box photographs
-#   backups/ where the timer writes, unless BACKUP_DIR points elsewhere
-#   .next/   Next's own cache, written at runtime by the image optimizer
+#   backups/ where the download button never writes, but a hand-run backup does
+#   .next/   Next's own caches
+#
+# Only `data` is known to be needed. The app was watched through a full exercise —
+# every page, both photo sizes, a CSV export and a backup download — and wrote
+# nothing outside `data`. The other two are here because the cost of guessing
+# wrong in that direction is a confusing runtime failure rather than a clear one:
+# Next writes caches under `.next` in some configurations, and anyone running
+# `npm run db:backup` by hand as this user needs `backups`.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

@@ -39,11 +39,28 @@ if (!fs.existsSync(dbPath)) {
  * folder holding nothing, and failing would stop the migration that is about to
  * put the tables in.
  */
-const db = new Database(dbPath, { readonly: true });
-const hasSchema = db
-  .prepare(`select count(*) n from sqlite_master where type = 'table' and name = 'batches'`)
-  .get().n;
-db.close();
+let hasSchema = 0;
+try {
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    hasSchema = db
+      .prepare(`select count(*) n from sqlite_master where type = 'table' and name = 'batches'`)
+      .get().n;
+  } finally {
+    db.close();
+  }
+} catch (error) {
+  /*
+   * A file that is not a database, sitting where one should be. Migrating would
+   * fail anyway, and backing it up is not possible — so this stops, and says so
+   * in a sentence. It threw SQLite's own words as a stack trace before, which is
+   * a poor way to tell somebody their database is unreadable.
+   */
+  console.error(`${dbPath} cannot be opened: ${error.message}`);
+  console.error('Nothing was backed up and the migration was not run.');
+  console.error('If that file is not a database, move it aside; if it should be, restore a backup.');
+  process.exit(1);
+}
 
 if (!hasSchema) {
   console.log('That database has no tables yet — nothing to back up before migrating.');

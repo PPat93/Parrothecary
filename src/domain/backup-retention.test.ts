@@ -79,6 +79,46 @@ describe('choosing which backups to keep', () => {
     expect(later.keep).toContain(stamp(2026, 7, 3));
   });
 
+  it('picks the most recent months in autumn, when month numbers change width', () => {
+    /*
+     * The bug this is here for. Months are grouped by a key built from the year
+     * and the month number, and those keys are sorted as text to find the most
+     * recent ones. Unpadded, `2026-10` (November) sorts before `2026-8`
+     * (September) — so the rule kept September and deleted both November backups,
+     * which is the opposite of what it exists to do. Every earlier test happened
+     * to use months whose numbers were the same width.
+     */
+    const december = new Date(2026, 11, 20, 20, 0);
+    const names = [
+      stamp(2026, 12, 15), // inside the fortnight
+      stamp(2026, 11, 5),
+      stamp(2026, 11, 20),
+      stamp(2026, 10, 4),
+      stamp(2026, 10, 18),
+      stamp(2026, 9, 6),
+      stamp(2026, 9, 21),
+    ];
+
+    const { keep } = chooseBackupsToKeep(names, DEFAULT_RETENTION, december);
+
+    expect(keep).toEqual([stamp(2026, 12, 15), stamp(2026, 11, 5), stamp(2026, 10, 4)]);
+  });
+
+  it('keeps the right months across a year boundary', () => {
+    const january = new Date(2027, 0, 20, 20, 0);
+    const names = [
+      stamp(2027, 1, 15), // recent
+      stamp(2026, 12, 3),
+      stamp(2026, 12, 28),
+      stamp(2026, 11, 2),
+      stamp(2026, 10, 1),
+    ];
+
+    const { keep } = chooseBackupsToKeep(names, DEFAULT_RETENTION, january);
+
+    expect(keep).toEqual([stamp(2027, 1, 15), stamp(2026, 12, 3), stamp(2026, 11, 2)]);
+  });
+
   it('never proposes deleting something that is not a backup', () => {
     const names = [
       stamp(2026, 8, 17),
@@ -129,6 +169,45 @@ describe('choosing which backups to keep', () => {
     expect(names.length).toBeGreaterThan(100);
     expect(keep).toHaveLength(6);
     expect(remove).toHaveLength(names.length - 6);
+  });
+});
+
+describe('the promise the folder relies on', () => {
+  /*
+   * Whatever the policy and whatever is in the folder, every backup must come
+   * back exactly once — kept or removed, never both, never neither. A backup that
+   * fell out of both lists would simply never be tidied; one in both would be
+   * deleted while being counted as kept.
+   *
+   * Random inputs, with a fixed seed so a failure is reproducible rather than a
+   * story about a test that went red once on somebody's laptop.
+   */
+  it('accounts for every backup, whatever the policy', () => {
+    let seed = 12345;
+    const random = (limit: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return Math.floor((seed / 2147483648) * limit);
+    };
+    const pad = (value: number) => String(value).padStart(2, '0');
+
+    for (let round = 0; round < 500; round++) {
+      const names = new Set<string>();
+      for (let index = 0; index < 1 + random(40); index++) {
+        names.add(
+          `${2025 + random(3)}-${pad(1 + random(12))}-${pad(1 + random(28))}` +
+            `T${pad(random(24))}${pad(random(60))}`,
+        );
+      }
+
+      const list = [...names];
+      const now = new Date(2026, random(12), 1 + random(28));
+      const policy = { days: 1 + random(40), months: random(4) };
+
+      const { keep, remove } = chooseBackupsToKeep(list, policy, now);
+
+      expect(new Set([...keep, ...remove]).size, `round ${round}`).toBe(list.length);
+      expect(keep.filter((name) => remove.includes(name)), `round ${round}`).toEqual([]);
+    }
   });
 });
 
