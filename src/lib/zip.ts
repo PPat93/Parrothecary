@@ -217,3 +217,154 @@ function dosTimestamp(when: Date): [time: number, date: number] {
     ((year - 1980) << 9) | ((when.getMonth() + 1) << 5) | when.getDate(),
   ];
 }
+
+/**
+ * The other direction: an archive in, its files out.
+ *
+ * Written for the restore script, which has to look inside a backup before it is
+ * allowed to overwrite anything. Read through the central directory at the end
+ * rather than by walking local headers from the front, because that is where a
+ * zip's real table of contents lives — the two can disagree, and every reader
+ * that trusted the front has been the subject of a security advisory.
+ *
+ * Everything is checked rather than assumed, since the file being read is one
+ * that has been on a phone, in a cloud folder and back:
+ *
+ *   - the checksum of every file, so a bad byte is caught here rather than
+ *     halfway through a restore;
+ *   - the names, by the same rule used when writing, so an archive holding
+ *     `../../etc/passwd` cannot talk this into writing outside the folder;
+ *   - the offsets, so a truncated download fails as a sentence rather than as a
+ *     wrong answer.
+ */
+export function readZip(archive: Buffer): ZipEntry[] {
+  const end = findEndRecord(archive);
+  const total = archive.readUInt16LE(end + 10);
+  const directoryAt = archive.readUInt32LE(end + 16);
+
+  if (directoryAt >= archive.length) {
+    throw new Error('This archive says its contents list is past the end of the file.');
+  }
+
+  const entries: ZipEntry[] = [];
+  let at = directoryAt;
+
+  for (let index = 0; index < total; index++) {
+    if (at + 46 > archive.length || archive.readUInt32LE(at) !== CENTRAL_SIGNATURE) {
+      throw new Error(`This archive's contents list stops after ${index} of ${total} files.`);
+    }
+
+    const flags = archive.readUInt16LE(at + 8);
+    const method = archive.readUInt16LE(at + 10);
+    const crc = archive.readUInt32LE(at + 16);
+    const compressed = archive.readUInt32LE(at + 20);
+    const size = archive.readUInt32LE(at + 24);
+    const nameLength = archive.readUInt16LE(at + 28);
+    const extraLength = archive.readUInt16LE(at + 30);
+    const commentLength = archive.readUInt16LE(at + 32);
+    const localAt = archive.readUInt32LE(at + 42);
+
+    /*
+     * Backslashes are read as folder separators, though nothing here ever writes
+     * one. The zip format says slashes, and PowerShell's own `Compress-Archive`
+     * writes `backup\parrothecary.db` regardless — so a backup unpacked on a PC
+     * and zipped up again, which is exactly the hop between a phone and the
+     * machine, came back as a file this refused to restore. Refusing was correct
+     * for the writer and useless here: what arrives is what other people's tools
+     * produced.
+     *
+     * Before the safety check, never after, so that `..\..\etc\passwd` is still
+     * a name this will not write.
+     */
+    const name = archive.toString('utf8', at + 46, at + 46 + nameLength).replaceAll('\\', '/');
+
+    at += 46 + nameLength + extraLength + commentLength;
+
+    /*
+     * Directory entries are the one thing skipped rather than refused. Nothing
+     * here writes them, but plenty of other zip tools do, and a backup that had
+     * been through one of those would otherwise be rejected for holding a folder.
+     */
+    if (name.endsWith('/') && size === 0) continue;
+
+    if (!isArchiveName(name)) {
+      throw new Error(`This archive holds a file called "${name}", which is not safe to write.`);
+    }
+
+    /*
+     * Bit zero means the file is encrypted. Worth its own sentence: without it
+     * the bytes simply fail to uncompress, and a backup that needs a password
+     * would be reported as damaged - sending somebody looking for a corrupted
+     * download when what they actually need is the password they set.
+     */
+    if ((flags & 1) !== 0) {
+      throw new Error(`"${name}" is password-protected, and this cannot open it.`);
+    }
+
+    if (localAt + 30 > archive.length || archive.readUInt32LE(localAt) !== LOCAL_SIGNATURE) {
+      throw new Error(`"${name}" is not where this archive's contents list says it is.`);
+    }
+
+    // The local header's own name and extra lengths, which are allowed to differ
+    // from the ones in the central directory, and do in practice.
+    const dataAt = localAt + 30 + archive.readUInt16LE(localAt + 26) + archive.readUInt16LE(localAt + 28);
+    if (dataAt + compressed > archive.length) {
+      throw new Error(`"${name}" runs past the end of the file — the download is incomplete.`);
+    }
+
+    const stored = archive.subarray(dataAt, dataAt + compressed);
+
+    let bytes: Buffer;
+    if (method === STORED) {
+      bytes = Buffer.from(stored);
+    } else if (method === DEFLATED) {
+      try {
+        bytes = zlib.inflateRawSync(stored);
+      } catch {
+        throw new Error(`"${name}" could not be uncompressed — the file is damaged.`);
+      }
+    } else {
+      throw new Error(`"${name}" is compressed in a way this cannot read (method ${method}).`);
+    }
+
+    if (bytes.length !== size) {
+      throw new Error(`"${name}" came out ${bytes.length} bytes where the archive says ${size}.`);
+    }
+
+    /*
+     * The checksum last, and never skipped. This is the whole reason a zip is
+     * worth using over a folder of loose files: it can tell you that what came
+     * back is what went in, before anybody restores from it.
+     */
+    if (zlib.crc32(bytes) !== crc) {
+      throw new Error(`"${name}" fails its checksum — the copy is damaged.`);
+    }
+
+    entries.push({ name, bytes });
+  }
+
+  return entries;
+}
+
+/**
+ * Find the end-of-central-directory record, searching backwards.
+ *
+ * Backwards because the record is last and its own length is variable: it may
+ * carry a comment of up to 64 KB. Scanning forward for the signature would find
+ * the same four bytes sitting by chance inside a compressed photograph.
+ */
+function findEndRecord(archive: Buffer): number {
+  if (archive.length < 22) {
+    throw new Error('This file is too small to be a zip at all.');
+  }
+
+  const earliest = Math.max(0, archive.length - 22 - 0xffff);
+  for (let at = archive.length - 22; at >= earliest; at--) {
+    if (archive.readUInt32LE(at) !== END_SIGNATURE) continue;
+    // The comment length has to account for exactly the bytes that follow, or
+    // this is a signature that happened to appear inside the data.
+    if (at + 22 + archive.readUInt16LE(at + 20) === archive.length) return at;
+  }
+
+  throw new Error('This is not a zip file, or it was truncated before it finished downloading.');
+}

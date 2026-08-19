@@ -75,6 +75,7 @@ Open http://localhost:3000.
 | `npm run db:reset` | **Delete all data and every box photograph**, keep the schema (`-- --force` to skip the prompt) |
 | `npm run db:check-ledger` | Verify every box agrees with its stock movements |
 | `npm run db:backup` | Copy the database and the photographs into `backups/`, then verify the copy (`-- --keep=N`) |
+| `npm run db:restore -- <path>` | Put a backup back, from a folder or a downloaded zip. **Stop the app first** |
 | `npm run auth:hash -- "…"` | Generate a master-password hash |
 | `npm run audit:routes` | List routes and check each is behind the session guard |
 
@@ -392,23 +393,60 @@ an evening of typing — and answers what was still open here until now: a backu
 survives a bad deploy, not a dead disk. It refuses above 64 MB rather than building something that
 size in memory, and says to use the script instead; today's backup is under one.
 
-**Restoring** is deliberately by hand, because it is rare and four steps is not worth automating
-into something else to trust:
+**Restoring: `npm run db:restore`.** Stop the app first, then point it at either shape a backup
+comes in — the folder the timer wrote, or the zip that went to a phone:
 
-1. stop the service
-2. **delete `data/parrothecary.db-wal` and `data/parrothecary.db-shm`** if either is there
-3. copy the backup's `parrothecary.db` and `uploads/` over `data/`
-4. start it again — then **open a product photo**
+```sh
+npm run db:restore -- backups/2026-08-17T2303
+npm run db:restore -- ~/Downloads/parrothecary-backup-2026-08-17T2303.zip
+```
 
-Step 2 was missing from this list, and leaving it out fails silently, which is the worst way for a
-restore to fail. Those two files are SQLite's log of recent changes to the database that *was*
-there; left in place they are replayed on top of the one just restored, and the app comes back
-showing the pre-restore cupboard as though everything had worked. Proved with two throwaway
-databases rather than reasoned about: restoring over a stale `-wal` returned the old rows with
-`integrity_check` reporting `ok`. A clean shutdown usually checkpoints and removes them — but a
-machine that was killed, or lost power, is exactly the machine somebody is restoring.
+This started as four documented steps and became a command because one of the steps fails silently.
+Copying the database over `data/` while `parrothecary.db-wal` and `-shm` are still there does not
+restore anything: SQLite replays that log on top of the file just put in place, the app comes back
+showing the *pre-restore* cupboard, and `integrity_check` reports `ok` the whole way. Proved with
+two throwaway databases rather than reasoned about. A clean shutdown usually checkpoints and removes
+those files — but a machine that was killed, or lost power, is exactly the machine somebody is
+restoring. A written instruction is a weak defence against a step whose omission looks like success.
 
-Step 4 is the test, because a picture is the half a database-only backup loses silently.
+What the command does, in this order: reads and checks the whole backup before touching anything
+(every file's checksum, then the database's `integrity_check`, schema and counts); takes a backup of
+what is about to be replaced, using `db:backup` so it is verified the same way as any other; clears
+the stale log; puts both halves in place; then reads the result back and confirms it matches what the
+backup held. A damaged or half-downloaded backup therefore costs nothing but the reading of it, and
+restoring the wrong backup is itself undoable. On a machine with no database yet — the other reason
+to run this — it skips the safety backup and says so.
+
+That safety copy goes to `<BACKUP_DIR>/before-restore/`, in a folder of its own, and it is *checked*
+rather than assumed. Both matter, and for the same reason: backups are named to the minute, and
+`db:backup` treats a folder that already exists for this minute as "already done" — right for a timer
+catching up, and quietly wrong here. Take a backup and then restore within the same minute, which is
+exactly the careful order of work, and the safety copy was skipped while the restore reported
+success: the cupboard being replaced went unrecorded. It now verifies that a folder was written by
+this run and holds the counts the cupboard has right now, and refuses to restore otherwise. Two
+restores inside one minute hit that refusal and are told to wait a minute — the safe end of the
+trade.
+
+It asks before overwriting, since it cannot tell whether the app is stopped: with WAL journalling an
+idle connection holds no lock worth finding, so a running app looks exactly like a stopped one.
+`--force` skips the prompt for scripted use.
+
+Photographs are copied over rather than the folder being emptied first, so pictures taken since the
+backup survive as orphans and are counted in the summary rather than deleted. `npm run db:reset` is
+what clears that folder. Any photograph it could not write is listed and the command exits non-zero:
+"the database is restored, the photographs are not all there" is a thing to be told, not to discover.
+
+It reads the backslash-separated names PowerShell's `Compress-Archive` writes, because a backup
+unpacked on a PC and zipped up again is exactly the hop between a phone and the machine, and that
+round trip used to come back as a file the restore refused. Paths inside `uploads/` are kept as they
+are rather than flattened onto the folder root.
+
+Sign-ins live in the database, so they travel with a backup: a phone that signed in after it was
+taken will be signed out afterwards. The command says so rather than leaving somebody at midnight
+wondering whether the restore broke the login.
+
+Afterwards: start the app, log in, and **open a product photo**. That is the test, because a picture
+is the half a database-only backup loses silently.
 
 The database is wiped for this: a clean start, entered fresh against the real cupboard. `db:reset`
 takes the photographs with it, which it did not always — it deleted every row and left `uploads/`

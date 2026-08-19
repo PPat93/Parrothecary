@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { zipArchive } from './zip';
+import { readZip, zipArchive } from './zip';
 
 /**
  * Read an archive back the way an extractor would: from the end, through the
@@ -224,5 +224,156 @@ describe('zipArchive', () => {
 
     // 1971 has no representation, and wrapping would put it in the future.
     expect(old!.dosDate >> 9).toBe(0);
+  });
+});
+
+describe('readZip', () => {
+  /*
+   * Round trips are checked against `zipArchive`, but the byte-level reader at
+   * the top of this file stays where it is and is not replaced by `readZip`.
+   * Two implementations that agree because they are the same implementation
+   * prove nothing, and the reader up there is what catches a writer that has
+   * quietly stopped producing archives other programs can open.
+   */
+  it('gives back exactly what was put in', () => {
+    const entries = [
+      { name: 'backup/parrothecary.db', bytes: Buffer.from('SQLite format 3\0'.repeat(60)) },
+      { name: 'backup/uploads/a.webp', bytes: randomBytes(3000) },
+      { name: 'backup/restore.txt', bytes: Buffer.from('stop the app\r\ndelete the -wal\r\n') },
+      { name: 'backup/empty', bytes: Buffer.alloc(0) },
+    ];
+
+    const read = readZip(zipArchive(entries));
+
+    expect(read.map((entry) => entry.name)).toEqual(entries.map((entry) => entry.name));
+    for (const [index, entry] of entries.entries()) {
+      expect(Buffer.from(read[index]!.bytes)).toEqual(entry.bytes);
+    }
+  });
+
+  it('skips the folder entries other zip tools write', () => {
+    /*
+     * A folder entry is an empty member whose name ends in a slash. This writer
+     * never produces one and refuses the name outright, so the only way to get
+     * one is to rename an empty member in place afterwards — which is fine, since
+     * that is byte for byte what other tools write. It matters because a backup
+     * that has been unpacked and re-zipped by something else, on the way through
+     * a phone or a cloud folder, must still restore.
+     */
+    const archive = zipArchive([
+      // One character longer than it wants to be, so the rename below can keep
+      // the length identical. A shorter name would leave every offset after it
+      // out by one, and the test would fail for its own reasons, not the reader's.
+      { name: 'backup/uploadsX', bytes: Buffer.alloc(0) },
+      { name: 'backup/parrothecary.db', bytes: Buffer.from('data') },
+    ]);
+
+    let renamed = 0;
+    for (let at = 0; at < archive.length - 15; at++) {
+      if (archive.toString('utf8', at, at + 15) === 'backup/uploadsX') {
+        archive.write('backup/uploads/', at, 'utf8');
+        renamed++;
+      }
+    }
+    expect(renamed).toBe(2); // local header and central directory
+
+    const read = readZip(archive);
+    expect(read.map((entry) => entry.name)).toEqual(['backup/parrothecary.db']);
+  });
+
+  it('reads the backslashes PowerShell writes as folder separators', () => {
+    /*
+     * `Compress-Archive` stores `backup\parrothecary.db`, against the format's
+     * own rule, and that is what a backup unpacked on a PC and zipped up again
+     * arrives as. Built here by renaming in place, since this writer refuses to
+     * produce one; a real archive from PowerShell was restored end to end too.
+     */
+    const archive = zipArchive([
+      { name: 'backup/parrothecary.db', bytes: Buffer.from('data') },
+      { name: 'backup/uploads/a.webp', bytes: Buffer.from('picture') },
+    ]);
+
+    for (let at = 0; at < archive.length; at++) {
+      if (archive[at] === 0x2f && archive.toString('utf8', Math.max(0, at - 6), at) === 'backup') {
+        archive[at] = 0x5c; // the slash after "backup" becomes a backslash
+      }
+    }
+
+    expect(readZip(archive).map((entry) => entry.name)).toEqual([
+      'backup/parrothecary.db',
+      'backup/uploads/a.webp',
+    ]);
+  });
+
+  it('still refuses a backslashed name that climbs out of the folder', () => {
+    const archive = zipArchive([{ name: 'aaaaaaaaaaaaaaaaa', bytes: Buffer.from('x') }]);
+    const separator = String.fromCharCode(92); // a backslash, without writing one here
+    const evil = Buffer.from(`..${separator}..${separator}etc${separator}pw22222`);
+    expect(evil.length).toBe(17);
+    for (let at = 0; at < archive.length - 17; at++) {
+      if (archive.toString('utf8', at, at + 17) === 'aaaaaaaaaaaaaaaaa') evil.copy(archive, at);
+    }
+
+    expect(() => readZip(archive)).toThrow(/not safe to write/);
+  });
+
+  it('refuses a file whose bytes have changed since it was written', () => {
+    const archive = zipArchive([{ name: 'backup/parrothecary.db', bytes: Buffer.from('a'.repeat(400)) }]);
+
+    // Flip a byte in the compressed data, the way a failing disk or a truncated
+    // copy to a phone would. The size still matches; only the checksum knows.
+    const at = archive.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])) - 5;
+    archive[at] = archive[at]! ^ 0xff;
+
+    expect(() => readZip(archive)).toThrow(/damaged/);
+  });
+
+  it('refuses an archive that stops in the middle', () => {
+    const archive = zipArchive([{ name: 'backup/parrothecary.db', bytes: randomBytes(2000) }]);
+
+    expect(() => readZip(archive.subarray(0, archive.length - 30))).toThrow(/not a zip|truncated/i);
+    expect(() => readZip(archive.subarray(0, 10))).toThrow(/too small/);
+    expect(() => readZip(Buffer.from('not a zip at all, just some text here'))).toThrow();
+  });
+
+  it('refuses a name that would write outside the folder', () => {
+    /*
+     * The attack this exists to stop, built the only way it can be: by writing a
+     * safe archive and rewriting the name in place afterwards, since the writer
+     * will not produce one. Same length, so every offset still lines up.
+     */
+    const archive = zipArchive([{ name: 'backup/aaaaaaaaaaaaaa', bytes: Buffer.from('x') }]);
+    const evil = Buffer.from('../../../etc/pw');
+    let found = 0;
+    for (let at = 0; at < archive.length - 15; at++) {
+      if (archive.toString('utf8', at, at + 15) === 'backup/aaaaaaaa') {
+        evil.copy(archive, at);
+        found++;
+      }
+    }
+    expect(found).toBe(2); // local header and central directory
+
+    expect(() => readZip(archive)).toThrow(/not safe to write/);
+  });
+
+  it('refuses a compression method it does not know', () => {
+    const archive = zipArchive([{ name: 'backup/x', bytes: Buffer.from('a'.repeat(400)) }]);
+    // 14 is LZMA. Set it in the central directory, which is what is read.
+    archive.writeUInt16LE(14, archive.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])) + 10);
+
+    expect(() => readZip(archive)).toThrow(/method 14/);
+  });
+
+  it('says so when an archive needs a password', () => {
+    const archive = zipArchive([{ name: 'backup/x', bytes: Buffer.from('a'.repeat(400)) }]);
+    const central = archive.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    // Bit zero of the general purpose flags: encrypted.
+    archive.writeUInt16LE(archive.readUInt16LE(central + 8) | 1, central + 8);
+
+    expect(() => readZip(archive)).toThrow(/password-protected/);
+  });
+
+  it('reads an archive with nothing in it', () => {
+    expect(readZip(zipArchive([]))).toEqual([]);
   });
 });

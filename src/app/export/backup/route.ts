@@ -179,7 +179,21 @@ export async function GET() {
       try {
         entries.push({ name, bytes: fs.readFileSync(path.join(uploads, file)) });
         taken.add(file);
-        if (isPhotoFile(path.posix.basename(file))) photos++;
+
+        /*
+         * Counted only at the top of the folder, because that is the only place
+         * this app ever writes one. A `<uuid>.webp` inside a subfolder was put
+         * there by a person: it is copied faithfully, like every other stray, but
+         * calling it a box photograph would be wrong — nothing can serve it, and
+         * nothing in the database refers to it.
+         *
+         * Said here because the same folder was being counted two different ways.
+         * This walked into subfolders and the backup script did not, so one
+         * reported nine photographs and the other eight, for the same cupboard,
+         * with both copies holding all nine. The script's reading is the right
+         * one, and the wipe already draws the line in the same place.
+         */
+        if (!file.includes('/') && isPhotoFile(file)) photos++;
       } catch {
         left.push(`${file} - could not be read while this was being built`);
       }
@@ -392,15 +406,38 @@ function restoreNotes(about: {
      * missing is a bad thing to make anybody wonder about. The backup script says
      * "photo files" for the same reason.
      */
-    `      the box photographs, ${about.photos} files - each picture is kept twice,\n` +
-    `      full size and as a thumbnail.\n` +
+    (about.photos === 0
+      ? `      no box photographs yet.
+`
+      : `      the box photographs, ${about.photos} files - each picture is kept twice,
+` +
+        `      full size and as a thumbnail.
+`) +
     `\n` +
     `Both halves, or it is not a backup: a database restored on its own comes\n` +
     `back with every picture missing.\n` +
     `\n` +
     left +
     missing +
-    `To restore, on the machine that runs the app:\n` +
+    `To restore, on the machine that runs the app: stop it, put this file where\n` +
+    `that machine can see it, and run\n` +
+    `\n` +
+    `  npm run db:restore -- <this file>\n` +
+    `\n` +
+    `It checks the whole backup before touching anything, backs up whatever it is\n` +
+    `about to replace, and then puts both halves in place. Afterwards, start the\n` +
+    `app, log in, and open a photograph of a box. That last part is the test:\n` +
+    `anything can restore a database, and opening a picture is what proves the\n` +
+    `other half came back with it.\n` +
+    `\n` +
+    /*
+     * The steps are still written out, and not only for a machine without the
+     * app on it. The command is the one that cannot forget step 2 — but somebody
+     * reading this in a few years, from a memory stick, may not have the project
+     * to hand at all, and a backup that only makes sense next to its own source
+     * code is not much of a backup.
+     */
+    `By hand, if that command is not available:\n` +
     `\n` +
     `  1. stop the app\n` +
     `  2. delete ${about.database}-wal and ${about.database}-shm, if either is there\n` +
@@ -410,10 +447,8 @@ function restoreNotes(about: {
     `Step 2 is not optional, and skipping it fails quietly. Those two files are\n` +
     `SQLite's log of recent changes to the database that was there before. Left\n` +
     `in place they are applied on top of the one you just restored, and the app\n` +
-    `comes back showing the old cupboard as though the restore had worked.\n` +
-    `\n` +
-    `Step 4 is the test. Anything can restore a database; opening a picture is\n` +
-    `what proves the other half came back with it.\n` +
+    `comes back showing the old cupboard as though the restore had worked. It is\n` +
+    `the whole reason the command above exists.\n` +
     `\n` +
     `Not in here: the login. The password hash lives in .env.local on that\n` +
     `machine, and is deliberately left out of a file that travels. If it is\n` +

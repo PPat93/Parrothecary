@@ -50,3 +50,17 @@ export function databasePath(): string {
 export function uploadsPath(): string {
   return path.join(path.dirname(databasePath()), 'uploads');
 }
+
+export const DEFAULT_BACKUP_DIR = './backups';
+
+/**
+ * Where backups are written, absolute.
+ *
+ * Deliberately not under the data folder by default: a backup on the same disk
+ * survives a bad deploy but not a dead one, and `BACKUP_DIR` is the knob that
+ * points them at somewhere else entirely.
+ */
+export function backupsPath(): string {
+  const configured = process.env.BACKUP_DIR ?? DEFAULT_BACKUP_DIR;
+  return path.resolve(/* turbopackIgnore: true */ configured);
+}

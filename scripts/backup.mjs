@@ -33,14 +33,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { BACKUP_STAMP, backupStamp } from '../src/domain/backup-name.ts';
 import { isPhotoFile, photoFileNames } from '../src/domain/photo-name.ts';
-import { databasePath, uploadsPath as resolveUploads } from '../src/lib/data-paths.ts';
+import { backupsPath, databasePath, uploadsPath as resolveUploads } from '../src/lib/data-paths.ts';
 import { inspectLedger } from './lib/inspect-ledger.mjs';
 
 const dbPath = databasePath();
 // Asked rather than worked out, so this and the app cannot drift about where the
 // pictures live — a backup that copies the wrong folder still reports success.
 const uploadsPath = resolveUploads();
-const backupRoot = path.resolve(process.env.BACKUP_DIR ?? './backups');
+const backupRoot = backupsPath();
 
 /*
  * Arguments are checked rather than filtered for the one that is recognised.
