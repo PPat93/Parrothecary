@@ -1,0 +1,60 @@
+# The app itself. Install to /etc/systemd/system/parrothecary.service
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now parrothecary
+#
+# Node comes from the NodeSource apt repository, so the interpreter is at
+# /usr/bin/node and unattended-upgrades keeps it patched. Debian's own package is
+# too old: the scripts import TypeScript directly, which needs 22.18 or newer.
+
+[Unit]
+Description=Parrothecary
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=parrothecary
+Group=parrothecary
+WorkingDirectory=/srv/parrothecary
+
+# Next is started directly rather than through `npm start`. npm sits between
+# systemd and the server as an extra process and does not pass SIGTERM through
+# cleanly, which turns every restart into a kill after the stop timeout.
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
+
+# Bound to loopback above, so nothing reaches it except Caddy on this machine.
+# The app is not built to face a network directly and the README says so.
+Environment=NODE_ENV=production
+
+Restart=on-failure
+RestartSec=5s
+
+# The password hash lives in .env.local, which Next reads itself. It is
+# deliberately not an EnvironmentFile: systemd's parser and Next's disagree about
+# escaping, and a hash that survives one and not the other fails every login with
+# no visible reason. `npm run preflight` checks the file for exactly that.
+
+# Hardening. ProtectSystem=strict makes the whole filesystem read-only apart from
+# what is listed below, which for this app is three folders:
+#   data/    the database and the box photographs
+#   backups/ where the download button never writes, but a hand-run backup does
+#   .next/   Next's own caches
+#
+# Only `data` is known to be needed. The app was watched through a full exercise —
+# every page, both photo sizes, a CSV export and a backup download — and wrote
+# nothing outside `data`. The other two are here because the cost of guessing
+# wrong in that direction is a confusing runtime failure rather than a clear one:
+# Next writes caches under `.next` in some configurations, and anyone running
+# `npm run db:backup` by hand as this user needs `backups`.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/srv/parrothecary/data /srv/parrothecary/backups /srv/parrothecary/.next
+
+[Install]
+WantedBy=multi-user.target

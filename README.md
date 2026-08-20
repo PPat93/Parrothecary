@@ -13,11 +13,16 @@ order before the deadline".
 expiry; barcode scanning; dose schedules and run-out projection; a stock ledger behind every
 quantity that changes; counting the shelf; duplicate-ingredient warnings; alternatives; restock
 trips with an order deadline and a cabinet audit; holidays with a packing list; prices, waste and
-usage statistics; CSV export; and a help view that explains the lot.
+usage statistics; CSV export and a one-file backup; and a help view that explains the lot.
 
 **Phase 5 is deployment**, deliberately last — the app should be tested before it becomes the
-thing the household relies on. Until then it runs locally against test data, which gets wiped for
-a clean start on the day it is deployed.
+thing the household relies on. The parts that do not need the machine are done: a verified backup on
+a timer, a download button that puts one on a phone, `npm run db:restore` to put either shape back,
+and the systemd units, Caddyfile and runbook in [`deploy/`](deploy/RUNBOOK.md). What is left needs
+the machine itself — install it, get a certificate the phones trust so the barcode scanner works,
+run the restore drill there, then wipe the test data and enter the real cupboard.
+
+Until that day it runs locally against test data, which gets wiped for a clean start.
 
 ## What it looks like
 
@@ -67,17 +72,18 @@ Open http://localhost:3000.
 | `npm run build` | Production build |
 | `npm test` | Unit tests (domain logic) |
 | `npm run typecheck` | TypeScript, no emit |
-| `npm run db:migrate` | Apply pending migrations |
+| `npm run db:migrate` | Apply pending migrations, taking a backup into `backups/before-migrate/` first |
 | `npm run db:generate` | Generate a migration after editing `src/db/schema.ts` |
 | `npm run db:studio` | Browse the database |
 | `npm run db:symptoms` | Load the symptom tag vocabulary (run before any seed) |
 | `npm run db:seed` | Load demo data (run `db:symptoms` first) |
 | `npm run db:reset` | **Delete all data and every box photograph**, keep the schema (`-- --force` to skip the prompt) |
 | `npm run db:check-ledger` | Verify every box agrees with its stock movements |
-| `npm run db:backup` | Copy the database and the photographs into `backups/`, then verify the copy (`-- --keep=N`) |
+| `npm run db:backup` | Copy the database and the photographs into `backups/`, then verify the copy (`-- --keep-days=N --keep-months=N`) |
 | `npm run db:restore -- <path>` | Put a backup back, from a folder or a downloaded zip. **Stop the app first** |
 | `npm run auth:hash -- "…"` | Generate a master-password hash |
-| `npm run audit:routes` | List routes and check each is behind the session guard |
+| `npm run audit:routes` | List routes and check each is behind the session guard (app must be running) |
+| `npm run preflight` | Is this machine ready? Node, native modules, the password hash, folders, disk space |
 
 Before entering real inventory, run `npm run db:reset` so no demo rows survive.
 
@@ -124,7 +130,8 @@ src/
   components/ Shared UI.
 e2e/          Playwright — owned by the repo owner. Page objects, fixtures, smoke and
               functional specs, with a setup project that logs in once and stores the session.
-scripts/      Password hashing, seed, reset, ledger check.
+scripts/      Password hashing, seed, reset, ledger check, backup, restore,
+              preflight, and the route audit.
 docs/         Screenshots for this file.
 ```
 
@@ -175,14 +182,27 @@ so `setup` must be selected there or the stored session is never refreshed.
 
 ## Deployment
 
-Not yet done — the app runs locally for now, and is the last phase on the roadmap rather than the
-next one. Target is an unprivileged Debian LXC on the household Proxmox host, behind Caddy with an
-internal CA (a trusted certificate is required for camera access and home-screen install, both of
-which browsers block on plain HTTP).
+Not yet done, but written down: **[`deploy/RUNBOOK.md`](deploy/RUNBOOK.md)** is the whole procedure
+in order, with the systemd units and the Caddyfile beside it. Target is an unprivileged Debian LXC on
+the household Proxmox host, behind Caddy with an internal CA (a trusted certificate is required for
+camera access and home-screen install, both of which browsers block on plain HTTP).
+
+The order in that runbook is the point: everything that can be got wrong cheaply happens while the
+test data is still in place, the restore drill runs *before* there is anything to lose, and the wipe
+is second to last. `npm run preflight` answers "is this machine ready" in one command — Node version,
+the three native modules, whether a production build is on disk, the password hash as Next will
+actually read it, folders this user can write, and room for the backup the timer is about to take.
+
+Two things the deployment files settle rather than leave to be checked. Caddy is configured to
+**overwrite** `X-Forwarded-For` rather than append to it: the login rate limit counts per IP and the
+app reads the first entry, so appending would let a request choose its own identity and take as many
+attempts as it liked. And the app binds to `127.0.0.1`, so port 3000 is unreachable from the network
+even if the Caddyfile is wrong.
 
 Updates are built and tested locally against a separate database, so production is never the place
-anything is tried first. Migrations are forward-only and get a backup taken immediately before
-they run.
+anything is tried first. Migrations are forward-only, and `db:migrate` now takes a verified backup
+into `backups/before-migrate/` before it runs and stops if that backup fails — the README promised
+that from Phase 1, and until now nothing did it.
 
 ## Roadmap
 
@@ -347,8 +367,17 @@ boxes whose ledger does not add up, a photograph the database names that is not 
 is kept and the fault is printed. Refusing to back up a cupboard because one thumbnail is missing
 would mean a cosmetic fault costing every backup until somebody noticed, and it would throw away a
 good backup over nothing whenever a photo happened to be replaced in the moment between copying the
-database and copying the folder. `--keep=N` prunes older
-backups, thirty by default; one is under a megabyte today. It is read-only on the live data, so it
+database and copying the folder.
+
+**What is kept is said in time, not in numbers.** Everything from the last 14 days, plus one backup a
+month for the two months before that — `--keep-days=N` and `--keep-months=N`. Counting was the
+obvious rule and the wrong one: "keep thirty" means a month of nightly backups and nearly four months
+of twice-weekly ones, so the answer changes silently whenever the schedule does. The older monthly
+copy is the one that matters on a bad day, because every recent backup is a faithful copy of a
+cupboard that may already have been wrong for weeks. The rule lives in `src/domain/backup-name.ts`
+and is tested there, since it decides what is gone forever; the script only does the deleting, and
+never deletes a folder whose name it did not write. On the household's twice-weekly schedule this
+leaves about seven folders, four megabytes. It is read-only on the live data, so it
 can run while the app is serving — that is what `VACUUM INTO` buys over copying three files by
 hand mid-write — and it exits non-zero, so a timer can tell.
 
@@ -358,20 +387,15 @@ point a different disk. A backup that lands on the same disk as the database sur
 but not a dead drive, so that variable is the one that turns this from a safety net into a real
 one.
 
-Deployment day wires it to one, something like:
+The timer that runs it is a real file rather than a snippet here:
+**[`deploy/parrothecary-backup.timer`](deploy/parrothecary-backup.timer)**, with its service beside
+it. It fires twice a week — Thursday night into Friday, and Sunday night into Monday — at 03:30,
+which is chosen to stay clear of the Home Assistant backup at 05:00 on the same machine. `Persistent`
+is set, so a run the machine slept through is caught up rather than skipped.
 
-```ini
-# /etc/systemd/system/parrothecary-backup.service
-[Service]
-Type=oneshot
-WorkingDirectory=/srv/parrothecary
-ExecStart=/usr/bin/npm run db:backup
-
-# /etc/systemd/system/parrothecary-backup.timer
-[Timer]
-OnCalendar=daily
-Persistent=true
-```
+This used to be an example in this file saying `OnCalendar=daily`, which stopped being true the
+moment the real timer was written. One of them had to be the answer, and it should be the one that
+actually runs.
 
 **Done: a button, on Statistics.** "Download a backup.zip" builds the same thing in memory and hands
 it over as one file: `parrothecary-backup-<stamp>/` holding the database, `uploads/`, and a

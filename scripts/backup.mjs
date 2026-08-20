@@ -2,7 +2,7 @@
  * Take a backup of the cupboard.
  *
  *   npm run db:backup
- *   npm run db:backup -- --keep=7
+ *   npm run db:backup -- --keep-days=14 --keep-months=2
  *
  * A backup is the folder, not the file. `VACUUM INTO` copies the database and
  * nothing else, while the box photographs sit beside it in `uploads/` as
@@ -31,7 +31,13 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
-import { BACKUP_STAMP, backupStamp } from '../src/domain/backup-name.ts';
+import {
+  BACKUP_STAMP,
+  backupStamp,
+  chooseBackupsToKeep,
+  DEFAULT_RETENTION,
+  describeRetention,
+} from '../src/domain/backup-name.ts';
 import { isPhotoFile, photoFileNames } from '../src/domain/photo-name.ts';
 import { backupsPath, databasePath, uploadsPath as resolveUploads } from '../src/lib/data-paths.ts';
 import { inspectLedger } from './lib/inspect-ledger.mjs';
@@ -43,28 +49,53 @@ const uploadsPath = resolveUploads();
 const backupRoot = backupsPath();
 
 /*
- * Arguments are checked rather than filtered for the one that is recognised.
+ * Arguments are checked rather than filtered for the ones that are recognised.
  * `--keep 5`, written the way most commands take it, matched nothing and left
- * the default of thirty in place without a word — so somebody who had asked for
- * retention would believe they had it. An unrecognised argument is now a
- * refusal, because the alternative is doing something other than what was
- * asked and saying nothing.
+ * the default in place without a word — so somebody who had asked for retention
+ * would believe they had it. An unrecognised argument is now a refusal, because
+ * the alternative is doing something other than what was asked and saying
+ * nothing.
  */
-let keep = 30;
+const policy = { ...DEFAULT_RETENTION };
+
 for (const arg of process.argv.slice(2)) {
   if (arg === '--') continue; // npm passes this through ahead of script args
-  if (arg.startsWith('--keep=')) {
-    keep = Number(arg.slice('--keep='.length));
+  if (arg.startsWith('--keep-days=')) {
+    policy.days = Number(arg.slice('--keep-days='.length));
     continue;
   }
+  if (arg.startsWith('--keep-months=')) {
+    policy.months = Number(arg.slice('--keep-months='.length));
+    continue;
+  }
+
+  /*
+   * `--keep=N` used to be the option here and is named on purpose, because it is
+   * the thing somebody's fingers will type and a plain "unrecognised argument"
+   * would leave them guessing. Counting was replaced because it means something
+   * different every time the schedule changes: thirty is a month of nightly
+   * backups and nearly four months of twice-weekly ones.
+   */
+  if (arg.startsWith('--keep=')) {
+    console.error('--keep=N is gone: how many backups to hold depends on how often they are taken.');
+    console.error('Say it in time instead:');
+    console.error('  npm run db:backup -- --keep-days=14 --keep-months=2');
+    process.exit(1);
+  }
+
   console.error(`Unrecognised argument "${arg}".`);
-  console.error('The only option is --keep=N, written with an equals sign:');
-  console.error('  npm run db:backup -- --keep=7');
+  console.error('The options are --keep-days=N and --keep-months=N, written with an equals sign:');
+  console.error('  npm run db:backup -- --keep-days=14 --keep-months=2');
   process.exit(1);
 }
 
-if (!Number.isInteger(keep) || keep < 1) {
-  console.error(`--keep must be a whole number of backups to retain, got "${keep}".`);
+if (!Number.isInteger(policy.days) || policy.days < 1) {
+  console.error(`--keep-days must be a whole number of days, got "${policy.days}".`);
+  process.exit(1);
+}
+
+if (!Number.isInteger(policy.months) || policy.months < 0) {
+  console.error(`--keep-months must be a whole number of months, got "${policy.months}".`);
   process.exit(1);
 }
 
@@ -114,7 +145,7 @@ const target = path.join(backupRoot, folderName);
  * And EEXIST is not a failure. A timer catching up on a missed run fires twice
  * in a minute, and reporting that as broken would page somebody about a cupboard
  * that is, in fact, backed up. It exits 0 the way `db:reset` does when there is
- * nothing to delete — after tidying, since a smaller `--keep` than last time is
+ * nothing to delete — after tidying, since a shorter retention than last time is
  * still worth honouring.
  */
 try {
@@ -316,12 +347,12 @@ console.log(
 for (const note of notes) console.log(`\n  Note: ${note}`);
 
 /**
- * Delete all but the newest `keep` backups.
+ * Delete the backups the retention policy does not ask for.
  *
  * A function because two paths need it: the ordinary one, and the "a backup
  * already exists for this minute" exit, which used to say "nothing to do" and
- * leave. That was not quite true — somebody running this with a smaller
- * `--keep` than last time had asked for tidying, and got a message saying there
+ * leave. That was not quite true — somebody running this with a shorter
+ * retention than last time had asked for tidying, and got a message saying there
  * was none to do while the old folders sat there.
  *
  * Called only after a good backup exists, never before: deleting the old ones
@@ -335,15 +366,22 @@ for (const note of notes) console.log(`\n  Note: ${note}`);
  * with `Persistent=true` invite the timer to try the whole thing again.
  */
 function prune() {
+  /*
+   * Which to keep is decided in src/domain/backup-retention.ts, and only the
+   * deleting happens here. The rule is worth testing — it decides what is gone
+   * forever — and a rule buried in a script that has to write files to try it out
+   * is a rule nobody tests.
+   */
   const existing = fs
     .readdirSync(backupRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && BACKUP_STAMP.test(entry.name))
-    .map((entry) => entry.name)
-    .sort();
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+
+  const { keep, remove } = chooseBackupsToKeep(existing, policy, new Date());
 
   let pruned = 0;
   const unpruned = [];
-  for (const name of existing.slice(0, Math.max(0, existing.length - keep))) {
+  for (const name of remove) {
     try {
       fs.rmSync(path.join(backupRoot, name), { recursive: true, force: true });
       pruned++;
@@ -353,7 +391,10 @@ function prune() {
   }
 
   if (pruned > 0) {
-    console.log(`  pruned ${pruned} older backup${pruned === 1 ? '' : 's'}, keeping ${keep}.`);
+    console.log(
+      `  pruned ${pruned} older backup${pruned === 1 ? '' : 's'}, ` +
+        `keeping ${keep.length} — ${describeRetention(policy)}.`,
+    );
   }
   if (unpruned.length > 0) {
     console.log(`  could not prune ${unpruned.length}: ${unpruned.join(', ')}`);
