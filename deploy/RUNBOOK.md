@@ -8,6 +8,40 @@ The machine is a Debian LXC on Proxmox. The app runs as `parrothecary` out of
 
 ---
 
+## 0. Getting to it
+
+All of this is done from another computer on the home network. Nothing here needs a keyboard
+plugged into the Dell.
+
+Three ways in, in the order they are usually reached for:
+
+```sh
+ssh root@<proxmox-host>          # then: pct enter <container-id>
+ssh root@<container-ip>          # straight in, once the container has openssh-server
+```
+
+and the Proxmox web interface at `https://<proxmox-host>:8006`, which has a console for the
+container built into the page.
+
+**That third one is the safety net, and it is worth knowing before starting.** The web console
+attaches to the container the way a monitor and keyboard would, so it still works when the
+container's own networking does not — a firewall rule, a bad address, a service that will not come
+up. There is no way to lock yourself out of the container from inside it.
+
+Nothing in this runbook touches the Proxmox host's own networking, which is the one thing that
+*could* cut you off. Changes are confined to a container.
+
+**Take a Proxmox snapshot of the container before section 6**, and again before any later upgrade.
+It is instant, it rolls the whole container back in one click, and it covers the things a database
+backup cannot — a broken package install, a botched Caddy config, a half-finished Node upgrade.
+
+**A note on `sudo`.** Debian container templates log you in as root, and minimal ones have no `sudo`
+installed at all. If `sudo` is not found, drop the word: you are already root. The commands below
+keep it because the alternative is a runbook that quietly encourages working as root on a machine
+that holds the household's medical records.
+
+---
+
 ## 1. The machine
 
 ```sh
