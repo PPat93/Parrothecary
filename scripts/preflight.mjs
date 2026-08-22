@@ -306,12 +306,30 @@ function sizeOf(target) {
   }
 }
 
+/*
+ * Free space on the filesystem holding `dir` — or, if it does not exist yet,
+ * the nearest ancestor that does. On a first deployment the backup folder has
+ * not been created, and asking statfs about a missing path throws ENOENT. The
+ * old version caught that and reported "could not be measured on this
+ * platform", which blamed the operating system for a missing directory and
+ * quietly skipped the check on the one machine it was written for.
+ *
+ * The ancestor answers the real question anyway: a folder about to be created
+ * lands on whatever filesystem its parent is on.
+ */
 function freeBytes(dir) {
-  try {
-    const stat = fs.statfsSync(dir);
-    return stat.bavail * stat.bsize;
-  } catch {
-    return null;
+  let at = path.resolve(dir);
+
+  for (;;) {
+    try {
+      const stat = fs.statfsSync(at);
+      return stat.bavail * stat.bsize;
+    } catch (error) {
+      if (error.code !== 'ENOENT') return null;
+      const parent = path.dirname(at);
+      if (parent === at) return null;
+      at = parent;
+    }
   }
 }
 

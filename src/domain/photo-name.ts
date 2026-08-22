@@ -47,3 +47,27 @@ export function isPhotoFile(fileName: string): boolean {
 export function photoFileNames(id: string): string[] {
   return [`${id}${PHOTO_EXTENSION}`, `${id}-thumb${PHOTO_EXTENSION}`];
 }
+
+/**
+ * How many actual pictures a list of file names represents.
+ *
+ * Every photograph is two files, so the backup and restore scripts reporting
+ * "2 photograph files" for a cupboard holding one picture is true and useless —
+ * the first person to read it counted their photographs and got a different
+ * number. Both counts are worth printing; only one of them is what was asked.
+ *
+ * Counts distinct ids rather than dividing by two, because a folder can hold a
+ * picture whose thumbnail went missing, or a thumbnail whose picture did. Those
+ * are exactly the cases worth reporting honestly rather than halving away.
+ */
+export function countPhotographs(fileNames: string[]): number {
+  const ids = new Set<string>();
+
+  for (const fileName of fileNames) {
+    if (!isPhotoFile(fileName)) continue;
+    const name = fileName.slice(0, -PHOTO_EXTENSION.length);
+    ids.add(name.endsWith('-thumb') ? name.slice(0, -'-thumb'.length) : name);
+  }
+
+  return ids.size;
+}

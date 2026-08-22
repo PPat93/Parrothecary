@@ -4,8 +4,13 @@
 #   sudo systemctl enable --now parrothecary
 #
 # Node comes from the NodeSource apt repository, so the interpreter is at
-# /usr/bin/node and unattended-upgrades keeps it patched. Debian's own package is
-# too old: the scripts import TypeScript directly, which needs 22.18 or newer.
+# /usr/bin/node. Debian's own package is too old: the scripts import TypeScript
+# directly, which needs 22.18 or newer.
+#
+# Patching it is `apt upgrade`, and nothing does that on its own unless
+# unattended-upgrades was installed — see the runbook. This comment used to claim
+# unattended-upgrades kept Node patched, which was never true of any machine this
+# was deployed to, and is the sort of claim that stops anybody checking.
 
 [Unit]
 Description=Parrothecary
@@ -47,12 +52,29 @@ RestartSec=5s
 # wrong in that direction is a confusing runtime failure rather than a clear one:
 # Next writes caches under `.next` in some configurations, and anyone running
 # `npm run db:backup` by hand as this user needs `backups`.
+#
+# ProtectKernelTunables and ProtectControlGroups are deliberately absent, and it
+# is worth knowing why before adding them back.
+#
+# Both make systemd mount a fresh /proc inside the unit's private root so it can
+# remount /proc/sys read-only. An unprivileged LXC container is not allowed to
+# mount proc — it does not own that mount — so the unit never starts:
+#
+#   Failed to set up mount namespacing: /run/systemd/unit-root/proc: Permission denied
+#   Failed at step NAMESPACE spawning /usr/bin/node: Permission denied
+#   status=226/NAMESPACE
+#
+# Nothing is given up. Those two directives stop a process writing to /proc/sys
+# and to the cgroup tree; an unprivileged container already denies both to every
+# process it contains, root included. They were guarding a door the container had
+# already bricked up.
+#
+# On a virtual machine or bare metal, where proc can be mounted, adding them back
+# is free and worth doing.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ProtectKernelTunables=true
-ProtectControlGroups=true
 RestrictSUIDSGID=true
 ReadWritePaths=/srv/parrothecary/data /srv/parrothecary/backups /srv/parrothecary/.next
 
