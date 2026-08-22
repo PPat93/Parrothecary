@@ -39,7 +39,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { BACKUP_STAMP } from '../src/domain/backup-name.ts';
-import { isPhotoFile, photoFileNames } from '../src/domain/photo-name.ts';
+import { countPhotographs, isPhotoFile, photoFileNames } from '../src/domain/photo-name.ts';
 import { backupsPath, databasePath, uploadsPath as resolveUploads } from '../src/lib/data-paths.ts';
 import { readZip } from '../src/lib/zip.ts';
 
@@ -286,7 +286,14 @@ const photographs = photos.filter((name) => {
   return !inside.includes('/') && isPhotoFile(inside);
 });
 
-console.log(`  uploads: ${photographs.length} photograph files, ${photos.length} files in all`);
+// Pictures and files both, because a photograph is stored twice — itself and a
+// thumbnail. The file count alone reads as double the pictures anyone took.
+const pictures = countPhotographs(photographs.map((name) => name.slice('uploads/'.length)));
+console.log(
+  `  uploads: ${pictures} photograph${pictures === 1 ? '' : 's'} ` +
+    `(${photographs.length} file${photographs.length === 1 ? '' : 's'}), ` +
+    `${photos.length} files in all`,
+);
 if (missing.length > 0) {
   console.log(
     `  note: the backup refers to ${missing.length} photograph file(s) it does not contain: ` +
@@ -525,7 +532,8 @@ function walkUploads(prefix = '') {
 const after = inspect(dbPath);
 console.log(
   `  ${after.boxes} boxes, ${after.movements} stock movements, ` +
-    `${photographs.length} photograph files` +
+    `${pictures} photograph${pictures === 1 ? '' : 's'} ` +
+    `(${photographs.length} file${photographs.length === 1 ? '' : 's'})` +
     (restored > photographs.length ? ` and ${restored - photographs.length} other file(s)` : ''),
 );
 

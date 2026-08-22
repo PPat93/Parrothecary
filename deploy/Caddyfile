@@ -7,14 +7,31 @@
 # is simply unavailable. And the login rate limit counts by IP, which means
 # something has to decide what a request's IP actually is.
 
-# Replace with the name the phones will use. Caddy issues a certificate from its
-# own internal authority for it, which is why `tls internal` is here rather than
-# a public certificate: this name never resolves on the internet.
+# The address the phones use. An IP rather than a name, because the house has no
+# local DNS to invent a name in — the router hands out addresses and nothing
+# resolves anything. A bookmark or a home-screen shortcut means nobody types it
+# twice.
+#
+# The `https://` is required. Caddy does not turn on automatic HTTPS for a bare
+# IP address, so without the scheme this quietly serves plain HTTP and the
+# barcode scanner stops working — the camera needs a secure context.
+#
+# `tls internal` means Caddy is its own certificate authority: it issues a
+# certificate for this address from a root it generated. No public authority will
+# certify a private address, and this one never appears on the internet.
 #
 # Each phone has to trust that authority once, or every visit is a warning page:
 #   sudo cat /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt
 # and install it on the device.
-parrothecary.home.arpa {
+#
+# To move to a name later — say `parrothecary.home.arpa` via a DNS rewrite in
+# AdGuard Home — change this one line and reload. The phones keep trusting the
+# same root, so the certificate they already accepted stays valid; only the
+# certificate Caddy issues from it changes. Nothing has to be reinstalled.
+#
+# If the container's address ever changes, this line changes with it. That is
+# why it is static and outside the router's DHCP range.
+https://192.168.0.5 {
 	tls internal
 
 	reverse_proxy 127.0.0.1:3000 {

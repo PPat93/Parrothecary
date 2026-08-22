@@ -42,7 +42,55 @@ that holds the household's medical records.
 
 ---
 
+## 0b. Making the container
+
+Skip this if the container already exists. The container is created **from the Proxmox host**;
+everything after it is done **inside the container**.
+
+```sh
+ip -4 addr show vmbr0            # what subnet the house is on
+ip route | head -3
+
+pveam update
+pveam available --section system | grep debian-12
+pveam download local debian-12-standard_12.7-1_amd64.tar.zst
+```
+
+```sh
+pct create 101 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
+  --hostname parrothecary \
+  --cores 2 \
+  --memory 1024 \
+  --swap 512 \
+  --rootfs local-lvm:8 \
+  --net0 name=eth0,bridge=vmbr0,ip=192.168.1.50/24,gw=192.168.1.1 \
+  --unprivileged 1 \
+  --onboot 1 \
+  --start 1
+```
+
+A **static** address, not DHCP: it is what the phones are pointed at and what goes in the
+Caddyfile, so it cannot be allowed to move. Pick one on the house subnet and outside the
+router's DHCP pool.
+
+`--rootfs local-lvm:8` puts the container's disk in the thin pool, not on the Proxmox root
+filesystem. 8 GB is generous — the app and `node_modules` are about 500 MB, the database grows
+to a few MB over years, and the photographs a few MB a year.
+
+Then:
+
+```sh
+pct enter 101
+```
+
+---
+
 ## 1. The machine
+
+> **Check the prompt first.** It must read `root@parrothecary`. If it says `root@proxmox1`
+> (or whatever the Proxmox host is called), you are on the hypervisor and everything below
+> will install a web server and a compiler onto the machine that runs everything else in the
+> house. `pct enter 101` first.
 
 ```sh
 sudo adduser --system --group --home /srv/parrothecary --no-create-home parrothecary
@@ -58,14 +106,85 @@ put shell dotfiles in it, and `git clone` refuses to clone into a folder that is
 `@node-rs/argon2` are compiled for this machine's platform and Node version.
 That is also why the app cannot be built on a laptop and copied here.
 
-Node from NodeSource, because Debian's package is older than the scripts need —
-they import TypeScript directly, which requires **22.18 or newer**:
+In practice all three usually arrive as prebuilt binaries for linux-x64, and the compiler is
+never invoked — but it has to be there for the case where they do not.
+
+npm 11.19 and later refuse to run package install scripts unless approved, so `npm ci` ends
+with a warning naming `better-sqlite3` and `esbuild`. **Do not approve them reflexively.**
+Check whether anything actually broke first:
 
 ```sh
+sudo -u parrothecary node -e "
+const D=require('better-sqlite3');
+const d=new D(':memory:');
+d.exec('create table t(a)');
+d.prepare('insert into t values (1)').run();
+console.log('sqlite', d.prepare('select count(*) c from t').get());
+require('@node-rs/argon2').hash('x').then(h=>console.log('argon2', h.slice(0,12)+'...'));
+require('sharp')({create:{width:4,height:4,channels:3,background:'#fff'}})
+  .webp().toBuffer().then(b=>console.log('sharp', b.length, 'bytes'));
+"
+```
+
+Three lines of output means the prebuilt binaries were enough and the skipped scripts were
+irrelevant. Only if one fails is there anything to do:
+
+```sh
+sudo -u parrothecary npm install-scripts ls          # read it before approving
+sudo -u parrothecary npm install-scripts approve better-sqlite3
+sudo -u parrothecary npm ci                          # minutes this time, with compiler output
+```
+
+Loading is not the same as working, which is why the check above opens a database, hashes a
+password and encodes an image rather than just calling `require`.
+
+Node from NodeSource, because Debian's package is older than the scripts need —
+they import TypeScript directly, which requires **22.18 or newer**. Bookworm ships 18.20,
+so `apt install nodejs` on its own gets the wrong one.
+
+The repository has to be added *before* installing, and it needs its own prerequisites:
+
+```sh
+sudo apt install -y curl ca-certificates gnupg
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 node --version    # must be >= 22.18
 ```
+
+Two ways this quietly goes wrong:
+
+- **`sudo: command not found`** — the pipe still runs, `curl` writes into nothing, and the
+  script never executes. Drop `sudo -E` and pipe straight into `bash -`. The failure is easy
+  to miss because the only visible complaint is `curl: (23) Failed writing body`.
+- **Debian's Node is already installed.** The NodeSource repository pins itself at priority
+  600, so a later `apt install nodejs` does upgrade — but if `node --version` still says v18,
+  `apt purge nodejs libnode108` and install again.
+
+The version check is not a formality. Node 18 gets through the install, through `npm ci`, and
+fails later at the scripts, where the reason is much less obvious.
+
+**Then upgrade npm itself**, which is a separate thing from Node:
+
+```sh
+sudo npm install -g npm@11
+npm --version    # must be >= 11
+```
+
+Node 22 ships npm 10.9.8, and npm 10 mishandles *optional peer dependencies* — it tries to
+install them, finds no entry for them in the lockfile, and stops:
+
+```
+npm error `npm ci` can only install packages when your package.json and
+npm error package-lock.json ... are in sync.
+npm error Missing: esbuild@0.28.2 from lock file
+```
+
+The lockfile is correct. `esbuild` is an optional peer of the `vite` inside `vitest`, npm 11
+rightly leaves it out, and npm 10 rightly should too but does not.
+
+Do **not** reach for `npm install` to get past this. It would rewrite the lockfile on the
+server and unpin every dependency — the opposite of what a deployment wants, and the change
+would sit there unnoticed until the next `git pull` conflicted with it.
 
 ## 2. The app
 
@@ -95,11 +214,24 @@ sudo -u parrothecary npm run preflight     # must end "Ready"
 
 ## 3. Services
 
+The folders first. `parrothecary.service` lists them in `ReadWritePaths`, and systemd will not
+start a unit whose `ReadWritePaths` names something that does not exist. It fails with
+`Failed to set up mount namespacing: No such file or directory` — which names neither the path
+nor the reason, and sends you looking at the wrong thing entirely.
+
+```sh
+sudo -u parrothecary mkdir -p /srv/parrothecary/data/uploads /srv/parrothecary/backups
+```
+
+The app would create both on its own the first time it needed them. Under
+`ProtectSystem=strict` it never gets that far, because the namespace is built before the
+process starts.
+
 ```sh
 sudo cp deploy/parrothecary.service /etc/systemd/system/
 sudo cp deploy/parrothecary-backup.service /etc/systemd/system/
 sudo cp deploy/parrothecary-backup.timer /etc/systemd/system/
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile      # edit the hostname first
+sudo cp deploy/Caddyfile /etc/caddy/Caddyfile      # check the address in it matches this machine
 sudo systemctl daemon-reload
 sudo systemctl enable --now parrothecary
 sudo systemctl reload caddy

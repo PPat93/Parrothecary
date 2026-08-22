@@ -38,7 +38,7 @@ import {
   DEFAULT_RETENTION,
   describeRetention,
 } from '../src/domain/backup-name.ts';
-import { isPhotoFile, photoFileNames } from '../src/domain/photo-name.ts';
+import { countPhotographs, isPhotoFile, photoFileNames } from '../src/domain/photo-name.ts';
 import { backupsPath, databasePath, uploadsPath as resolveUploads } from '../src/lib/data-paths.ts';
 import { inspectLedger } from './lib/inspect-ledger.mjs';
 
@@ -210,13 +210,16 @@ try {
 }
 
 let photosCopied = 0;
+let picturesCopied = 0;
 if (fs.existsSync(uploadsPath)) {
   try {
     fs.cpSync(uploadsPath, path.join(target, 'uploads'), { recursive: true });
     // Counted, not just listed: anything else a person left in that folder is
     // copied faithfully but is not a photograph, and calling a stray note one
     // made the summary quietly wrong.
-    photosCopied = fs.readdirSync(path.join(target, 'uploads')).filter(isPhotoFile).length;
+    const copied = fs.readdirSync(path.join(target, 'uploads')).filter(isPhotoFile);
+    photosCopied = copied.length;
+    picturesCopied = countPhotographs(copied);
   } catch (error) {
     abandon(`Could not copy the photographs: ${error.message}`);
   }
@@ -335,7 +338,12 @@ const size = directorySize(target);
 console.log(`  ${path.relative(process.cwd(), target)}`);
 console.log(
   `  ${copyCounts.boxes} boxes, ${copyCounts.movements} movements, ` +
-    `${photosCopied} photo file${photosCopied === 1 ? '' : 's'}, ${(size / 1024 / 1024).toFixed(1)} MB`,
+    // Both numbers, because a photograph is two files — the picture and its
+    // thumbnail. Printing only the file count told the truth and was read as
+    // twice the pictures anybody had actually taken.
+    `${picturesCopied} photograph${picturesCopied === 1 ? '' : 's'} ` +
+    `(${photosCopied} file${photosCopied === 1 ? '' : 's'}), ` +
+    `${(size / 1024 / 1024).toFixed(1)} MB`,
 );
 // Only claims what was actually checked. Saying "every photograph is here"
 // with a list of missing ones underneath is how a summary stops being read.
