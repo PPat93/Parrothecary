@@ -22,7 +22,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
-import { isPhotoFile } from '../src/domain/photo-name.ts';
+import { countPhotographs, isPhotoFile } from '../src/domain/photo-name.ts';
 import { databasePath, uploadsPath as resolveUploads } from '../src/lib/data-paths.ts';
 
 const dbPath = databasePath();
@@ -32,6 +32,14 @@ const force = process.argv.includes('--force');
 const photoFiles = fs.existsSync(uploadsPath)
   ? fs.readdirSync(uploadsPath).filter(isPhotoFile)
   : [];
+
+// Pictures, not files. This script is asking permission to delete them, and the
+// file count reads as twice as many photographs as anybody actually took —
+// which is a poor number to show somebody just before they type "yes".
+const photographs = countPhotographs(photoFiles);
+const picturesAndFiles = () =>
+  `${photographs} photograph${photographs === 1 ? '' : 's'} ` +
+  `(${photoFiles.length} file${photoFiles.length === 1 ? '' : 's'})`;
 
 const db = new Database(dbPath);
 db.pragma('foreign_keys = OFF');
@@ -56,7 +64,7 @@ for (const [table, count] of Object.entries(counts)) {
   if (count > 0) console.log(`  ${table}: ${count}`);
 }
 console.log(`  total rows: ${total}`);
-if (photoFiles.length > 0) console.log(`  photo files: ${photoFiles.length}`);
+if (photoFiles.length > 0) console.log(`  box photographs: ${picturesAndFiles()}`);
 console.log();
 
 /*
@@ -105,6 +113,9 @@ for (const file of photoFiles) {
 
 console.log(`\nDeleted ${total} rows across ${tables.length} tables. Database is empty.`);
 if (photoFiles.length > 0) {
-  console.log(`Deleted ${photosDeleted} of ${photoFiles.length} photo files from ${uploadsPath}.`);
+  console.log(
+    `Deleted ${photosDeleted} of ${photoFiles.length} photograph file(s), ` +
+      `${photographs} picture${photographs === 1 ? '' : 's'}, from ${uploadsPath}.`,
+  );
 }
 if (photosDeleted !== photoFiles.length) process.exit(1);

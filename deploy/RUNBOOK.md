@@ -35,10 +35,17 @@ Nothing in this runbook touches the Proxmox host's own networking, which is the 
 It is instant, it rolls the whole container back in one click, and it covers the things a database
 backup cannot — a broken package install, a botched Caddy config, a half-finished Node upgrade.
 
-**A note on `sudo`.** Debian container templates log you in as root, and minimal ones have no `sudo`
-installed at all. If `sudo` is not found, drop the word: you are already root. The commands below
-keep it because the alternative is a runbook that quietly encourages working as root on a machine
-that holds the household's medical records.
+**A note on `sudo`.** Debian container templates log you in as root, and minimal ones have no
+`sudo` installed at all — which is why section 1 installs it before anything else uses it.
+
+Do not work around a missing `sudo` by dropping the word. It works for `sudo apt install`, where
+you are already root anyway, and it is silently wrong for `sudo -u parrothecary`: that form is not
+about privilege, it is about running as the *service user*. Dropped, those commands run as root
+and leave a tree of root-owned files that the service then cannot write, plus an `npm ci` that
+behaves differently. The failures land much later than the mistake.
+
+The commands below keep `sudo` throughout because the alternative is a runbook that quietly
+encourages working as root on a machine holding the household's medical records.
 
 ---
 
@@ -93,6 +100,10 @@ pct enter 101
 > house. `pct enter 101` first.
 
 ```sh
+# sudo first: the container template has none, and every command below wants it.
+apt update
+apt install -y sudo
+
 sudo adduser --system --group --home /srv/parrothecary --no-create-home parrothecary
 sudo mkdir -p /srv/parrothecary
 sudo chown parrothecary:parrothecary /srv/parrothecary
@@ -287,21 +298,55 @@ Do this now, on test data. A drill that has never been run is not a backup plan.
 
 Only once everything above has passed.
 
+### Clearing what the drills left behind
+
+Sections 4 and 5 involve making a box, taking a photograph and scanning a barcode, so the
+cupboard now holds a few rows that are not real. They have to go before real stock goes in,
+or the cupboard is part fiction and there is no way to tell which part.
+
+**Delete them from the app** if there are only a handful — a couple of boxes made by hand
+during the drills is the usual case, and deleting them on the phone is a minute's work with
+nothing at stake.
+
+`db:reset` is for the other case: a database that was seeded with demo data, where the rows
+number in the hundreds.
+
 ```sh
 sudo systemctl stop parrothecary
 sudo -u parrothecary npm run db:reset      # asks for confirmation
 sudo systemctl start parrothecary
 ```
 
-That deletes every row **and every box photograph**. Then enter the real cupboard
-from the phone, and press **Statistics → Backup → Download a backup.zip** when you
-are done — an evening of typing is worth a copy that is not on this machine.
+> It deletes **every row and every box photograph**, and the only way back is a backup. Do not
+> run it on a cupboard holding real stock. There is no partial version of this command and no
+> undo — it prints what it is about to destroy and waits for the word `yes`, and that prompt is
+> the entire safety mechanism.
+
+### Then the real thing
+
+Enter the cupboard from the phone. When you are done, press
+**Statistics → Backup → Download a backup.zip** — an evening of typing is worth a copy that is
+not on this machine.
 
 ## 7. Still open after this
 
-Getting backups off the machine. `BACKUP_DIR` sends them anywhere: a mount, a
-share, another box. Until that is done, a backup survives a bad deploy but not a
-dead disk.
+**Getting backups off the machine.** `BACKUP_DIR` sends them anywhere: a mount, a share, another
+box. Until that is done, a backup survives a bad deploy but not a dead disk.
+
+**Security updates.** Nothing patches this machine on its own. Either remember `apt update &&
+apt upgrade` — which nobody does — or let it happen:
+
+```sh
+sudo apt install -y unattended-upgrades
+sudo dpkg-reconfigure -plow unattended-upgrades      # answer yes
+```
+
+Debian's default is security updates only, which is the right setting here: it patches Node,
+Caddy and OpenSSL without moving anything the app depends on. The app itself is never touched —
+it is a git checkout, not a package.
+
+Worth knowing what it will not do: it does not restart the service afterwards. A patched Node
+binary is only in use after the next start, so a reboot every few months is part of the deal.
 
 ---
 
@@ -316,8 +361,19 @@ dead disk.
 | Take a backup now | `npm run db:backup` |
 | Put one back | stop the app, `npm run db:restore -- <folder or zip>`, start it |
 
-Upgrades, in this order — **stop first**, because `npm ci` empties `node_modules` and the running app
-is loading files out of it:
+## Bringing changes over from the repository
+
+**Stop first.** `npm ci` empties `node_modules`, and the running app is loading files out of it.
+
+```sh
+cd /srv/parrothecary
+sudo -u parrothecary git fetch
+sudo -u parrothecary git log --oneline HEAD..origin/master        # what is about to arrive
+sudo -u parrothecary git diff --stat HEAD..origin/master -- deploy/
+```
+
+That third line is the one worth reading. Everything under `deploy/` lives at `/etc/` once
+installed, so a change there is **not** applied by pulling — see below.
 
 ```sh
 sudo systemctl stop parrothecary
@@ -326,8 +382,67 @@ sudo -u parrothecary npm ci
 sudo -u parrothecary npm run build
 sudo -u parrothecary npm run db:migrate
 sudo systemctl start parrothecary
+sudo -u parrothecary npm run preflight
 ```
 
-The migration takes its own backup first,
-into `backups/before-migrate/`, and stops if that backup fails — migrations here
-are forward-only, so that copy is the only way back.
+The migration takes its own backup first, into `backups/before-migrate/`, and stops if that
+backup fails — migrations here are forward-only, so that copy is the only way back.
+
+### If anything under `deploy/` changed
+
+The files in the repository are the source; the ones systemd and Caddy read are copies. Pulling
+updates the source and nothing else, so a corrected unit file appears to change nothing and the
+next person concludes the fix did not work.
+
+```sh
+sudo cp deploy/parrothecary.service /etc/systemd/system/
+sudo cp deploy/parrothecary-backup.service /etc/systemd/system/
+sudo cp deploy/parrothecary-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart parrothecary
+```
+
+The Caddyfile carries an address, and the one in the repository is the address of the machine it
+was last deployed to. Diff before overwriting, and check the site line afterwards:
+
+```sh
+diff /etc/caddy/Caddyfile deploy/Caddyfile
+# then, if you take the new one:
+sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+grep '^https://' /etc/caddy/Caddyfile          # must be THIS machine's address
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+`caddy validate` will happily approve a syntactically perfect file naming the wrong machine, so
+that `grep` is not redundant — it is the only check that catches the one mistake this step
+invites.
+
+`caddy validate` before `reload`, always. A reload with a broken config leaves the old one
+running, which is the good outcome — but you will not know the new one is broken until the next
+restart, which is likely to be a reboot you did not plan.
+
+### Did it actually work?
+
+```sh
+systemctl is-active parrothecary caddy
+curl -sk https://<this machine> -o /dev/null -w '%{http_code}\n'    # 200 or 307
+sudo -u parrothecary npm run audit:routes
+```
+
+Then open it on a phone. `systemctl is-active` says a process is running, not that the app
+serves pages.
+
+### If it goes wrong
+
+The Proxmox snapshot is the fastest way back — it restores the whole container, code and
+database together, in one action. Take one **before** the upgrade, not after:
+
+```sh
+pct snapshot <container-id> before-upgrade     # on the Proxmox host
+pct rollback <container-id> before-upgrade     # if needed
+```
+
+For code alone, `git log` gives the previous commit and `git checkout <sha>` returns to it —
+but a migration that has already run is not undone by checking out old code. That is what
+`backups/before-migrate/` is for.

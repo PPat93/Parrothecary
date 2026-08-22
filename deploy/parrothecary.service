@@ -4,8 +4,13 @@
 #   sudo systemctl enable --now parrothecary
 #
 # Node comes from the NodeSource apt repository, so the interpreter is at
-# /usr/bin/node and unattended-upgrades keeps it patched. Debian's own package is
-# too old: the scripts import TypeScript directly, which needs 22.18 or newer.
+# /usr/bin/node. Debian's own package is too old: the scripts import TypeScript
+# directly, which needs 22.18 or newer.
+#
+# Patching it is `apt upgrade`, and nothing does that on its own unless
+# unattended-upgrades was installed — see the runbook. This comment used to claim
+# unattended-upgrades kept Node patched, which was never true of any machine this
+# was deployed to, and is the sort of claim that stops anybody checking.
 
 [Unit]
 Description=Parrothecary
