@@ -31,6 +31,26 @@ up. There is no way to lock yourself out of the container from inside it.
 Nothing in this runbook touches the Proxmox host's own networking, which is the one thing that
 *could* cut you off. Changes are confined to a container.
 
+**But something else on the host might.** A VPN client installed on the Proxmox host — NordVPN,
+Tailscale, WireGuard — does not merely add a tunnel: it takes over the host's firewall and
+routing. One wrong setting and the host stops answering, on every path at once. SSH, the web
+interface at port 8006, even a shell on another guest trying to reach it.
+
+The guests keep running when this happens, which is confusing until you know why: they are
+plugged into a bridge and reach the network directly, without passing through the host. So the
+app and Home Assistant carry on serving while the machine underneath them is unreachable.
+
+There is no network route back. The recovery is a monitor and a keyboard on the machine, then:
+
+```sh
+systemctl disable --now nordvpnd     # or tailscaled, or whatever was installed
+```
+
+`disable` as well as `stop` — otherwise it comes back at boot and locks you out again.
+
+The specific setting that caused this, in NordVPN's case, is `lan-discovery`. Turning it off
+tells the client to stop permitting traffic from your own network, and it obeys. Leave it on.
+
 **Take a Proxmox snapshot of the container before section 6**, and again before any later upgrade.
 It is instant, it rolls the whole container back in one click, and it covers the things a database
 backup cannot — a broken package install, a botched Caddy config, a half-finished Node upgrade.
@@ -333,6 +353,18 @@ not on this machine.
 **Getting backups off the machine.** `BACKUP_DIR` sends them anywhere: a mount, a share, another
 box. Until that is done, a backup survives a bad deploy but not a dead disk.
 
+**Reaching it from outside the house.** Only worth doing if there is a real reason — checking the
+cupboard from abroad before restocking is one; "it would be nice" is not, and the cost is a VPN
+client on a machine that has to stay reachable.
+
+The shape that works: the VPN terminates on the host, a forwarding rule sends its address to the
+container, and the Caddyfile names *both* addresses so each gets a valid certificate. The details,
+including the two ways it silently fails, are in `deploy/Caddyfile`.
+
+The address to use away from home is then the same one used at home, or a second one that works in
+both places — either way, one home-screen icon rather than two. Test with wifi **off**: on wifi the
+phone reaches the app directly and proves nothing.
+
 **Security updates.** Nothing patches this machine on its own. Either remember `apt update &&
 apt upgrade` — which nobody does — or let it happen:
 
@@ -406,13 +438,20 @@ The Caddyfile carries an address, and the one in the repository is the address o
 was last deployed to. Diff before overwriting, and check the site line afterwards:
 
 ```sh
+grep '^https://' /etc/caddy/Caddyfile          # write down EVERY address on this line first
 diff /etc/caddy/Caddyfile deploy/Caddyfile
 # then, if you take the new one:
 sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-grep '^https://' /etc/caddy/Caddyfile          # must be THIS machine's address
+grep '^https://' /etc/caddy/Caddyfile          # all of them back, and this machine's
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
+
+**Note the addresses before overwriting, not after.** The copy in the repository carries one
+address; a deployed machine may carry more — a second name for reaching it over a VPN, added
+locally and deliberately not committed. Overwriting drops it, and the loss is quiet: the app
+keeps working at home and stops working from outside, with a certificate warning and a dead
+barcode scanner as the only clues, weeks later.
 
 `caddy validate` will happily approve a syntactically perfect file naming the wrong machine, so
 that `grep` is not redundant — it is the only check that catches the one mistake this step

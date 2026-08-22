@@ -31,6 +31,43 @@
 #
 # If the container's address ever changes, this line changes with it. That is
 # why it is static and outside the router's DHCP range.
+#
+#
+# REACHING IT FROM OUTSIDE THE HOUSE
+#
+# A second address goes on the same line, comma separated:
+#
+#   https://192.168.0.5, https://<vpn-name-of-the-host> {
+#
+# The reason is the certificate, not convenience. A VPN reaches the app by a
+# different name, and a certificate issued for `192.168.0.5` does not cover it —
+# so the phone shows a warning, and a browser that distrusts the certificate
+# turns the camera off. The barcode scanner stops working, which is a strange
+# symptom to trace back to an address.
+#
+# Naming both here gets a valid certificate for each, from the same authority the
+# phones already trust. Nothing is reinstalled on the phones; Caddy issues the
+# second certificate on reload.
+#
+# What sits in front of this, on the machine hosting the VPN, is a forwarding
+# rule aimed at the container:
+#
+#   iptables -t nat -A PREROUTING -d <vpn-address-of-the-host> \
+#     -p tcp --dport 443 -j DNAT --to-destination 192.168.0.5:443
+#
+# Two things about that rule, both learned the hard way. It must name a
+# destination: unrestricted, it would catch every outbound request to port 443
+# passing through that machine, which is most of the internet. And port 80 wants
+# the same treatment, or typing the bare name reaches nothing — the browser tries
+# port 80, finds no forwarding, and hangs. Caddy redirects 80 to 443 by itself
+# once the request arrives.
+#
+# Whether a matching POSTROUTING/MASQUERADE rule is needed depends on the VPN.
+# Some do their own address translation, in which case a reply finds its way back
+# unaided; without it the container answers a request that appears to come from
+# an address its own router has never heard of, and the page hangs rather than
+# failing. Test before adding one: hanging is the symptom either way, so the
+# quick check is whether the request ever arrives at all.
 https://192.168.0.5 {
 	tls internal
 
