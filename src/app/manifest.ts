@@ -39,6 +39,13 @@ export default function manifest(): MetadataRoute.Manifest {
      * Icons are baked into the shortcut when the app is installed. Changing
      * them means removing the app from the home screen and adding it again —
      * a reload will not do it.
+     *
+     * If the maskable icons are ever redrawn: Android guarantees only the
+     * central circle of radius 0.4 x width is visible, and the artwork should
+     * come close to filling it. The previous maskable stopped at half that,
+     * so the parrot covered 46% of the icon against 74% in the "any" copy.
+     * That cost nothing while Android was quietly ignoring it, and would have
+     * shrunk the home-screen icon the moment this list started preferring it.
      */
     icons: [
       { src: '/icons/maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
