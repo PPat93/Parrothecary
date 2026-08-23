@@ -47,7 +47,7 @@ export default async function EditBatchPage({
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-1 flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Correct this box</h1>
-        <Link href={back} className={LINK_BUTTON} style={toneStyle('warning')}>
+        <Link replace href={back} className={LINK_BUTTON} style={toneStyle('warning')}>
           Cancel
         </Link>
       </header>

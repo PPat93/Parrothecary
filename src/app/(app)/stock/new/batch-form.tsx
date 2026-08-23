@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useActionState } from 'react';
+import { ActionButton } from '@/components/action-button';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { Checkbox, ErrorText, Field, Select, SubmitButton, TextInput } from '@/components/form';
 import { PriceFields } from '@/components/price-fields';
@@ -98,7 +99,38 @@ export function BatchForm({
         </button>
       )}
 
-      {scan ? <ScanSummary scan={scan} variantId={variantId} /> : null}
+      {scan ? (
+        <ScanSummary
+          /*
+           * Keyed by the code, so a new code gets a new panel and a new attach
+           * state. Not fixing a live bug: opening the scanner sets `scan` to
+           * null a few lines up, which unmounts this and discards that state
+           * anyway. The key is here so the guarantee is local — otherwise a
+           * refused attach ("already belongs to a different pack") would linger
+           * over the next code, and nothing near this line would say why not.
+           *
+           * Attaching keeps the same code, so the panel is not remounted and
+           * flips to "Recognised" in place, which is the intended behaviour.
+           */
+          key={scan.code}
+          scan={scan}
+          variantId={variantId}
+          /*
+           * The panel flips to "Recognised", because after attaching that is
+           * simply true — and it is the same thing a second scan of the box
+           * would now show. Clearing the panel instead would have been the
+           * other honest option; this one leaves the expiry and lot number
+           * from the scan on screen, which are still worth reading.
+           */
+          onAttached={() =>
+            setScan({
+              ...scan,
+              variantId: Number(variantId),
+              variantLabel: selected?.productLabel ?? scan.variantLabel,
+            })
+          }
+        />
+      ) : null}
 
       <form ref={formRef} action={formAction} className="flex flex-col gap-4">
         <Field label="Which pack">
@@ -213,9 +245,40 @@ export function BatchForm({
  * What the scan produced. An unknown code is the interesting case: attaching it
  * to the chosen pack is how the cabinet learns, so the next scan of the same
  * box just works.
+ *
+ * This panel is drawn entirely from client state, which is what made attaching
+ * look broken. `linkBarcode` calls `refreshAll()`, and that re-renders server
+ * components — but `scan` is a value held up in BatchForm, so it went on saying
+ * "Unknown code" however many times the button was pressed. The row was written
+ * every time; only leaving the page and coming back revealed it. Nothing tells
+ * a person "that worked" less convincingly than a button that does nothing.
+ *
+ * So the action reports back and `onAttached` moves the state on, the same
+ * shape the photo form uses for the same reason (see photo-form.tsx).
  */
-function ScanSummary({ scan, variantId }: { scan: ScanResult; variantId: string }) {
+function ScanSummary({
+  scan,
+  variantId,
+  onAttached,
+}: {
+  scan: ScanResult;
+  variantId: string;
+  onAttached: () => void;
+}) {
   const known = scan.variantId !== null;
+  const [state, formAction] = useActionState(linkBarcode, initialState);
+
+  /*
+   * Runs once per action result, not once per render. Comparing the whole state
+   * object works because useActionState hands back a new one each time — the
+   * same latch as photo-form.tsx, and the reason a plain `if (state.ok)` would
+   * loop forever here.
+   */
+  const [seenLink, setSeenLink] = useState(state);
+  if (state !== seenLink) {
+    setSeenLink(state);
+    if (state.ok) onAttached();
+  }
 
   return (
     <div
@@ -238,17 +301,16 @@ function ScanSummary({ scan, variantId }: { scan: ScanResult; variantId: string 
             Pick the right pack below, then attach this code so the next scan
             recognises it.
           </p>
-          <form action={linkBarcode} className="mt-2">
+          <form action={formAction} className="mt-2">
             <input type="hidden" name="code" value={scan.code} />
             <input type="hidden" name="variantId" value={variantId} />
-            <button
-              type="submit"
-              className="is-action rounded-lg border px-3 py-1.5 text-xs font-medium"
-              style={toneStyle('ok')}
-            >
+            <ActionButton tone="ok" pendingLabel="Attaching…">
               Attach to the selected pack
-            </button>
+            </ActionButton>
           </form>
+          {/* "Already on a different pack" used to be discarded by the action
+              and never reached anybody. */}
+          <ErrorText>{state.error}</ErrorText>
         </>
       )}
     </div>

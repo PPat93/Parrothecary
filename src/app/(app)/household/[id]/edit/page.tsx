@@ -21,7 +21,7 @@ export default async function EditMemberPage({ params }: { params: Promise<{ id:
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-4 flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Edit person</h1>
-        <Link href={`/household/${member.id}`} className={LINK_BUTTON} style={toneStyle('warning')}>
+        <Link replace href={`/household/${member.id}`} className={LINK_BUTTON} style={toneStyle('warning')}>
           Cancel
         </Link>
       </header>

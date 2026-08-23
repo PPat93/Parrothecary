@@ -25,6 +25,12 @@
           -apple-system,
           sans-serif;
       }
+      /*
+        overflow: hidden for the same reason the app header needs it: the icon
+        is a square whose corners are opaque near-black, and a 6rem square in a
+        7rem circle leaves each corner outside the disc. Four dark points around
+        a round badge.
+      */
       .disc {
         width: 7rem;
         height: 7rem;
@@ -32,6 +38,7 @@
         background: #06070a;
         display: grid;
         place-items: center;
+        overflow: hidden;
       }
       img {
         width: 6rem;

@@ -11,7 +11,7 @@ export default async function NewBatchPage() {
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Add box</h1>
-        <Link href="/" className={LINK_BUTTON} style={toneStyle('warning')}>
+        <Link replace href="/" className={LINK_BUTTON} style={toneStyle('warning')}>
           Cancel
         </Link>
       </header>

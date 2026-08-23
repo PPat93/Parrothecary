@@ -20,9 +20,19 @@ export function AppHeader() {
         kind of detail that gets discovered by accident or not at all.
       */}
       <Link href="/" title="Parrothecary — back to stock" className="flex items-center gap-2">
-        {/* Sits on its own dark disc so the neon lines survive light mode. */}
+        {/*
+          Sits on its own dark disc so the neon lines survive light mode.
+
+          `overflow-hidden` is load-bearing, not tidiness. The artwork is a
+          square whose corners are near-black rather than transparent, and a
+          24px square inside a 28px circle puts each corner about 3px outside
+          the disc — four black points around a round badge, a pointy shield
+          instead of a logo. Most visible in light mode, where the corners sit
+          against a white surface. The login and about screens already clip
+          theirs the same way.
+        */}
         <span
-          className="flex h-7 w-7 items-center justify-center rounded-full"
+          className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full"
           style={{ background: 'oklch(0.06 0.004 260)' }}
         >
           {/* Pre-sized asset with a plain img: the logo never changes, so

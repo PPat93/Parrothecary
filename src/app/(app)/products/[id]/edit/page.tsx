@@ -17,7 +17,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-4 flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Edit product</h1>
-        <Link href={`/products/${product.id}`} className={LINK_BUTTON} style={toneStyle('warning')}>
+        <Link replace href={`/products/${product.id}`} className={LINK_BUTTON} style={toneStyle('warning')}>
           Cancel
         </Link>
       </header>
