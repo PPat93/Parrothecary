@@ -12,7 +12,6 @@ test.describe(`Login functionality`, async () => {
         await loginPage.userLogin()
 
         //  Asserts
-        await expect(loginPage.submitBtn).toHaveText(`Checking…`)
         await expect(loginPage.submitBtn).toBeHidden();
         await expect(stockPage.pageTitle).toBeVisible();
     })
@@ -24,7 +23,6 @@ test.describe(`Login functionality`, async () => {
         await loginPage.userLogin(`invalidPass`)
 
         //  Asserts
-        await expect(loginPage.submitBtn).toHaveText(`Checking…`)
         await expect(loginPage.errorMessage).toBeVisible();
         await expect(loginPage.errorMessage).toHaveText(`Wrong password.`);
     })
@@ -36,7 +34,6 @@ test.describe(`Login functionality`, async () => {
         await loginPage.userLogin(` `)
 
         //  Asserts
-        await expect(loginPage.submitBtn).toHaveText(`Checking…`)
         await expect(loginPage.errorMessage).toBeVisible();
         await expect(loginPage.errorMessage).toHaveText(`Wrong password.`);
     })

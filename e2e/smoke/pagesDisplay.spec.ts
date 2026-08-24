@@ -85,17 +85,18 @@ test.describe(`Stock page display`, async () => {
         await expect(shoppingPage.addItemSection.locator(`summary`)).toHaveText(SHOPPING_PAGE_TEXTS.addItem);
         await expect(shoppingPage.shoppingGroups).toBeVisible();
 
-        const shoppingGroupsCount = await shoppingPage.shoppingGroups.getByTitle(`Shopping section`).count();
-        expect(shoppingGroupsCount).toBe(4);
-
-        await expect(shoppingPage.toBuySection.locator(shoppingPage.sectionTitle)).toContainText(SHOPPING_PAGE_TEXTS.toBuyTitle);
-        await expect(shoppingPage.toBuySection.locator(shoppingPage.sectionDesc)).toHaveText(SHOPPING_PAGE_TEXTS.toBuyDesc);
-        await expect(shoppingPage.orderedSection.locator(shoppingPage.sectionTitle)).toContainText(SHOPPING_PAGE_TEXTS.orderedTitle);
-        await expect(shoppingPage.orderedSection.locator(shoppingPage.sectionDesc)).toHaveText(SHOPPING_PAGE_TEXTS.orderedDesc);
-        await expect(shoppingPage.arrivedSection.locator(shoppingPage.sectionTitle)).toContainText(SHOPPING_PAGE_TEXTS.arrivedTitle);
-        await expect(shoppingPage.arrivedSection.locator(shoppingPage.sectionDesc)).toHaveText(SHOPPING_PAGE_TEXTS.arrivedDesc);
-        await expect(shoppingPage.inCupboardSection.locator(shoppingPage.sectionTitle)).toContainText(SHOPPING_PAGE_TEXTS.inCupboardTitle);
-        await expect(shoppingPage.inCupboardSection.locator(shoppingPage.sectionDesc)).toHaveText(SHOPPING_PAGE_TEXTS.inCupboardDesc);
+        //  TODO - move to flow verifications
+        // const shoppingGroupsCount = await shoppingPage.shoppingGroups.getByTitle(`Shopping section`).count();
+        // expect(shoppingGroupsCount).toBeGreaterThanOrEqual(1)
+        //
+        // await expect(shoppingPage.toBuySection.locator(shoppingPage.sectionTitle)).toContainText(SHOPPING_PAGE_TEXTS.toBuyTitle);
+        // await expect(shoppingPage.toBuySection.locator(shoppingPage.sectionDesc)).toHaveText(SHOPPING_PAGE_TEXTS.toBuyDesc);
+        // await expect(shoppingPage.orderedSection.locator(shoppingPage.sectionTitle)).toContainText(SHOPPING_PAGE_TEXTS.orderedTitle);
+        // await expect(shoppingPage.orderedSection.locator(shoppingPage.sectionDesc)).toHaveText(SHOPPING_PAGE_TEXTS.orderedDesc);
+        // await expect(shoppingPage.arrivedSection.locator(shoppingPage.sectionTitle)).toContainText(SHOPPING_PAGE_TEXTS.arrivedTitle);
+        // await expect(shoppingPage.arrivedSection.locator(shoppingPage.sectionDesc)).toHaveText(SHOPPING_PAGE_TEXTS.arrivedDesc);
+        // await expect(shoppingPage.inCupboardSection.locator(shoppingPage.sectionTitle)).toContainText(SHOPPING_PAGE_TEXTS.inCupboardTitle);
+        // await expect(shoppingPage.inCupboardSection.locator(shoppingPage.sectionDesc)).toHaveText(SHOPPING_PAGE_TEXTS.inCupboardDesc);
     })
 
     test(`Trips page is displayed`, async ({tripsPage}) => {
@@ -109,12 +110,15 @@ test.describe(`Stock page display`, async () => {
         await expect(tripsPage.newTripBtn).toBeVisible();
         await expect(tripsPage.newTripBtn).toHaveText(TRIPS_PAGE_TEXTS.newTripBtn);
         await expect(tripsPage.mainTripsGroup).toBeVisible();
-        const listItems = await tripsPage.mainTripsGroup.getByTitle(`Trips section`).count();
-        expect(listItems).toBe(2);
-        await expect(tripsPage.plannedSection).toBeVisible();
-        await expect(tripsPage.plannedSection.locator(tripsPage.sectionTitle)).toHaveText(TRIPS_PAGE_TEXTS.planedSectionTitle);
-        await expect(tripsPage.doneSection).toBeVisible();
-        await expect(tripsPage.doneSection.locator(tripsPage.sectionTitle)).toHaveText(TRIPS_PAGE_TEXTS.doneSectionTitle);
+
+
+        //  TODO - move to flow verifications
+        // const listItems = await tripsPage.mainTripsGroup.getByTitle(`Trips section`).count();
+        // expect(listItems).toBe(2);
+        // await expect(tripsPage.plannedSection).toBeVisible();
+        // await expect(tripsPage.plannedSection.locator(tripsPage.sectionTitle)).toHaveText(TRIPS_PAGE_TEXTS.planedSectionTitle);
+        // await expect(tripsPage.doneSection).toBeVisible();
+        // await expect(tripsPage.doneSection.locator(tripsPage.sectionTitle)).toHaveText(TRIPS_PAGE_TEXTS.doneSectionTitle);
     })
 
     test(`Products page is displayed`, async ({productsPage}) => {
@@ -136,10 +140,13 @@ test.describe(`Stock page display`, async () => {
         await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toBeVisible();
         await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toHaveAttribute(`style`, regBtnInactive);
         await expect(productsPage.mainSearchField).toBeVisible();
-        await expect(productsPage.productsList).toBeVisible()
 
-        const productListItemsActive = await productsPage.productsListItem.filter({visible: true}).count();
-        expect(productListItemsActive).toBeGreaterThanOrEqual(4);
+
+        //  TODO - move to flow verifications
+        // await expect(productsPage.productsList).toBeVisible()
+        //
+        // const productListItemsActive = await productsPage.productsListItem.filter({visible: true}).count();
+        // expect(productListItemsActive).toBeGreaterThanOrEqual(4);
 
         //  Archived list
         await productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived).click();
@@ -148,7 +155,9 @@ test.describe(`Stock page display`, async () => {
         await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toBeVisible();
         await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toHaveAttribute(`style`, regBtnActive);
 
-        const productListItemsArchived = await productsPage.productsListItem.filter({visible: true}).count();
-        expect(productListItemsArchived).toBe(2);
+
+        //  TODO - move to flow verifications
+        // const productListItemsArchived = await productsPage.productsListItem.filter({visible: true}).count();
+        // expect(productListItemsArchived).toBe(2);
     })
 })

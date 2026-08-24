@@ -2,8 +2,9 @@ import {Page, Locator} from "@playwright/test"
 
 export const TRIPS_PAGE_TEXTS = {
     title: `Trips`,
-    description: `Two or three restocks a year. What matters is the order deadline, not the flight — most of
-        it is bought online and shipped ahead, to be collected on arrival.`,
+    description: `Two or three restocks a year, where what matters is the order deadline 
+        rather than the flight — most of it is bought online and shipped ahead, to be collected 
+        on arrival. Ordinary travel lives here too, for the packing list.`,
     newTripBtn: `New trip`,
     planedSectionTitle: `Planned`,
     doneSectionTitle: `Done`
