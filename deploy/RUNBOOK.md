@@ -395,7 +395,7 @@ binary is only in use after the next start, so a reboot every few months is part
 
 ## Bringing changes over from the repository
 
-**Stop first.** `npm ci` empties `node_modules`, and the running app is loading files out of it.
+### Step 1 — look, without changing anything
 
 ```sh
 cd /srv/parrothecary
@@ -404,21 +404,77 @@ sudo -u parrothecary git log --oneline HEAD..origin/master        # what is abou
 sudo -u parrothecary git diff --stat HEAD..origin/master -- deploy/
 ```
 
-That third line is the one worth reading. Everything under `deploy/` lives at `/etc/` once
-installed, so a change there is **not** applied by pulling — see below.
+Nothing here touches the running app. That last line is the one worth reading: everything under
+`deploy/` lives at `/etc/` once installed, so a change there is **not** applied by pulling — see
+"If anything under `deploy/` changed" below.
+
+### Step 2 — stop the app, update it, start it again
+
+Every line below matters, including the first and the second to last. `npm ci` deletes
+`node_modules` and rebuilds it from the lockfile, and the running app is reading files out of that
+folder as it serves pages — so it is stopped for the whole operation and started again at the end.
 
 ```sh
-sudo systemctl stop parrothecary
+sudo systemctl stop parrothecary          # <- this one. Not optional.
+
 sudo -u parrothecary git pull
 sudo -u parrothecary npm ci
 sudo -u parrothecary npm run build
 sudo -u parrothecary npm run db:migrate
+
 sudo systemctl start parrothecary
 sudo -u parrothecary npm run preflight
 ```
 
 The migration takes its own backup first, into `backups/before-migrate/`, and stops if that
 backup fails — migrations here are forward-only, so that copy is the only way back.
+
+**If `npm ci` was run without stopping first**, the files on disk end up correct anyway — the
+damage is to the process that was reading them, not to the install. Stop it, rebuild, start it:
+
+```sh
+sudo systemctl stop parrothecary
+sudo -u parrothecary npm run build
+sudo systemctl start parrothecary
+sudo -u parrothecary npm run preflight
+```
+
+**If `npm` was run as root** — the `sudo -u parrothecary` dropped, or a bare `npm ci` typed at a
+root prompt — the files it wrote belong to root, and the next run as `parrothecary` cannot delete
+them to replace them:
+
+```
+npm error code EACCES
+npm error syscall unlink
+npm error path /srv/parrothecary/node_modules/.bin/...
+```
+
+Nothing is broken; the ownership is simply wrong. Put it back:
+
+```sh
+sudo systemctl stop parrothecary
+# How many files, and whose. Counted rather than listed: piping find into `head`
+# closes the pipe under it and buries the answer in "Broken pipe" errors.
+find /srv/parrothecary ! -user parrothecary -printf '%u\n' | sort | uniq -c
+sudo chown -R parrothecary:parrothecary /srv/parrothecary
+sudo -u parrothecary npm ci
+sudo -u parrothecary npm run build
+sudo systemctl start parrothecary
+```
+
+`chown -R` covers `data/` and `backups/` too, which already belong to `parrothecary`, so it
+changes nothing there. If it still refuses, delete and rebuild — both folders come back from the
+lockfile and the source, and neither holds anything of yours:
+
+```sh
+sudo rm -rf /srv/parrothecary/node_modules /srv/parrothecary/.next
+sudo -u parrothecary npm ci
+sudo -u parrothecary npm run build
+```
+
+This is why every command in step 2 carries `sudo -u parrothecary` rather than being run at a root
+prompt: the app runs as `parrothecary` under `ProtectSystem=strict`, and files it cannot write are
+files it cannot serve.
 
 ### If anything under `deploy/` changed
 
