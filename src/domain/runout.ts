@@ -88,6 +88,26 @@ export function unitsShort(unitsDue: number, totalUnitsAvailable: number): numbe
   return Math.ceil(snapped);
 }
 
+/**
+ * How the projection reads on screen.
+ *
+ * "of stock", not "left", and the words are the fix rather than decoration.
+ * This number is supply — what is in the cupboard divided by the rate the
+ * schedules drain it — and "60 days left" beside a course reads as the length
+ * of the course. A 60-tablet pack taken once a day produces exactly that, so
+ * the coincidence is common rather than rare. The expiring screen already uses
+ * "days left" for days until an expiry date, so the same three words meant two
+ * different things on a screen that shows both.
+ *
+ * Here rather than in the badge because it is the answer to a question the
+ * domain asks, and because a phrase nobody can test drifts back.
+ */
+export function runOutLabel(projection: RunOutProjection): string {
+  if (projection.daysRemaining === 0) return 'out of stock today';
+  if (projection.daysRemaining === 1) return '1 day of stock';
+  return `${projection.daysRemaining} days of stock`;
+}
+
 export function runOutSeverity(
   projection: RunOutProjection | null,
   thresholds: ExpiryThresholds = DEFAULT_THRESHOLDS,

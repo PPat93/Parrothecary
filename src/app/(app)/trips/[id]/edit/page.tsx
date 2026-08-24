@@ -13,7 +13,7 @@ export default async function EditTripPage({ params }: { params: Promise<{ id: s
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Edit trip</h1>
-        <Link href={`/trips/${trip.id}`} className={LINK_BUTTON} style={toneStyle('warning')}>
+        <Link replace href={`/trips/${trip.id}`} className={LINK_BUTTON} style={toneStyle('warning')}>
           Cancel
         </Link>
       </header>

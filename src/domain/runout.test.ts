@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { projectRunOut, runOutSeverity, scheduleDailyRate, unitsShort } from './runout';
+import {
+  projectRunOut,
+  runOutLabel,
+  runOutSeverity,
+  scheduleDailyRate,
+  unitsShort,
+} from './runout';
 
 const TODAY = '2026-07-26';
 
@@ -126,5 +132,37 @@ describe('unitsShort', () => {
 
   it('needs nothing when nothing is due', () => {
     expect(unitsShort(0, 0)).toBe(0);
+  });
+});
+
+describe('runOutLabel', () => {
+  const after = (daysRemaining: number) => ({ daysRemaining, runOutDate: TODAY });
+
+  /*
+   * The wording is the whole of one bug: "60 days left" beside a dose schedule
+   * was read as the length of the course, because a 60-tablet pack taken once a
+   * day says exactly that and the explaining tooltip never appears on a phone.
+   */
+  it('says what the number measures', () => {
+    expect(runOutLabel(after(60))).toBe('60 days of stock');
+  });
+
+  it('never says "left", which the expiring screen uses for expiry dates', () => {
+    for (const days of [0, 1, 2, 7, 60, 180, 4000]) {
+      expect(runOutLabel(after(days))).not.toContain('left');
+    }
+  });
+
+  it('says stock in every phrasing, including the singular and the empty one', () => {
+    expect(runOutLabel(after(1))).toBe('1 day of stock');
+    expect(runOutLabel(after(0))).toBe('out of stock today');
+    for (const days of [0, 1, 2, 60]) {
+      expect(runOutLabel(after(days))).toContain('stock');
+    }
+  });
+
+  it('counts in days, not weeks or anything else', () => {
+    expect(runOutLabel(after(2))).toBe('2 days of stock');
+    expect(runOutLabel(after(4000))).toBe('4000 days of stock');
   });
 });

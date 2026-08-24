@@ -79,7 +79,7 @@ export default async function TripAuditPage({ params }: { params: Promise<{ id: 
 
       <header className="mb-1 flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Audit</h1>
-        <Link href={`/trips/${trip.id}`} className={LINK_BUTTON} style={toneStyle('warning')}>
+        <Link replace href={`/trips/${trip.id}`} className={LINK_BUTTON} style={toneStyle('warning')}>
           Cancel
         </Link>
       </header>

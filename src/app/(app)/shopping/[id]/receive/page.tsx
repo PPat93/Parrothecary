@@ -30,7 +30,7 @@ export default async function ReceivePage({ params }: { params: Promise<{ id: st
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-1 flex items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Add to stock</h1>
-        <Link href="/shopping" className={LINK_BUTTON} style={toneStyle('warning')}>
+        <Link replace href="/shopping" className={LINK_BUTTON} style={toneStyle('warning')}>
           {settled || retired ? 'Back' : 'Cancel'}
         </Link>
       </header>

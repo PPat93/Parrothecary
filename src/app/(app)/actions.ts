@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect, RedirectType } from 'next/navigation';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/db';
@@ -60,6 +60,27 @@ import { endSession } from '@/lib/session';
 
 function refreshAll() {
   revalidatePath('/', 'layout');
+}
+
+/**
+ * Leave a finished form, and take it out of the back stack.
+ *
+ * `redirect()` defaults to pushing, so a submitted form stayed in history:
+ * add a box, land back on stock, tap the phone's back arrow, and you were
+ * inside the add-box form again — filled in, already saved, inviting a second
+ * submission. Every form in the app behaved this way, and in a standalone PWA
+ * the hardware back button is the only back there is, so it happened constantly.
+ *
+ * Replacing swaps the form's history entry for the destination, so back goes to
+ * wherever the form was opened from. The receive-shopping guard further down
+ * exists because of the same push behaviour — it catches a line being received
+ * twice after somebody navigated back into the form.
+ *
+ * Only for a form that has done its work. Guard redirects that turn somebody
+ * away keep pushing: the page they came from is still a legitimate place to be.
+ */
+function finish(url: string): never {
+  redirect(url, RedirectType.replace);
 }
 
 /* ------------------------------------------------------------------ */
@@ -253,7 +274,7 @@ export async function createProduct(_prev: FormResult, formData: FormData): Prom
   }
 
   refreshAll();
-  redirect(`/products/${productId}`);
+  finish(`/products/${productId}`);
 }
 
 /**
@@ -738,7 +759,7 @@ export async function updateProduct(_prev: FormResult, formData: FormData): Prom
     .where(eq(products.id, id));
 
   refreshAll();
-  redirect(`/products/${id}`);
+  finish(`/products/${id}`);
 }
 
 /**
@@ -799,7 +820,7 @@ export async function deleteProduct(formData: FormData): Promise<void> {
   if (photo) await deletePhoto(photo);
 
   refreshAll();
-  redirect('/products?archived=1');
+  finish('/products?archived=1');
 }
 
 export async function unarchiveProduct(formData: FormData): Promise<void> {
@@ -1109,7 +1130,7 @@ export async function addBatch(_prev: FormResult, formData: FormData): Promise<F
   }
 
   refreshAll();
-  redirect('/');
+  finish('/');
 }
 
 /**
@@ -1238,7 +1259,7 @@ export async function receiveShoppingItem(
   if (batchId === undefined) return fail('Could not add the box to stock.');
 
   refreshAll();
-  redirect('/shopping');
+  finish('/shopping');
 }
 
 /**
@@ -1311,7 +1332,7 @@ export async function updateBatch(_prev: FormResult, formData: FormData): Promis
   });
 
   refreshAll();
-  redirect(backTo(formData));
+  finish(backTo(formData));
 }
 
 /**
@@ -1360,7 +1381,7 @@ export async function deleteBatch(formData: FormData): Promise<void> {
 
   await db.delete(batches).where(eq(batches.id, id));
   refreshAll();
-  redirect(backTo(formData));
+  finish(backTo(formData));
 }
 
 export interface ScanResult {
@@ -1452,21 +1473,41 @@ async function attachBarcode(
   return null;
 }
 
-/** Teach the cabinet a code it has not seen, so the next scan just works. */
-export async function linkBarcode(formData: FormData): Promise<void> {
+/**
+ * Teach the cabinet a code it has not seen, so the next scan just works.
+ *
+ * Shaped like `addBarcode` below, and it has to be. This used to return
+ * `Promise<void>` and throw away whatever `attachBarcode` said, so pressing
+ * "Attach to the selected pack" looked identical whether it worked, whether the
+ * code already belonged to another pack, or whether the pack had been deleted
+ * from the other phone: nothing happened on screen. The row really was written
+ * — leaving the page and coming back showed it attached — which is the worst
+ * version of this, because it teaches you the button is broken when the data is
+ * fine.
+ *
+ * `refreshAll()` was already here and was never the problem: it re-renders
+ * server components, and the summary that needed clearing is client state on
+ * the add-stock form. Returning a result is what lets the caller clear it.
+ */
+export async function linkBarcode(_prev: FormResult, formData: FormData): Promise<FormResult> {
   const variantId = Number(formData.get('variantId'));
   const code = String(formData.get('code') ?? '').trim();
-  if (!Number.isInteger(variantId) || !code) return;
+
+  if (!Number.isInteger(variantId)) return { error: 'Choose a pack first.' };
+  if (!code) return { error: 'Nothing to attach — scan a barcode first.' };
   /*
    * The typed-in form checks this; the scanned one did not, and it is the more
    * likely of the two to be stale — the scan summary sits on screen with a pack
    * already chosen while somebody on the other phone tidies up. Attaching to a
    * pack that has gone threw a foreign key error at a camera.
    */
-  if (!(await variantIsThere(variantId))) return;
+  if (!(await variantIsThere(variantId))) return { error: 'That pack is no longer there.' };
 
-  await attachBarcode(variantId, code, String(formData.get('barcodeType') ?? 'ean13'));
+  const error = await attachBarcode(variantId, code, String(formData.get('barcodeType') ?? 'ean13'));
+  if (error) return { error };
+
   refreshAll();
+  return { error: null, ok: true };
 }
 
 /** Typed in by hand, for packs whose code was never scanned or photographed. */
@@ -1789,7 +1830,7 @@ export async function recordStockCount(
   });
 
   refreshAll();
-  redirect(
+  finish(
     `/count?counted=${counts.length}&changed=${changed}` +
       `&net=${Math.round(netUnits * 100) / 100}`,
   );
@@ -2264,7 +2305,7 @@ export async function createMember(_prev: FormResult, formData: FormData): Promi
   if (id === undefined) return { error: 'Could not save that.', values: snapshot(formData) };
 
   refreshAll();
-  redirect(`/household/${id}`);
+  finish(`/household/${id}`);
 }
 
 export async function updateMember(_prev: FormResult, formData: FormData): Promise<FormResult> {
@@ -2297,7 +2338,7 @@ export async function updateMember(_prev: FormResult, formData: FormData): Promi
     .where(eq(householdMembers.id, id));
 
   refreshAll();
-  redirect(`/household/${id}`);
+  finish(`/household/${id}`);
 }
 
 export async function archiveMember(formData: FormData): Promise<void> {
@@ -2349,7 +2390,7 @@ export async function deleteMember(formData: FormData): Promise<void> {
   // them have a single confirmed dose to lose.
   await db.delete(householdMembers).where(eq(householdMembers.id, id));
   refreshAll();
-  redirect('/household?archived=1');
+  finish('/household?archived=1');
 }
 
 export async function createSchedule(_prev: FormResult, formData: FormData): Promise<FormResult> {
@@ -2480,7 +2521,7 @@ export async function createSchedule(_prev: FormResult, formData: FormData): Pro
   });
 
   refreshAll();
-  redirect(`/household/${memberId}`);
+  finish(`/household/${memberId}`);
 }
 
 /**
@@ -2755,7 +2796,7 @@ export async function undoDose(formData: FormData): Promise<void> {
 
 export async function logout(): Promise<void> {
   await endSession();
-  redirect('/login');
+  finish('/login');
 }
 
 /**
@@ -2771,7 +2812,7 @@ export async function logout(): Promise<void> {
  */
 export async function logoutEverywhere(): Promise<void> {
   await destroyAllSessions();
-  redirect('/login');
+  finish('/login');
 }
 
 /**
@@ -2907,7 +2948,7 @@ export async function createTrip(_prev: FormResult, formData: FormData): Promise
   if (id === undefined) return { error: 'Could not save the trip.', values: snapshot(formData) };
 
   refreshAll();
-  redirect(`/trips/${id}`);
+  finish(`/trips/${id}`);
 }
 
 export async function updateTrip(_prev: FormResult, formData: FormData): Promise<FormResult> {
@@ -2963,7 +3004,7 @@ export async function updateTrip(_prev: FormResult, formData: FormData): Promise
     .where(eq(trips.id, id));
 
   refreshAll();
-  redirect(`/trips/${id}`);
+  finish(`/trips/${id}`);
 }
 
 export async function setTripStatus(formData: FormData): Promise<void> {
@@ -2978,7 +3019,7 @@ export async function setTripStatus(formData: FormData): Promise<void> {
     .where(eq(trips.id, id));
 
   refreshAll();
-  redirect(`/trips/${id}`);
+  finish(`/trips/${id}`);
 }
 
 /**
@@ -3013,7 +3054,7 @@ export async function deleteTrip(formData: FormData): Promise<void> {
 
   await db.delete(trips).where(eq(trips.id, id));
   refreshAll();
-  redirect('/trips');
+  finish('/trips');
 }
 
 /**
@@ -3109,5 +3150,5 @@ export async function addAuditSelection(formData: FormData): Promise<void> {
   }
 
   refreshAll();
-  redirect(`/trips/${tripId}`);
+  finish(`/trips/${tripId}`);
 }

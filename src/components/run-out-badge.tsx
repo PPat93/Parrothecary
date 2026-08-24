@@ -1,4 +1,9 @@
-import { runOutSeverity, type RunOutProjection, type RunOutSeverity } from '@/domain/runout';
+import {
+  runOutLabel,
+  runOutSeverity,
+  type RunOutProjection,
+  type RunOutSeverity,
+} from '@/domain/runout';
 
 // Same shape family as ExpiryBadge/SymptomTags on purpose — one system, colour
 // carries the meaning.
@@ -14,12 +19,6 @@ const STYLES: Record<RunOutSeverity, { bg: string; fg: string }> = {
     fg: 'var(--color-critical)',
   },
 };
-
-function label(projection: RunOutProjection): string {
-  if (projection.daysRemaining === 0) return 'out today';
-  if (projection.daysRemaining === 1) return '1 day left';
-  return `${projection.daysRemaining} days left`;
-}
 
 /** Nothing rendered when there is no active schedule for this product — silence, not a "none" chip. */
 export function RunOutBadge({ projection }: { projection: RunOutProjection | null }) {
@@ -39,7 +38,7 @@ export function RunOutBadge({ projection }: { projection: RunOutProjection | nul
       }}
       title={`Runs out ${projection.runOutDate} at the current rate`}
     >
-      {label(projection)}
+      {runOutLabel(projection)}
     </span>
   );
 }

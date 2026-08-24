@@ -9,7 +9,16 @@
  * Static assets are cached because they only change when a new build ships.
  */
 
-const VERSION = 'v1';
+/*
+ * Bump this whenever a cached asset's *contents* change under an unchanged
+ * name. Icons and other files under /icons/ are served cache-first, so a phone
+ * that already holds the old bytes keeps showing them however many times the
+ * PNG is replaced on the server. The activate handler deletes caches whose name
+ * does not match, which is what actually clears them.
+ *
+ * v2: icons flattened to opaque, maskable-192 added.
+ */
+const VERSION = 'v2';
 const SHELL = `parrothecary-shell-${VERSION}`;
 const ASSETS = `parrothecary-assets-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
