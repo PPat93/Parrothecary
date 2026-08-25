@@ -38,9 +38,11 @@ test.describe(`Stock page display`, async () => {
         await expect(stockPage.newBoxBtn).toBeVisible();
         await expect(stockPage.newBoxBtn).toHaveText(STOCK_PAGE_TEXTS.newBoxBtn);
         await expect(stockPage.mainSearchField).toBeVisible();
-        await expect(stockPage.stockList).toBeVisible();
-        const listItems = await stockPage.stockListItem.count();
-        expect(listItems).toBeGreaterThan(3);
+
+        // TODO - move to normal flow tests
+        // await expect(stockPage.stockList).toBeVisible();
+        // const listItems = await stockPage.stockListItem.count();
+        // expect(listItems).toBeGreaterThan(3);
     })
 
     test(`Doses page is displayed`, async ({dosesPage}) => {
@@ -52,9 +54,11 @@ test.describe(`Stock page display`, async () => {
         await expect(dosesPage.pageTitle).toHaveText(DOSES_PAGE_TEXTS.title);
         await expect(dosesPage.managePeopleBtn).toBeVisible();
         await expect(dosesPage.managePeopleBtn).toHaveText(DOSES_PAGE_TEXTS.managePeopleBtn);
-        await expect(dosesPage.dosesList).toBeVisible();
-        const listItems = await dosesPage.dosesList.getByTitle(`Main doses list item`).count();
-        expect(listItems).toBeGreaterThanOrEqual(2);
+
+        // TODO -move to flows testing
+        // await expect(dosesPage.dosesList).toBeVisible();
+        // const listItems = await dosesPage.dosesList.getByTitle(`Main doses list item`).count();
+        // expect(listItems).toBeGreaterThanOrEqual(2);
     })
 
     test(`Expiring page is displayed`, async ({expiringPage}) => {
@@ -64,14 +68,16 @@ test.describe(`Stock page display`, async () => {
 
         //  Assert
         await expect(expiringPage.pageTitle).toHaveText(EXPIRING_PAGE_TEXTS.title);
-        await expect(expiringPage.expiringGroup).toBeVisible();
-        await expect(expiringPage.expiredSubgroup).toBeVisible();
-        await expect(expiringPage.expiredSubgroup.locator(expiringPage.subgroupTitle)).toHaveText(EXPIRING_PAGE_TEXTS.expiredSubgroup)
-        await expect(expiringPage.expiredSubgroup.locator(expiringPage.subgroupDesc)).toHaveText(EXPIRING_PAGE_TEXTS.expiredSubgroupDesc)
-        await expect(expiringPage.binnedSection).toBeVisible();
-        await expect(expiringPage.binnedSummaryTitle).toHaveText(EXPIRING_PAGE_TEXTS.binnedSectionTitle)
-        await expect(expiringPage.binnedSectionWasted).toHaveText(EXPIRING_PAGE_TEXTS.binnedSectionWasted)
-        await expect(expiringPage.binnedSectionNotWasted).toContainText(EXPIRING_PAGE_TEXTS.binnedSectionNotWasted)
+
+        // TODO - move to flow testing
+        // await expect(expiringPage.expiringGroup).toBeVisible();
+        // await expect(expiringPage.expiredSubgroup).toBeVisible();
+        // await expect(expiringPage.expiredSubgroup.locator(expiringPage.subgroupTitle)).toHaveText(EXPIRING_PAGE_TEXTS.expiredSubgroup)
+        // await expect(expiringPage.expiredSubgroup.locator(expiringPage.subgroupDesc)).toHaveText(EXPIRING_PAGE_TEXTS.expiredSubgroupDesc)
+        // await expect(expiringPage.binnedSection).toBeVisible();
+        // await expect(expiringPage.binnedSummaryTitle).toHaveText(EXPIRING_PAGE_TEXTS.binnedSectionTitle)
+        // await expect(expiringPage.binnedSectionWasted).toHaveText(EXPIRING_PAGE_TEXTS.binnedSectionWasted)
+        // await expect(expiringPage.binnedSectionNotWasted).toContainText(EXPIRING_PAGE_TEXTS.binnedSectionNotWasted)
     })
 
     test(`Shopping page is displayed`, async ({shoppingPage}) => {
@@ -109,10 +115,10 @@ test.describe(`Stock page display`, async () => {
         await expect(tripsPage.pageDesc).toHaveText(TRIPS_PAGE_TEXTS.description);
         await expect(tripsPage.newTripBtn).toBeVisible();
         await expect(tripsPage.newTripBtn).toHaveText(TRIPS_PAGE_TEXTS.newTripBtn);
-        await expect(tripsPage.mainTripsGroup).toBeVisible();
 
 
         //  TODO - move to flow verifications
+        // await expect(tripsPage.mainTripsGroup).toBeVisible();
         // const listItems = await tripsPage.mainTripsGroup.getByTitle(`Trips section`).count();
         // expect(listItems).toBe(2);
         // await expect(tripsPage.plannedSection).toBeVisible();

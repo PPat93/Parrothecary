@@ -2,7 +2,10 @@ import {Page, Locator} from "@playwright/test"
 
 export const STOCK_PAGE_TEXTS = {
     title: `Stock`,
-    newBoxBtn: `Add box`
+    newBoxBtn: `Add box`,
+    emptyPage: `Nothing in stock yet.`,
+    newProdUrl: `/products/new`,
+    startExplainer: `Start by adding a product, then add the boxes you actually have.`,
 } as const;
 
 

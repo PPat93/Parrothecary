@@ -5,6 +5,8 @@ export const TRIPS_PAGE_TEXTS = {
     description: `Two or three restocks a year, where what matters is the order deadline 
         rather than the flight — most of it is bought online and shipped ahead, to be collected 
         on arrival. Ordinary travel lives here too, for the packing list.`,
+    emptyPage: `No trips planned.`,
+    startExplainer: `Add the next one and the shopping list gets a deadline to work back from.`,
     newTripBtn: `New trip`,
     planedSectionTitle: `Planned`,
     doneSectionTitle: `Done`
