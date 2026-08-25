@@ -1,4 +1,5 @@
 import {Page, Locator} from '@playwright/test'
+import {expect} from "../../fixtures/fixtures";
 
 export const loginPageTexts = {
     SUBMIT_BTN_TXT: `Unlock`
@@ -25,11 +26,12 @@ export class LoginPage {
     }
 
     async goToPage() {
-        await this.page.goto(`/login`)
+        await this.page.goto(`/login`);
     }
 
     async userLogin(pass?: string) {
         if (!pass) pass = process.env.LOCAL_PASS
+        await expect(this.passwordField).toBeVisible();
         await this.passwordField.fill(pass as string);
         await this.submitBtn.click();
     }

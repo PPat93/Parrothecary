@@ -2,7 +2,9 @@ import {Page, Locator} from "@playwright/test"
 
 export const DOSES_PAGE_TEXTS = {
     title: `Doses`,
-    managePeopleBtn: `Manage people`
+    managePeopleBtn: `Manage people`,
+    emptyPage: `Nothing scheduled.`,
+    startExplainer: `Add someone under Household and give them a dose to track.`
 } as const;
 
 

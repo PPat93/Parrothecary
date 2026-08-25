@@ -3,6 +3,7 @@ import {Page, Locator} from "@playwright/test"
 export const EXPIRING_PAGE_TEXTS = {
     title: `Expiring`,
     expiredSubgroup: `Expired`,
+    emptyPage: `Nothing expiring in the next six months.`,
     expiredSubgroupDesc: `Past its date and past what it tolerates — bin it and record the waste.`,
     stillInUseSubgroup: `Past date, still in use`,
     stillInUseSubgroupDesc: `Doses are still being taken from these. Bin one early whenever you would rather not use it.`,
