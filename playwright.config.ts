@@ -9,6 +9,35 @@ import path from 'path';
 
 dotenv.config({path: path.resolve(process.cwd(), '.env.local')});
 
+
+const browsers = [
+    {name: 'Chrome', device: devices['Desktop Chrome']},
+    {name: 'Firefox', device: devices['Desktop Firefox']}
+// {name: 'Safari', device:    devices['Desktop Safari']}
+]
+
+const tests = [
+    {
+        name: 'Smokes',
+        command: 'npm run start',
+        use: {baseURL: 'http://localhost:3000'},
+        testMatch: /.*\.smoke\.spec\.ts$/
+    },
+    {
+        name: 'Functional',
+        command: 'npm run start',
+        use: {baseURL: 'http://localhost:3001'},
+        testMatch: /.*\.func\.spec\.ts$/
+    }
+]
+
+const deps = {
+    auth: {
+        name: 'setup',
+        testMatch: /auth\.setup\.ts/
+    }
+}
+
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
@@ -33,72 +62,95 @@ export default defineConfig({
         trace: 'on-first-retry',
     },
 
+
     /* Configure projects for major browsers */
-    projects:
+    projects: tests.flatMap(testType =>
+        browsers.map(browser => ({
+            name: `${testType.name} ${browser.name}`,
+            use: [
 
-        [
-            {
-                name: 'chromium',
-                use: {
-                    ...devices['Desktop Chrome'],
-                    storageState: 'e2e/.auth/auth.json'
-                },
-                dependencies: ['setup']
-            },
+            ]
+        }))
 
-            {
-                name: 'firefox',
-                use: {
-                    ...devices['Desktop Firefox'],
-                    storageState: 'e2e/.auth/auth.json'
-                },
-                dependencies: ['setup']
-            },
+//
+//         url: 'http://localhost:3000',
+//         testMatch: /.*\.smoke\.spec\.ts$/,
+//         env: {DATABASE_PATH: process.env.DATABASE_PATH_SMOKE ?? './data/parrothecary.db'},
+//
+// })
 
-            {
-                name: 'webkit',
-                use: {
-                    ...devices['Desktop Safari'],
-                    storageState: 'e2e/.auth/auth.json'
-                },
-                dependencies: ['setup']
-            },
 
-            {
-                name: 'setup',
-                testMatch: /auth\.setup\.ts/,
-            }
+//
+// [
+//     {
+//         name: 'Smoke',
+//         use: {
+//             ...devices['Desktop Chrome'],
+//             storageState: 'e2e/.auth/auth.json'
+//         },
+//         dependencies: ['setup']
+//     },
+//
+//
+//     {
+//         name: 'setup',
+//         testMatch: /auth\.setup\.ts/,
+//     }
 
-            /* Test against mobile viewports. */
-            // {
-            //   name: 'Mobile Chrome',
-            //   use: { ...devices['Pixel 5'] },
-            // },
-            // {
-            //   name: 'Mobile Safari',
-            //   use: { ...devices['iPhone 12'] },
-            // },
+// {
+//     name: 'firefox',
+//     use: {
+//         ...devices['Desktop Firefox'],
+//         storageState: 'e2e/.auth/auth.json'
+//     },
+//     dependencies: ['setup']
+// },
 
-            /* Test against branded browsers. */
-            // {
-            //   name: 'Microsoft Edge',
-            //   use: { ...devices['Desktop Edge'], channel: 'msedge' },
-            // },
-            // {
-            //   name: 'Google Chrome',
-            //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
-            // },
-        ],
+// {
+//     name: 'webkit',
+//     use: {
+//         ...devices['Desktop Safari'],
+//         storageState: 'e2e/.auth/auth.json'
+//     },
+//     dependencies: ['setup']
+// },
 
-    /* Run your local dev server before starting the tests */
-    webServer:
-        {
-            command: 'npm run start',
-            url:
-                'http://localhost:3000',
-            reuseExistingServer:
-                !process.env.CI,
-        }
+
+/* Test against mobile viewports. */
+// {
+//   name: 'Mobile Chrome',
+//   use: { ...devices['Pixel 5'] },
+// },
+// {
+//   name: 'Mobile Safari',
+//   use: { ...devices['iPhone 12'] },
+// },
+
+/* Test against branded browsers. */
+// {
+//   name: 'Microsoft Edge',
+//   use: { ...devices['Desktop Edge'], channel: 'msedge' },
+// },
+// {
+//   name: 'Google Chrome',
+//   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+// },
+],
+
+/* Run your local dev server before starting the tests */
+webServer: [
+    {
+        command: 'npm run start',
+        url: 'http://localhost:3000',
+        reuseExistingServer: !process.env.CI,
+        env: {DATABASE_PATH: process.env.DATABASE_PATH_SMOKES ?? './data/parrothecary.db'}
+    },
+    {
+        command: 'npm run start',
+        url: 'http://localhost:3000',
+        reuseExistingServer: !process.env.CI,
+        env: {DATABASE_PATH: process.env.DATABASE_PATH_FUNC ?? './data/parrothecary.db'}
+    }]
     ,
 })
 ;
