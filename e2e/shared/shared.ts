@@ -15,7 +15,8 @@ enum MenuOptions {
     Products = "products"
 }
 
-export const GENERAL_AUTH_PATH = path.join(process.cwd(), `e2e/.auth/auth.json`);
+export const EMPTY_AUTH_PATH = path.join(process.cwd(), `e2e/.auth/empty.auth.json`);
+export const SEEDED_AUTH_PATH = path.join(process.cwd(), `e2e/.auth/seeded.auth.json`);
 
 export class Shared {
 

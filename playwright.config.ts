@@ -6,38 +6,41 @@ import {defineConfig, devices} from '@playwright/test';
  */
 import dotenv from 'dotenv';
 import path from 'path';
+import {EMPTY_AUTH_PATH, SEEDED_AUTH_PATH} from "./e2e/shared/shared";
 
 dotenv.config({path: path.resolve(process.cwd(), '.env.local')});
 
+const urls = {
+    empty: 'http://localhost:3000',
+    seeded: 'http://localhost:3001'
+}
 
 const browsers = [
-    {name: 'Chrome', device: devices['Desktop Chrome']},
-    {name: 'Firefox', device: devices['Desktop Firefox']}
-// {name: 'Safari', device:    devices['Desktop Safari']}
+    {name: 'Chrome', device: 'Desktop Chrome'},
+    {name: 'Firefox', device: 'Desktop Firefox'}
+// {name: 'Safari', device:   'Desktop Safari'}
 ]
 
 const tests = [
     {
         name: 'Smokes',
         command: 'npm run start',
-        use: {baseURL: 'http://localhost:3000'},
-        testMatch: /.*\.smoke\.spec\.ts$/
+        use: {baseURL: urls.empty},
+        testMatch: /.*\.smoke\.spec\.ts$/,
+        storageState: EMPTY_AUTH_PATH
     },
     {
         name: 'Functional',
         command: 'npm run start',
-        use: {baseURL: 'http://localhost:3001'},
-        testMatch: /.*\.func\.spec\.ts$/
+        use: {baseURL: urls.seeded},
+        testMatch: /.*\.func\.spec\.ts$/,
+        storageState: SEEDED_AUTH_PATH
     }
 ]
 
-const deps = {
-    auth: {
-        name: 'setup',
-        testMatch: /auth\.setup\.ts/
-    }
-}
-
+// @ts-ignore
+// @ts-ignore
+// @ts-ignore
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
@@ -64,13 +67,43 @@ export default defineConfig({
 
 
     /* Configure projects for major browsers */
-    projects: tests.flatMap(testType =>
-        browsers.map(browser => ({
-            name: `${testType.name} ${browser.name}`,
-            use: [
+    projects: [
+        {
+            name: 'setup-empty',
+            testMatch: /empty\.auth\.setup\.ts/,
+            use: {baseURL: urls.empty}
+        },
+        {
+            name: 'setup-seeded',
+            testMatch: /seeded\.auth\.setup\.ts/,
+            use: {baseURL: urls.seeded},
 
-            ]
-        }))
+        },
+        ...tests.flatMap(testType => ({
+                name: `${testType.name} ${browsers[0]?.name}`,
+                use: {
+                    ...devices[`${browsers[0]?.device}`],
+                    storageState: testType.storageState,
+                    baseURL: testType.use.baseURL
+                },
+                command: testType.command,
+                testMatch: testType.testMatch,
+                dependencies: ['setup-empty']
+            })
+        ),
+        ...tests.flatMap(testType => ({
+                name: `${testType.name} ${browsers[1]?.name}`,
+                use: {
+                    ...devices[`${browsers[1]?.device}`],
+                    storageState: testType.storageState,
+                    baseURL: testType.use.baseURL
+                },
+                command: testType.command,
+                testMatch: testType.testMatch,
+                dependencies: ['setup-seeded'],
+            })
+        ),
+    ],
 
 //
 //         url: 'http://localhost:3000',
@@ -116,7 +149,7 @@ export default defineConfig({
 // },
 
 
-/* Test against mobile viewports. */
+    /* Test against mobile viewports. */
 // {
 //   name: 'Mobile Chrome',
 //   use: { ...devices['Pixel 5'] },
@@ -126,7 +159,7 @@ export default defineConfig({
 //   use: { ...devices['iPhone 12'] },
 // },
 
-/* Test against branded browsers. */
+    /* Test against branded browsers. */
 // {
 //   name: 'Microsoft Edge',
 //   use: { ...devices['Desktop Edge'], channel: 'msedge' },
@@ -135,22 +168,28 @@ export default defineConfig({
 //   name: 'Google Chrome',
 //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
 // },
-],
 
-/* Run your local dev server before starting the tests */
-webServer: [
-    {
-        command: 'npm run start',
-        url: 'http://localhost:3000',
-        reuseExistingServer: !process.env.CI,
-        env: {DATABASE_PATH: process.env.DATABASE_PATH_SMOKES ?? './data/parrothecary.db'}
-    },
-    {
-        command: 'npm run start',
-        url: 'http://localhost:3000',
-        reuseExistingServer: !process.env.CI,
-        env: {DATABASE_PATH: process.env.DATABASE_PATH_FUNC ?? './data/parrothecary.db'}
-    }]
+
+    /* Run your local dev server before starting the tests */
+    webServer: [
+        {
+            command: 'npm run start',
+            url: urls.empty,
+            reuseExistingServer: !process.env.CI,
+            env: {
+                PORT: '3000',
+                DATABASE_PATH: process.env.DATABASE_PATH_SMOKE ?? './.tmp/seeded.db'
+            }
+        },
+        {
+            command: 'npm run start',
+            url: urls.seeded,
+            reuseExistingServer: !process.env.CI,
+            env: {
+                PORT: '3001',
+                DATABASE_PATH: process.env.DATABASE_PATH_FUNC ?? './.tmp/seeded.db'
+            }
+        }]
     ,
 })
 ;

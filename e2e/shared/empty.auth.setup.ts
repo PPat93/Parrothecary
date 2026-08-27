@@ -1,0 +1,11 @@
+import {test as setup, expect} from '../fixtures/fixtures';
+import {EMPTY_AUTH_PATH} from './shared'
+
+setup(`Global authentication`, async ({loginPage, page}) => {
+
+    await loginPage.goToPage();
+    await loginPage.userLogin();
+    await expect(loginPage.submitBtn).toBeHidden();
+
+    await page.context().storageState({path: EMPTY_AUTH_PATH})
+})
