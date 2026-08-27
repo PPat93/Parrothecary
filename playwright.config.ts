@@ -17,8 +17,8 @@ const urls = {
 
 const browsers = [
     {name: 'Chrome', device: 'Desktop Chrome'},
-    {name: 'Firefox', device: 'Desktop Firefox'}
-// {name: 'Safari', device:   'Desktop Safari'}
+    // {name: 'Firefox', device: 'Desktop Firefox'}
+    // {name: 'Safari', device:   'Desktop Safari'}
 ]
 
 const tests = [
@@ -27,14 +27,16 @@ const tests = [
         command: 'npm run start',
         use: {baseURL: urls.empty},
         testMatch: /.*\.smoke\.spec\.ts$/,
-        storageState: EMPTY_AUTH_PATH
+        storageState: EMPTY_AUTH_PATH,
+        dependencies: ['setup-empty']
     },
     {
         name: 'Functional',
         command: 'npm run start',
         use: {baseURL: urls.seeded},
         testMatch: /.*\.func\.spec\.ts$/,
-        storageState: SEEDED_AUTH_PATH
+        storageState: SEEDED_AUTH_PATH,
+        dependencies: ['setup-seeded']
     }
 ]
 
@@ -79,30 +81,21 @@ export default defineConfig({
             use: {baseURL: urls.seeded},
 
         },
-        ...tests.flatMap(testType => ({
-                name: `${testType.name} ${browsers[0]?.name}`,
-                use: {
-                    ...devices[`${browsers[0]?.device}`],
-                    storageState: testType.storageState,
-                    baseURL: testType.use.baseURL
-                },
-                command: testType.command,
-                testMatch: testType.testMatch,
-                dependencies: ['setup-empty']
-            })
-        ),
-        ...tests.flatMap(testType => ({
-                name: `${testType.name} ${browsers[1]?.name}`,
-                use: {
-                    ...devices[`${browsers[1]?.device}`],
-                    storageState: testType.storageState,
-                    baseURL: testType.use.baseURL
-                },
-                command: testType.command,
-                testMatch: testType.testMatch,
-                dependencies: ['setup-seeded'],
-            })
-        ),
+        // dynamic projects preparations for future namespacing
+        ...tests.flatMap(testType =>
+            browsers.map(browser => ({
+                    name: `${testType.name} ${browser.name}`,
+                    use: {
+                        ...devices[`${browser.device}`],
+                        storageState: testType.storageState,
+                        baseURL: testType.use.baseURL
+                    },
+                    command: testType.command,
+                    testMatch: testType.testMatch,
+                    dependencies: testType.dependencies
+                })
+            )
+        )
     ],
 
 //

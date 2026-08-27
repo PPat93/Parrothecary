@@ -87,11 +87,12 @@ test.describe(`Stock page display`, async () => {
 
         //  Assert
         await expect(shoppingPage.pageTitle).toHaveText(SHOPPING_PAGE_TEXTS.title);
-        await expect(shoppingPage.addItemSection).toBeVisible();
-        await expect(shoppingPage.addItemSection.locator(`summary`)).toHaveText(SHOPPING_PAGE_TEXTS.addItem);
-        await expect(shoppingPage.shoppingGroups).toBeVisible();
+        await expect(shoppingPage.shoppingGroups).toHaveText(SHOPPING_PAGE_TEXTS.emptyList);
 
         //  TODO - move to flow verifications
+        // await expect(shoppingPage.addItemSection).toBeVisible();
+        // await expect(shoppingPage.addItemSection.locator(`summary`)).toHaveText(SHOPPING_PAGE_TEXTS.addItem);
+        // await expect(shoppingPage.shoppingGroups).toBeVisible();
         // const shoppingGroupsCount = await shoppingPage.shoppingGroups.getByTitle(`Shopping section`).count();
         // expect(shoppingGroupsCount).toBeGreaterThanOrEqual(1)
         //

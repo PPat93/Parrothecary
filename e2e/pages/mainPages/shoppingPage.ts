@@ -3,6 +3,7 @@ import {Page, Locator} from "@playwright/test"
 export const SHOPPING_PAGE_TEXTS = {
     title: `Shopping`,
     addItem: `Add an item`,
+    emptyList: `Nothing on the list.`,
     toBuyTitle: `To buy`,
     toBuyDesc: `Not ordered yet.`,
     orderedTitle: `Ordered`,
