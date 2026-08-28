@@ -8,7 +8,7 @@ import {SHOPPING_PAGE_TEXTS} from "../pages/mainPages/shoppingPage";
 import {TRIPS_PAGE_TEXTS} from "../pages/mainPages/tripsPage";
 import {PRODUCTS_PAGE_TEXTS} from "../pages/mainPages/productsPage";
 
-test.describe(`Login page display`, async () => {
+test.describe(`Login page display`, {tag: `@smoke`}, async () => {
 
     test.use({storageState: {cookies: [], origins: []}});
 
