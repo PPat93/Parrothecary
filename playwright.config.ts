@@ -6,7 +6,7 @@ import {defineConfig, devices} from '@playwright/test';
  */
 import dotenv from 'dotenv';
 import path from 'path';
-import {EMPTY_AUTH_PATH, SEEDED_AUTH_PATH} from "./e2e/shared/shared";
+import {EMPTY_AUTH_PATH, SEEDED_AUTH_PATH} from "./e2e/utils/shared/shared";
 
 dotenv.config({path: path.resolve(process.cwd(), '.env.local')});
 
@@ -58,7 +58,7 @@ export default defineConfig({
     workers: process.env.CI ? 1 : undefined,
     /* Reporter to use. See https://playwright.dev/docs/test-reporters */
     reporter: 'html',
-    globalSetup: './e2e/shared/global.db.prep',
+    globalSetup: './e2e/utils/shared/global.db.prep',
     /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
     use: {
         /* Base URL to use in actions like `await page.goto('')`. */

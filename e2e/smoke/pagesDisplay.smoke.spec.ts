@@ -1,12 +1,12 @@
-import {test, expect} from "../fixtures/fixtures";
-import {TEXTS} from "../shared/shared";
-import {loginPageTexts} from "../pages/mainPages/loginPage";
-import {STOCK_PAGE_TEXTS} from "../pages/mainPages/stockPage";
-import {DOSES_PAGE_TEXTS} from "../pages/mainPages/dosesPage";
-import {EXPIRING_PAGE_TEXTS} from "../pages/mainPages/expiringPage";
-import {SHOPPING_PAGE_TEXTS} from "../pages/mainPages/shoppingPage";
-import {TRIPS_PAGE_TEXTS} from "../pages/mainPages/tripsPage";
-import {PRODUCTS_PAGE_TEXTS} from "../pages/mainPages/productsPage";
+import {test, expect} from "../utils/fixtures/fixtures";
+import {TEXTS} from "../utils/shared/shared";
+import {loginPageTexts} from "../utils/pages/mainPages/loginPage";
+import {STOCK_PAGE_TEXTS} from "../utils/pages/mainPages/stockPage";
+import {DOSES_PAGE_TEXTS} from "../utils/pages/mainPages/dosesPage";
+import {EXPIRING_PAGE_TEXTS} from "../utils/pages/mainPages/expiringPage";
+import {SHOPPING_PAGE_TEXTS} from "../utils/pages/mainPages/shoppingPage";
+import {TRIPS_PAGE_TEXTS} from "../utils/pages/mainPages/tripsPage";
+import {PRODUCTS_PAGE_TEXTS} from "../utils/pages/mainPages/productsPage";
 
 test.describe(`Login page display`, {tag: `@smoke`}, async () => {
 
