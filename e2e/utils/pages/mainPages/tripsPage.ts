@@ -16,6 +16,7 @@ export const TRIPS_PAGE_TEXTS = {
 export class TripsPage {
     readonly page: Page;
     readonly pageTitle: Locator;
+    readonly emptyPageDescription: Locator;
     readonly pageDesc: Locator;
     readonly newTripBtn: Locator;
     readonly mainTripsGroup: Locator;
@@ -26,6 +27,7 @@ export class TripsPage {
     constructor(page: Page) {
         this.page = page;
         this.pageTitle = page.getByTestId(`trips-title`);
+        this.emptyPageDescription = page.getByTestId(`empty-page-description`);
         this.pageDesc = page.getByTestId(`trips-description`);
         this.newTripBtn = page.getByTestId(`new-trip-btn`);
         this.mainTripsGroup = page.getByTestId(`main-trips-groups`);

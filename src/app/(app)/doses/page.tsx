@@ -104,6 +104,7 @@ export default async function DosesPage() {
                 <div
                     className="rounded-2xl border border-dashed p-8 text-center text-sm"
                     style={{borderColor: 'var(--border)', color: 'var(--muted)'}}
+                    test-data='empty-page-description'
                 >
                     <p>Nothing scheduled.</p>
                     <p className="mt-2">

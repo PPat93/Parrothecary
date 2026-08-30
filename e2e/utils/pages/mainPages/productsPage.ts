@@ -3,6 +3,8 @@ import {Page, Locator} from "@playwright/test"
 export const PRODUCTS_PAGE_TEXTS = {
     title: `Products`,
     newProductBtn: `New product`,
+    emptyPageActive: `The product database is empty.`,
+    emptyPageArchived: `Nothing archived.`,
     switchActive: `Active`,
     switchArchived: `Archived`
 } as const;
@@ -11,6 +13,7 @@ export const PRODUCTS_PAGE_TEXTS = {
 export class ProductsPage {
     readonly page: Page;
     readonly pageTitle: Locator;
+    readonly emptyPageDescription: Locator;
     readonly newProductBtn: Locator;
     readonly productStatsListSwitch: Locator;
     readonly mainSearchField: Locator;
@@ -20,6 +23,7 @@ export class ProductsPage {
     constructor(page: Page) {
         this.page = page;
         this.pageTitle = page.getByTestId(`products-title`);
+        this.emptyPageDescription = page.getByTestId(`empty-page-description`);
         this.newProductBtn = page.getByTestId(`add-product-btn`);
         this.productStatsListSwitch = page.getByTestId(`product-status-list-switch`);
         this.mainSearchField = page.getByPlaceholder(`Name, brand, substance or symptom…`);

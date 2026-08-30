@@ -27,7 +27,7 @@ test.describe(`Login page display`, {tag: `@smoke`}, async () => {
     })
 })
 
-test.describe(`Stock page display`, async () => {
+test.describe(`Basic pages display`, async () => {
     test(`Stock page is displayed`, async ({stockPage}) => {
 
         //  Arrange & Act
@@ -37,7 +37,11 @@ test.describe(`Stock page display`, async () => {
         await expect(stockPage.pageTitle).toHaveText(STOCK_PAGE_TEXTS.title);
         await expect(stockPage.newBoxBtn).toBeVisible();
         await expect(stockPage.newBoxBtn).toHaveText(STOCK_PAGE_TEXTS.newBoxBtn);
+        await expect(stockPage.auditBtn).toBeVisible();
+        await expect(stockPage.auditBtn).toHaveText(STOCK_PAGE_TEXTS.auditBtn);
         await expect(stockPage.mainSearchField).toBeVisible();
+        await expect(stockPage.emptyPageDescription).toBeVisible();
+        await expect(stockPage.emptyPageDescription).toHaveText(STOCK_PAGE_TEXTS.emptyPage+STOCK_PAGE_TEXTS.startExplainer);
 
         // TODO - move to normal flow tests
         // await expect(stockPage.stockList).toBeVisible();
@@ -54,6 +58,8 @@ test.describe(`Stock page display`, async () => {
         await expect(dosesPage.pageTitle).toHaveText(DOSES_PAGE_TEXTS.title);
         await expect(dosesPage.managePeopleBtn).toBeVisible();
         await expect(dosesPage.managePeopleBtn).toHaveText(DOSES_PAGE_TEXTS.managePeopleBtn);
+        await expect(dosesPage.emptyPageDescription).toBeVisible();
+        await expect(dosesPage.emptyPageDescription).toHaveText(DOSES_PAGE_TEXTS.emptyPage+DOSES_PAGE_TEXTS.startExplainer);
 
         // TODO -move to flows testing
         // await expect(dosesPage.dosesList).toBeVisible();
@@ -68,6 +74,7 @@ test.describe(`Stock page display`, async () => {
 
         //  Assert
         await expect(expiringPage.pageTitle).toHaveText(EXPIRING_PAGE_TEXTS.title);
+        await expect(expiringPage.emptyPageDescription).toHaveText(EXPIRING_PAGE_TEXTS.emptyPage);
 
         // TODO - move to flow testing
         // await expect(expiringPage.expiringGroup).toBeVisible();
@@ -87,7 +94,10 @@ test.describe(`Stock page display`, async () => {
 
         //  Assert
         await expect(shoppingPage.pageTitle).toHaveText(SHOPPING_PAGE_TEXTS.title);
-        await expect(shoppingPage.shoppingGroups).toHaveText(SHOPPING_PAGE_TEXTS.emptyList);
+        await expect(shoppingPage.emptyPageDescription).toBeVisible();
+        await expect(shoppingPage.emptyPageDescription).toHaveText(SHOPPING_PAGE_TEXTS.emptyPage);
+        await expect(shoppingPage.explainerSection).toBeVisible();
+        await expect(shoppingPage.explainerSection).toHaveText(SHOPPING_PAGE_TEXTS.explainerText);
 
         //  TODO - move to flow verifications
         // await expect(shoppingPage.addItemSection).toBeVisible();
@@ -116,6 +126,8 @@ test.describe(`Stock page display`, async () => {
         await expect(tripsPage.pageDesc).toHaveText(TRIPS_PAGE_TEXTS.description);
         await expect(tripsPage.newTripBtn).toBeVisible();
         await expect(tripsPage.newTripBtn).toHaveText(TRIPS_PAGE_TEXTS.newTripBtn);
+        await expect(tripsPage.emptyPageDescription).toBeVisible();
+        await expect(tripsPage.emptyPageDescription).toHaveText(TRIPS_PAGE_TEXTS.emptyPage+TRIPS_PAGE_TEXTS.startExplainer);
 
 
         //  TODO - move to flow verifications
@@ -147,6 +159,8 @@ test.describe(`Stock page display`, async () => {
         await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toBeVisible();
         await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toHaveAttribute(`style`, regBtnInactive);
         await expect(productsPage.mainSearchField).toBeVisible();
+        await expect(productsPage.emptyPageDescription).toBeVisible();
+        await expect(productsPage.emptyPageDescription).toHaveText(PRODUCTS_PAGE_TEXTS.emptyPageActive);
 
 
         //  TODO - move to flow verifications
@@ -161,6 +175,8 @@ test.describe(`Stock page display`, async () => {
         await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchActive)).toHaveAttribute(`style`, regBtnInactive);
         await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toBeVisible();
         await expect(productsPage.productStatsListSwitch.getByText(PRODUCTS_PAGE_TEXTS.switchArchived)).toHaveAttribute(`style`, regBtnActive);
+        await expect(productsPage.emptyPageDescription).toBeVisible();
+        await expect(productsPage.emptyPageDescription).toHaveText(PRODUCTS_PAGE_TEXTS.emptyPageArchived);
 
 
         //  TODO - move to flow verifications

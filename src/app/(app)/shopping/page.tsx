@@ -60,6 +60,7 @@ export default async function ShoppingPage() {
                 <div
                     className="rounded-2xl border border-dashed p-8 text-center text-sm"
                     style={{borderColor: 'var(--border)', color: 'var(--muted)'}}
+                    test-data='explainer-section'
                 >
                     Add a{' '}
                     <Link href="/products/new" className="underline underline-offset-4">
@@ -262,6 +263,7 @@ export default async function ShoppingPage() {
                     <div
                         className="rounded-2xl border border-dashed p-8 text-center text-sm"
                         style={{borderColor: 'var(--border)', color: 'var(--muted)'}}
+                        test-data='empty-page-description'
                     >
                         Nothing on the list.
                     </div>

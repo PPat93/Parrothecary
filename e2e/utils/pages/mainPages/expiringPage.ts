@@ -21,6 +21,7 @@ export const EXPIRING_PAGE_TEXTS = {
 export class ExpiringPage {
     readonly page: Page;
     readonly pageTitle: Locator;
+    readonly emptyPageDescription: Locator;
     readonly expiringGroup: Locator;
     readonly subgroupDesc: Locator;
     readonly subgroupTitle: Locator;
@@ -36,6 +37,7 @@ export class ExpiringPage {
     constructor(page: Page) {
         this.page = page;
         this.pageTitle = page.getByTestId(`expiring-title`);
+        this.emptyPageDescription = page.getByTestId(`empty-page-description`);
         this.expiringGroup = page.getByTestId(`main-expiring-groups`);
         this.subgroupDesc = page.getByTestId(`section-description`);
         this.subgroupTitle = page.getByTestId(`section-title`);
