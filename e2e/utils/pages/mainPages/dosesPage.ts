@@ -11,12 +11,14 @@ export const DOSES_PAGE_TEXTS = {
 export class DosesPage {
     readonly page: Page;
     readonly pageTitle: Locator;
+    readonly emptyPageDescription: Locator;
     readonly managePeopleBtn: Locator;
     readonly dosesList: Locator;
 
     constructor(page: Page) {
         this.page = page;
         this.pageTitle = page.getByTestId(`doses-title`);
+        this.emptyPageDescription = page.getByTestId(`empty-page-description`);
         this.managePeopleBtn = page.getByTestId(`manage-people-btn`);
         this.dosesList = page.getByTestId(`main-doses-list`);
     }

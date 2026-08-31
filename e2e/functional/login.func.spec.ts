@@ -1,4 +1,4 @@
-import {expect, test} from "../fixtures/fixtures";
+import {expect, test} from "../utils/fixtures/fixtures";
 
 
 test.describe(`Login functionality`, async () => {

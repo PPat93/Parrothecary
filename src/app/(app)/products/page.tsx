@@ -55,6 +55,7 @@ export default async function ProductsPage({
         <div
           className="rounded-2xl border border-dashed p-8 text-center text-sm"
           style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+          test-data='empty-page-description'
         >
           {search
             ? `No ${showArchived ? 'archived ' : ''}products match “${search}”.`

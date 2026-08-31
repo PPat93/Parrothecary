@@ -133,6 +133,7 @@ export default async function ExpiringPage() {
                 <div
                     className="rounded-2xl border border-dashed p-8 text-center text-sm"
                     style={{borderColor: 'var(--border)', color: 'var(--muted)'}}
+                    test-data='empty-page-description'
                 >
                     Nothing expiring in the next six months.
                 </div>

@@ -54,7 +54,7 @@ export default async function StockPage({
                 <div className="flex items-center gap-2">
                     {/* Counting the shelf belongs next to the shelf. Neutral rather
                         than accent: it is an occasional job, not the main action. */}
-                    <Link href="/count" className={LINK_BUTTON} test-data="count-stock-btn"
+                    <Link href="/count" className={LINK_BUTTON} test-data="audit-btn"
                           style={toneStyle('neutral')}>
                         Audit
                     </Link>
@@ -291,6 +291,7 @@ function EmptyState() {
         <div
             className="rounded-2xl border border-dashed p-8 text-center text-sm"
             style={{borderColor: 'var(--border)', color: 'var(--muted)'}}
+            test-data="empty-page-description"
         >
             <p>Nothing in stock yet.</p>
             <p className="mt-2">
