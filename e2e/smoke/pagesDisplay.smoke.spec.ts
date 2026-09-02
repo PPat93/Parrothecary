@@ -7,6 +7,7 @@ import {EXPIRING_PAGE_TEXTS} from "../utils/pages/mainPages/expiringPage";
 import {SHOPPING_PAGE_TEXTS} from "../utils/pages/mainPages/shoppingPage";
 import {TRIPS_PAGE_TEXTS} from "../utils/pages/mainPages/tripsPage";
 import {PRODUCTS_PAGE_TEXTS} from "../utils/pages/mainPages/productsPage";
+import {ADD_BOX_TEXTS, AddBoxSubpage} from "../utils/pages/subpages/addBoxSubpage";
 
 test.describe(`Login page display`, {tag: `@smoke`}, async () => {
 
@@ -27,7 +28,7 @@ test.describe(`Login page display`, {tag: `@smoke`}, async () => {
     })
 })
 
-test.describe(`Basic pages display`, async () => {
+test.describe(`Main pages display - empty DB`, {tag: `@smoke`}, async () => {
     test(`Stock page is displayed`, async ({stockPage}) => {
 
         //  Arrange & Act
@@ -41,7 +42,7 @@ test.describe(`Basic pages display`, async () => {
         await expect(stockPage.auditBtn).toHaveText(STOCK_PAGE_TEXTS.auditBtn);
         await expect(stockPage.mainSearchField).toBeVisible();
         await expect(stockPage.emptyPageDescription).toBeVisible();
-        await expect(stockPage.emptyPageDescription).toHaveText(STOCK_PAGE_TEXTS.emptyPage+STOCK_PAGE_TEXTS.startExplainer);
+        await expect(stockPage.emptyPageDescription).toHaveText(STOCK_PAGE_TEXTS.emptyPage + STOCK_PAGE_TEXTS.startExplainer);
 
         // TODO - move to normal flow tests
         // await expect(stockPage.stockList).toBeVisible();
@@ -59,7 +60,7 @@ test.describe(`Basic pages display`, async () => {
         await expect(dosesPage.managePeopleBtn).toBeVisible();
         await expect(dosesPage.managePeopleBtn).toHaveText(DOSES_PAGE_TEXTS.managePeopleBtn);
         await expect(dosesPage.emptyPageDescription).toBeVisible();
-        await expect(dosesPage.emptyPageDescription).toHaveText(DOSES_PAGE_TEXTS.emptyPage+DOSES_PAGE_TEXTS.startExplainer);
+        await expect(dosesPage.emptyPageDescription).toHaveText(DOSES_PAGE_TEXTS.emptyPage + DOSES_PAGE_TEXTS.startExplainer);
 
         // TODO -move to flows testing
         // await expect(dosesPage.dosesList).toBeVisible();
@@ -97,7 +98,7 @@ test.describe(`Basic pages display`, async () => {
         await expect(shoppingPage.emptyPageDescription).toBeVisible();
         await expect(shoppingPage.emptyPageDescription).toHaveText(SHOPPING_PAGE_TEXTS.emptyPage);
         await expect(shoppingPage.explainerSection).toBeVisible();
-        await expect(shoppingPage.explainerSection).toHaveText(SHOPPING_PAGE_TEXTS.explainerText);
+        await expect(shoppingPage.explainerSection).toHaveText(SHOPPING_PAGE_TEXTS.startExplainer);
 
         //  TODO - move to flow verifications
         // await expect(shoppingPage.addItemSection).toBeVisible();
@@ -127,7 +128,7 @@ test.describe(`Basic pages display`, async () => {
         await expect(tripsPage.newTripBtn).toBeVisible();
         await expect(tripsPage.newTripBtn).toHaveText(TRIPS_PAGE_TEXTS.newTripBtn);
         await expect(tripsPage.emptyPageDescription).toBeVisible();
-        await expect(tripsPage.emptyPageDescription).toHaveText(TRIPS_PAGE_TEXTS.emptyPage+TRIPS_PAGE_TEXTS.startExplainer);
+        await expect(tripsPage.emptyPageDescription).toHaveText(TRIPS_PAGE_TEXTS.emptyPage + TRIPS_PAGE_TEXTS.startExplainer);
 
 
         //  TODO - move to flow verifications
@@ -183,4 +184,23 @@ test.describe(`Basic pages display`, async () => {
         // const productListItemsArchived = await productsPage.productsListItem.filter({visible: true}).count();
         // expect(productListItemsArchived).toBe(2);
     })
+})
+
+test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
+
+    test(`Add box subpage display - empty DB`, async ({stockPage, addBoxSubpage}) => {
+
+        // Arrange
+        await stockPage.goToPage();
+
+        // Act
+        await stockPage.clickAddBox();
+
+        // Assert
+        await expect(addBoxSubpage.pageTitle).toHaveText(ADD_BOX_TEXTS.title);
+        await expect(addBoxSubpage.cancelBtn).toBeVisible();
+        await expect(addBoxSubpage.emptyPageDescription).toHaveText(ADD_BOX_TEXTS.emptyPage + ADD_BOX_TEXTS.startExplainer);
+
+    })
+
 })

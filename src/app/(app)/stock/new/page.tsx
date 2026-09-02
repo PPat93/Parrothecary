@@ -10,8 +10,8 @@ export default async function NewBatchPage() {
   return (
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-4 flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Add box</h1>
-        <Link replace href="/" className={LINK_BUTTON} style={toneStyle('warning')}>
+        <h1 className="text-2xl font-semibold tracking-tight" test-data="add-box-title">Add box</h1>
+        <Link replace href="/" className={LINK_BUTTON} style={toneStyle('warning')} test-data="cancel-btn">
           Cancel
         </Link>
       </header>
@@ -20,6 +20,7 @@ export default async function NewBatchPage() {
         <div
           className="rounded-2xl border border-dashed p-8 text-center text-sm"
           style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+          test-data="empty-page-description"
         >
           <p>No packs defined yet.</p>
           <p className="mt-2">
