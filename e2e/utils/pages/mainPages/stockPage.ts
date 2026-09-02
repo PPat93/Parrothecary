@@ -1,4 +1,6 @@
 import {Page, Locator} from "@playwright/test"
+import {expect} from "playwright/test";
+import {ADD_BOX_TEXTS} from "../subpages/addBoxSubpage";
 
 export const STOCK_PAGE_TEXTS = {
     title: `Stock`,
@@ -7,7 +9,7 @@ export const STOCK_PAGE_TEXTS = {
     emptyPage: `Nothing in stock yet.`,
     searchPlaceholder: `Name, brand, substance or symptom…`,
     newProdUrl: `/products/new`,
-    startExplainer: `Start by adding a product, then add the boxes you actually have.`,
+    startExplainer: `Start by adding a product, then add the boxes you actually have.`
 } as const;
 
 
@@ -34,5 +36,10 @@ export class StockPage {
 
     async goToPage() {
         await this.page.goto(`/`);
+    }
+
+    async clickAddBox() {
+        await this.newBoxBtn.click();
+        await expect(this.page).toHaveURL(ADD_BOX_TEXTS.pageUrl);
     }
 }

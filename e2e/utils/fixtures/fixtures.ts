@@ -7,6 +7,7 @@ import {ExpiringPage} from "../pages/mainPages/expiringPage";
 import {ShoppingPage} from "../pages/mainPages/shoppingPage";
 import {TripsPage} from "../pages/mainPages/tripsPage";
 import {ProductsPage} from "../pages/mainPages/productsPage";
+import {AddBoxSubpage} from "../pages/subpages/addBoxSubpage";
 
 type MainFixtures = {
     loginPage: LoginPage;
@@ -16,10 +17,13 @@ type MainFixtures = {
     shoppingPage: ShoppingPage;
     tripsPage: TripsPage;
     productsPage: ProductsPage;
+    addBoxSubpage: AddBoxSubpage;
     shared: Shared;
 }
 
 export const test = base.extend<MainFixtures>({
+
+    // Main Pages
     loginPage: async ({page}, use) => {
         await use(new LoginPage(page));
     },
@@ -48,6 +52,12 @@ export const test = base.extend<MainFixtures>({
         await use(new ProductsPage(page));
     },
 
+    // Subpages
+    addBoxSubpage: async ({page}, use) => {
+        await use(new AddBoxSubpage(page))
+    },
+
+    // Misc
     shared: async ({page}, use) => {
         await use(new Shared(page));
     }

@@ -4,7 +4,7 @@ export const SHOPPING_PAGE_TEXTS = {
     title: `Shopping`,
     addItem: `Add an item`,
     emptyPage: `Nothing on the list.`,
-    explainerText: `Add a product with a pack size before building a list.`,
+    startExplainer: `Add a product with a pack size before building a list.`,
     toBuyTitle: `To buy`,
     toBuyDesc: `Not ordered yet.`,
     orderedTitle: `Ordered`,
