@@ -1,3 +1,4 @@
+import {Locator, Page} from "@playwright/test";
 
 export const NEW_TRIP_TEXTS = {
     title: `New trip`,
@@ -15,5 +16,34 @@ export const NEW_TRIP_TEXTS = {
 }
 
 export class NewTripSubpage {
+    readonly page: Page;
+    readonly title: Locator;
+    readonly nameField: Locator;
+    readonly tripTypeField: Locator;
+    readonly collectionDateField: Locator;
+    readonly orderByDateField: Locator;
+    readonly notesField: Locator;
+    readonly cancelBtn: Locator;
+    readonly addTripBtn: Locator;
 
+    constructor(page: Page) {
+        this.page = page;
+        this.title = page.getByTestId(`new-trip-title`);
+        this.nameField = page.getByLabel(NEW_TRIP_TEXTS.nameFieldLabel);
+        this.tripTypeField = page.getByLabel(NEW_TRIP_TEXTS.tripTypeSelectorLabel);
+        this.collectionDateField = page.getByLabel(NEW_TRIP_TEXTS.collectionDateLabel);
+        this.orderByDateField = page.getByLabel(NEW_TRIP_TEXTS.orderDeadlineFieldLabel);
+        this.notesField = page.getByLabel(NEW_TRIP_TEXTS.notesFieldLabel);
+        this.cancelBtn = page.getByRole(`link`, {name: NEW_TRIP_TEXTS.cancelBtn});
+        this.addTripBtn = page.getByRole(`link`, {name: NEW_TRIP_TEXTS.addTripBtn})
+    }
+
+    async clickCancelBtn() {
+        await this.cancelBtn.click();
+    }
+
+    async clickAddTripBtn() {
+        await this.addTripBtn.click();
+    }
 }
+

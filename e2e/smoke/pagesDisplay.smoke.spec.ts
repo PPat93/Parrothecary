@@ -244,4 +244,18 @@ test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
         await expect(newPersonSubpage.notesDescription).toBeVisible();
     })
 
+    test(`New Trip subpage display - empty DB`, async ({newTripSubpage}) => {
+
+        // Arrange & Act
+        await newPersonSubpage.goToPage();
+
+        // Assert
+        await expect(newPersonSubpage.pageTitle).toHaveText(NEW_PERSON_TEXTS.title);
+        await expect(newPersonSubpage.cancelBtn).toBeVisible();
+        await expect(newPersonSubpage.addPersonBtn).toBeVisible();
+        await expect(newPersonSubpage.nameField).toBeVisible();
+        await expect(newPersonSubpage.notesField).toBeVisible();
+        await expect(newPersonSubpage.notesDescription).toBeVisible();
+    })
+
 })

@@ -10,6 +10,7 @@ import {ProductsPage} from "../pages/mainPages/productsPage";
 import {AddBoxSubpage} from "../pages/subpages/addBoxSubpage";
 import {HouseholdSubpage} from "../pages/subpages/householdSubpage";
 import {NewPersonSubpage} from "../pages/subpages/newPersonSubpage";
+import {NewTripSubpage} from "../pages/subpages/newTripSubpage";
 
 type MainFixtures = {
     //  Main Pages
@@ -25,6 +26,7 @@ type MainFixtures = {
     //  Subpages
     addBoxSubpage: AddBoxSubpage;
     newPersonSubpage: NewPersonSubpage;
+    newTripSubpage: NewTripSubpage;
     shared: Shared;
 }
 
@@ -70,6 +72,10 @@ export const test = base.extend<MainFixtures>({
 
     newPersonSubpage: async ({page}, use) => {
         await use(new NewPersonSubpage(page))
+    },
+
+    newTripSubpage: async ({page}, use) => {
+        await use(new NewTripSubpage(page))
     },
 
     // Misc
