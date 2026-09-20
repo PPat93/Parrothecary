@@ -10,6 +10,7 @@ import {PRODUCTS_PAGE_TEXTS} from "../utils/pages/mainPages/productsPage";
 import {ADD_BOX_TEXTS, AddBoxSubpage} from "../utils/pages/subpages/addBoxSubpage";
 import {HOUSEHOLD_TEXTS, HouseholdSubpage} from "../utils/pages/subpages/householdSubpage";
 import {NEW_PERSON_TEXTS} from "../utils/pages/subpages/newPersonSubpage";
+import {NEW_TRIP_TEXTS} from "../utils/pages/subpages/newTripSubpage";
 
 test.describe(`Login page display`, {tag: `@smoke`}, async () => {
 
@@ -247,15 +248,18 @@ test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
     test(`New Trip subpage display - empty DB`, async ({newTripSubpage}) => {
 
         // Arrange & Act
-        await newPersonSubpage.goToPage();
+        await newTripSubpage.goToPage();
 
         // Assert
-        await expect(newPersonSubpage.pageTitle).toHaveText(NEW_PERSON_TEXTS.title);
-        await expect(newPersonSubpage.cancelBtn).toBeVisible();
-        await expect(newPersonSubpage.addPersonBtn).toBeVisible();
-        await expect(newPersonSubpage.nameField).toBeVisible();
-        await expect(newPersonSubpage.notesField).toBeVisible();
-        await expect(newPersonSubpage.notesDescription).toBeVisible();
+        await expect(newTripSubpage.pageTitle).toHaveText(NEW_TRIP_TEXTS.title);
+        await expect(newTripSubpage.cancelBtn).toBeVisible();
+        await expect(newTripSubpage.addTripBtn).toBeVisible();
+        await expect(newTripSubpage.nameField).toBeVisible();
+        await expect(newTripSubpage.tripTypeField).toBeVisible();
+        await expect(newTripSubpage.collectionDateField).toBeVisible();
+        await expect(newTripSubpage.orderByDateField).toBeVisible();
+        await expect(newTripSubpage.notesField).toBeVisible();
+        // TODO further items here
     })
 
 })

@@ -13,11 +13,12 @@ export const NEW_TRIP_TEXTS = {
     orderDeadlineFieldLabel: `Order by`,
     orderDeadlineDescription: `Leave blank to use the midpoint since the last trip — the same date the cabinet audit falls on.`,
     notesFieldLabel: `Notes`,
+    newTripUrl: `/trips/new`,
 }
 
 export class NewTripSubpage {
     readonly page: Page;
-    readonly title: Locator;
+    readonly pageTitle: Locator;
     readonly nameField: Locator;
     readonly tripTypeField: Locator;
     readonly collectionDateField: Locator;
@@ -28,7 +29,7 @@ export class NewTripSubpage {
 
     constructor(page: Page) {
         this.page = page;
-        this.title = page.getByTestId(`new-trip-title`);
+        this.pageTitle = page.getByTestId(`new-trip-title`);
         this.nameField = page.getByLabel(NEW_TRIP_TEXTS.nameFieldLabel);
         this.tripTypeField = page.getByLabel(NEW_TRIP_TEXTS.tripTypeSelectorLabel);
         this.collectionDateField = page.getByLabel(NEW_TRIP_TEXTS.collectionDateLabel);
@@ -36,6 +37,10 @@ export class NewTripSubpage {
         this.notesField = page.getByLabel(NEW_TRIP_TEXTS.notesFieldLabel);
         this.cancelBtn = page.getByRole(`link`, {name: NEW_TRIP_TEXTS.cancelBtn});
         this.addTripBtn = page.getByRole(`link`, {name: NEW_TRIP_TEXTS.addTripBtn})
+    }
+
+    async goToPage() {
+        await this.page.goto(NEW_TRIP_TEXTS.newTripUrl);
     }
 
     async clickCancelBtn() {
