@@ -1,5 +1,6 @@
 import path from "path";
 import {Locator, Page} from "@playwright/test";
+import {expect} from "playwright/test";
 
 export const TEXTS = {
     appName: `Parrothecary`,
@@ -25,6 +26,7 @@ export const EMPTY_AUTH_PATH = path.join(process.cwd(), `e2e/.auth/empty.auth.js
 export const SEEDED_AUTH_PATH = path.join(process.cwd(), `e2e/.auth/seeded.auth.json`);
 
 export class Shared {
+    readonly page: Page;
 
     //  Top bar
     readonly barLogo: Locator;
@@ -41,6 +43,7 @@ export class Shared {
     readonly productsMenuBtn: Locator;
 
     constructor(page: Page) {
+        this.page = page;
         this.barLogo = page.getByAltText(`Mini parrot logo`);
         this.aboutBtn = page.getByTitle(`About Parrothecary`);
         this.lockBtn = page.getByTitle(`Lock Parrothecary`);
@@ -68,5 +71,10 @@ export class Shared {
 
     async clickStatisticsBtn() {
         await this.statisticsBtn.click();
+    }
+
+    async assertFieldDescription(fieldName: string, descriptionText: string) {
+        await expect(this.page.locator(`label`).filter({hasText: fieldName}).getByTestId(`field-description`)).toHaveText(descriptionText);
+
     }
 }

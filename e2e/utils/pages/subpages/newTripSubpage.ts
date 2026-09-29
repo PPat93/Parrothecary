@@ -36,7 +36,7 @@ export class NewTripSubpage {
         this.orderByDateField = page.getByLabel(NEW_TRIP_TEXTS.orderDeadlineFieldLabel);
         this.notesField = page.getByLabel(NEW_TRIP_TEXTS.notesFieldLabel);
         this.cancelBtn = page.getByRole(`link`, {name: NEW_TRIP_TEXTS.cancelBtn});
-        this.addTripBtn = page.getByRole(`link`, {name: NEW_TRIP_TEXTS.addTripBtn})
+        this.addTripBtn = page.getByRole(`button`, {name: NEW_TRIP_TEXTS.addTripBtn})
     }
 
     async goToPage() {

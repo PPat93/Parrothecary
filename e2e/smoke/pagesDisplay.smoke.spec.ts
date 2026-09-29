@@ -1,5 +1,5 @@
 import {test, expect} from "../utils/fixtures/fixtures";
-import {ACTIVATION_VALS, TEXTS} from "../utils/shared/shared";
+import {ACTIVATION_VALS, Shared, TEXTS} from "../utils/shared/shared";
 import {loginPageTexts} from "../utils/pages/mainPages/loginPage";
 import {STOCK_PAGE_TEXTS} from "../utils/pages/mainPages/stockPage";
 import {DOSES_PAGE_TEXTS} from "../utils/pages/mainPages/dosesPage";
@@ -245,7 +245,7 @@ test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
         await expect(newPersonSubpage.notesDescription).toBeVisible();
     })
 
-    test(`New Trip subpage display - empty DB`, async ({newTripSubpage}) => {
+    test(`New Trip subpage display - empty DB`, async ({newTripSubpage, shared}) => {
 
         // Arrange & Act
         await newTripSubpage.goToPage();
@@ -255,8 +255,11 @@ test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
         await expect(newTripSubpage.cancelBtn).toBeVisible();
         await expect(newTripSubpage.addTripBtn).toBeVisible();
         await expect(newTripSubpage.nameField).toBeVisible();
+
+        //  Restock
         await expect(newTripSubpage.tripTypeField).toBeVisible();
         await expect(newTripSubpage.collectionDateField).toBeVisible();
+        await shared.assertFieldDescription(NEW_TRIP_TEXTS.nameFieldLabel, NEW_TRIP_TEXTS.nameFieldDescription)
         await expect(newTripSubpage.orderByDateField).toBeVisible();
         await expect(newTripSubpage.notesField).toBeVisible();
         // TODO further items here

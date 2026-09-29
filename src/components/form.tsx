@@ -19,7 +19,7 @@ export function Field({
       <span className="text-sm font-medium">{label}</span>
       {children}
       {hint ? (
-        <span className="text-xs" style={{ color: 'var(--muted)' }}>
+        <span className="text-xs" test-data="field-description" style={{ color: 'var(--muted)' }}>
           {hint}
         </span>
       ) : null}
