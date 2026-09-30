@@ -13,6 +13,10 @@ export const ACTIVATION_VALS = {
     regBtnInactive: /\(--muted\)/
 }
 
+export const SHARED_ATTRS = {
+    fieldDesc: `field-description`
+}
+
 enum MenuOptions {
     Stock = "stock",
     Doses = "doses",
@@ -74,7 +78,6 @@ export class Shared {
     }
 
     async assertFieldDescription(fieldName: string, descriptionText: string) {
-        await expect(this.page.locator(`label`).filter({hasText: fieldName}).getByTestId(`field-description`)).toHaveText(descriptionText);
-
+        await expect(this.page.locator(`label`).filter({hasText: fieldName}).getByTestId(SHARED_ATTRS.fieldDesc)).toHaveText(descriptionText);
     }
 }

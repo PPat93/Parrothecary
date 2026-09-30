@@ -10,7 +10,7 @@ import {PRODUCTS_PAGE_TEXTS} from "../utils/pages/mainPages/productsPage";
 import {ADD_BOX_TEXTS, AddBoxSubpage} from "../utils/pages/subpages/addBoxSubpage";
 import {HOUSEHOLD_TEXTS, HouseholdSubpage} from "../utils/pages/subpages/householdSubpage";
 import {NEW_PERSON_TEXTS} from "../utils/pages/subpages/newPersonSubpage";
-import {NEW_TRIP_TEXTS} from "../utils/pages/subpages/newTripSubpage";
+import {NEW_TRIP_TEXTS, TRIP_TYPE_SELECTOR_VALUES} from "../utils/pages/subpages/newTripSubpage";
 
 test.describe(`Login page display`, {tag: `@smoke`}, async () => {
 
@@ -245,7 +245,10 @@ test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
         await expect(newPersonSubpage.notesDescription).toBeVisible();
     })
 
-    test(`New Trip subpage display - empty DB`, async ({newTripSubpage, shared}) => {
+    test(`New Trip subpage display - basic elements and default restock trip option - empty DB`, async ({
+                                                                                                            newTripSubpage,
+                                                                                                            shared
+                                                                                                        }) => {
 
         // Arrange & Act
         await newTripSubpage.goToPage();
@@ -255,14 +258,32 @@ test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
         await expect(newTripSubpage.cancelBtn).toBeVisible();
         await expect(newTripSubpage.addTripBtn).toBeVisible();
         await expect(newTripSubpage.nameField).toBeVisible();
+        await shared.assertFieldDescription(NEW_TRIP_TEXTS.nameFieldLabel, NEW_TRIP_TEXTS.nameFieldDescription);
 
-        //  Restock
+        //  Default trip type: Restock
         await expect(newTripSubpage.tripTypeField).toBeVisible();
+        await expect(newTripSubpage.tripTypeField).toHaveValue(TRIP_TYPE_SELECTOR_VALUES.restockOption);
+        await shared.assertFieldDescription(NEW_TRIP_TEXTS.tripTypeSelectorLabel, NEW_TRIP_TEXTS.tripTypeSelectorDescription);
         await expect(newTripSubpage.collectionDateField).toBeVisible();
-        await shared.assertFieldDescription(NEW_TRIP_TEXTS.nameFieldLabel, NEW_TRIP_TEXTS.nameFieldDescription)
+        await shared.assertFieldDescription(NEW_TRIP_TEXTS.collectionDateLabel, NEW_TRIP_TEXTS.collectionDateDescription);
         await expect(newTripSubpage.orderByDateField).toBeVisible();
+        await shared.assertFieldDescription(NEW_TRIP_TEXTS.orderDeadlineFieldLabel, NEW_TRIP_TEXTS.orderDeadlineDescription);
         await expect(newTripSubpage.notesField).toBeVisible();
-        // TODO further items here
+    })
+
+    test(`New Trip subpage display - ordinary travel trip option - empty DB`, async ({newTripSubpage, shared}) => {
+
+        // Arrange & Act
+        await newTripSubpage.goToPage();
+        await newTripSubpage.tripTypeField.selectOption(TRIP_TYPE_SELECTOR_VALUES.ordinaryTravelOption)
+
+        // Assert - trip type: Ordinary Travel
+        await expect(newTripSubpage.tripTypeField).toBeVisible();
+        await expect(newTripSubpage.tripTypeField).toHaveValue(TRIP_TYPE_SELECTOR_VALUES.ordinaryTravelOption);
+        await expect(newTripSubpage.leavingDateField).toBeVisible();
+        await shared.assertFieldDescription(NEW_TRIP_TEXTS.leavingDateLabel, NEW_TRIP_TEXTS.leavingDateDescription);
+        await expect(newTripSubpage.returnDateField).toBeVisible();
+        await shared.assertFieldDescription(NEW_TRIP_TEXTS.returnDateLabel, NEW_TRIP_TEXTS.returnDateDescription);
     })
 
 })
