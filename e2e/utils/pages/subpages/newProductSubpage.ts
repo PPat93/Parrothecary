@@ -17,8 +17,8 @@ export const NEW_PRODUCT_TEXTS = {
     strengthFieldLabel: `Strength`,
     strengthFieldDescription: `Free text — combination products are fine: 500 mg + 65 mg.`,
 
-    formFieldLabel: `Form`,
-    countedInFieldLabel: `Counted in`,
+    formSelectorLabel: `Form`,
+    countedInSelectorLabel: `Counted in`,
 
     manufacturerFieldLabel: `Manufacturer`,
     manufacturerFieldDescription: `Pick one you have used before, or type a new one.`,
@@ -45,8 +45,8 @@ export const NEW_PRODUCT_TEXTS = {
     symptomFieldLabel: `Symptom`,
     symptomFieldDescription: `Tagging now is what makes “what do we have for a sore throat” work later. More can be added afterwards.`,
 
-    // Size section
-    sizeSectionTitle: `Pack size`,
+    // Pack size section
+    packSizeSection: `Pack size`,
     unitsPerPackFieldLabel: `Units per pack`,
     unitsPerPackFieldDescription: `Required — without a pack size this product cannot hold boxes or be shopped for.`,
 
@@ -67,16 +67,73 @@ export const PRODUCT_UNITS_SELECTOR_VALUES = {}
 export class NewProductSubpage {
     readonly page: Page;
     readonly pageTitle: Locator;
+
     readonly cancelBtn: Locator;
     readonly saveProductBtn: Locator;
+
+    readonly nameField: Locator;
+    readonly otherNameField: Locator;
+    readonly strengthField: Locator;
+    readonly formSelector: Locator;
+    readonly countedInSelector: Locator;
+    readonly manufacturerField: Locator;
+    readonly notesField: Locator;
+
+    readonly prescriptionCheckbox: Locator;
+    readonly expirationCheckbox: Locator;
+
+    readonly pastDateField: Locator;
+
+    // Active substance section
+    readonly activeSubstanceSection: Locator;
+    readonly substanceField: Locator;
+    readonly amountField: Locator;
+
+    // Symptoms section
+    readonly symptomsSection: Locator;
+    readonly symptomField: Locator;
+
+    // Pack size section
+    readonly packSizeSection: Locator;
+    readonly unitsPerPackField: Locator;
+    readonly packLabelField: Locator;
 
     constructor(page: Page) {
         this.page = page;
         this.pageTitle = page.getByTestId(`new-trip-title`);
+
+        this.cancelBtn = page.getByRole(`link`, {name: NEW_PRODUCT_TEXTS.cancelBtn});
+        this.saveProductBtn = page.getByRole(`button`, {name: NEW_PRODUCT_TEXTS.saveProductBtn});
+
+        this.nameField = page.getByLabel(NEW_PRODUCT_TEXTS.nameFieldLabel);
+        this.otherNameField = page.getByLabel(NEW_PRODUCT_TEXTS.otherNameFieldLabel);
+        this.strengthField = page.getByLabel(NEW_PRODUCT_TEXTS.strengthFieldLabel);
+
+        this.formSelector = page.getByLabel(NEW_PRODUCT_TEXTS.formSelectorLabel);
+        this.countedInSelector = page.getByLabel(NEW_PRODUCT_TEXTS.countedInSelectorLabel);
+
+        this.manufacturerField = page.getByLabel(NEW_PRODUCT_TEXTS.manufacturerFieldLabel);
+        this.notesField = page.getByLabel(NEW_PRODUCT_TEXTS.notesFieldLabel);
+
+        this.prescriptionCheckbox = page.getByRole(`checkbox`, {name: HTML_ITEMS.prescriptionCheckboxName});
+        this.expirationCheckbox = page.getByRole(`checkbox`, {name: HTML_ITEMS.expirationCheckboxName});
+
+        this.pastDateField = page.getByLabel(NEW_PRODUCT_TEXTS.pastDateFieldLabel);
+
+        this.activeSubstanceSection = page.getByText(NEW_PRODUCT_TEXTS.activeSubstanceSection);
+        this.substanceField = page.getByLabel(NEW_PRODUCT_TEXTS.substanceFieldLabel);
+        this.amountField = page.getByLabel(NEW_PRODUCT_TEXTS.amountFieldLabel);
+
+        this.symptomsSection = page.getByText(NEW_PRODUCT_TEXTS.symptomsSection)
+        this.symptomField = page.getByLabel(NEW_PRODUCT_TEXTS.symptomFieldLabel);
+
+        this.packSizeSection = page.getByText(NEW_PRODUCT_TEXTS.packSizeSection);
+        this.unitsPerPackField = page.getByLabel(NEW_PRODUCT_TEXTS.unitsPerPackFieldLabel);
+        this.packLabelField = page.getByLabel(NEW_PRODUCT_TEXTS.packLabelFieldLabel);
     }
 
     async goToPage() {
-        await this.page.goto(NEW_TRIP_TEXTS.newTripUrl);
+        await this.page.goto(NEW_PRODUCT_TEXTS.newTripUrl);
     }
 
     async clickCancelBtn() {

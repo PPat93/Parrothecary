@@ -287,7 +287,7 @@ test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
     test(`New product subpage display - empty DB`, async ({newProductSubpage, shared}) => {
 
         // Arrange & Act
-        await newTripSubpage.goToPage();
+        await newProductSubpage.goToPage();
         await newTripSubpage.tripTypeField.selectOption(TRIP_TYPE_SELECTOR_VALUES.ordinaryTravelOption)
 
         // Assert - trip type: Ordinary Travel
