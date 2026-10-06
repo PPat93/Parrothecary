@@ -11,6 +11,11 @@ import {ADD_BOX_TEXTS, AddBoxSubpage} from "../utils/pages/subpages/addBoxSubpag
 import {HOUSEHOLD_TEXTS, HouseholdSubpage} from "../utils/pages/subpages/householdSubpage";
 import {NEW_PERSON_TEXTS} from "../utils/pages/subpages/newPersonSubpage";
 import {NEW_TRIP_TEXTS, TRIP_TYPE_SELECTOR_VALUES} from "../utils/pages/subpages/newTripSubpage";
+import {
+    NEW_PRODUCT_TEXTS,
+    PRODUCT_FORM_SELECTOR_VALUES,
+    PRODUCT_UNITS_SELECTOR_VALUES
+} from "../utils/pages/subpages/newProductSubpage";
 
 test.describe(`Login page display`, {tag: `@smoke`}, async () => {
 
@@ -288,15 +293,65 @@ test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
 
         // Arrange & Act
         await newProductSubpage.goToPage();
-        await newTripSubpage.tripTypeField.selectOption(TRIP_TYPE_SELECTOR_VALUES.ordinaryTravelOption)
 
-        // Assert - trip type: Ordinary Travel
-        await expect(newTripSubpage.tripTypeField).toBeVisible();
-        await expect(newTripSubpage.tripTypeField).toHaveValue(TRIP_TYPE_SELECTOR_VALUES.ordinaryTravelOption);
-        await expect(newTripSubpage.leavingDateField).toBeVisible();
-        await shared.assertFieldDescription(NEW_TRIP_TEXTS.leavingDateLabel, NEW_TRIP_TEXTS.leavingDateDescription);
-        await expect(newTripSubpage.returnDateField).toBeVisible();
-        await shared.assertFieldDescription(NEW_TRIP_TEXTS.returnDateLabel, NEW_TRIP_TEXTS.returnDateDescription);
+        // Assert
+        await expect(newProductSubpage.nameField).toBeVisible();
+        await shared.assertFieldDescription(NEW_PRODUCT_TEXTS.nameFieldLabelRegex, NEW_PRODUCT_TEXTS.nameFieldDescription);
+        await expect(newProductSubpage.otherNameField).toBeVisible();
+        await shared.assertFieldDescription(NEW_PRODUCT_TEXTS.otherNameFieldLabelRegex, NEW_PRODUCT_TEXTS.otherNameFieldDescription);
+        await expect(newProductSubpage.strengthField).toBeVisible();
+        await shared.assertFieldDescription(NEW_PRODUCT_TEXTS.strengthFieldLabel, NEW_PRODUCT_TEXTS.strengthFieldDescription);
+
+        await expect(newProductSubpage.formSelector).toBeVisible();
+        await expect(newProductSubpage.formSelector).toHaveValue(PRODUCT_FORM_SELECTOR_VALUES.tablet);
+        await expect(newProductSubpage.countedInSelector).toBeVisible();
+        await expect(newProductSubpage.countedInSelector).toHaveValue(PRODUCT_UNITS_SELECTOR_VALUES.tablet);
+
+        await expect(newProductSubpage.manufacturerField).toBeVisible();
+        await shared.assertFieldDescription(NEW_PRODUCT_TEXTS.manufacturerFieldLabel, NEW_PRODUCT_TEXTS.manufacturerFieldDescription);
+
+        await expect(newProductSubpage.prescriptionCheckbox).toBeVisible();
+        await expect(newProductSubpage.prescriptionCheckbox).not.toBeChecked();
+        await expect(newProductSubpage.expirationCheckbox).toBeVisible();
+        await expect(newProductSubpage.expirationCheckbox).toBeChecked();
+
+        await expect(newProductSubpage.pastDateField).toBeVisible();
+        await shared.assertFieldDescription(NEW_PRODUCT_TEXTS.pastDateFieldLabel, NEW_PRODUCT_TEXTS.pastDateFieldDescription);
+
+        await expect(newProductSubpage.substanceField).toBeVisible();
+        await shared.assertFieldDescription(NEW_PRODUCT_TEXTS.substanceFieldLabel, NEW_PRODUCT_TEXTS.substanceFieldDescription);
+        await expect(newProductSubpage.amountField).toBeVisible();
+        await shared.assertFieldDescription(NEW_PRODUCT_TEXTS.amountFieldLabel, NEW_PRODUCT_TEXTS.amountFieldDescription);
+
+        await expect(newProductSubpage.symptomField).toBeVisible();
+        await shared.assertFieldDescription(NEW_PRODUCT_TEXTS.symptomFieldLabel, NEW_PRODUCT_TEXTS.symptomFieldDescription);
+
+        await expect(newProductSubpage.unitsPerPackField).toBeVisible();
+        await shared.assertFieldDescription(NEW_PRODUCT_TEXTS.unitsPerPackFieldLabel, NEW_PRODUCT_TEXTS.unitsPerPackFieldDescription);
+        await expect(newProductSubpage.packLabelField).toBeVisible();
     })
 
+    test(`New product subpage - 'Form' selector items`, async ({newProductSubpage}) => {
+
+        // Arrange & Act
+        await newProductSubpage.goToPage();
+
+        // Assert
+        for (let option in PRODUCT_FORM_SELECTOR_VALUES) {
+            await newProductSubpage.formSelector.selectOption(option);
+            await expect(newProductSubpage.formSelector).toHaveValue(option);
+        }
+    })
+
+    test(`New product subpage - 'Counted in' selector items`, async ({newProductSubpage}) => {
+
+        // Arrange & Act
+        await newProductSubpage.goToPage();
+
+        // Assert
+        for (let option in PRODUCT_UNITS_SELECTOR_VALUES) {
+            await newProductSubpage.countedInSelector.selectOption(option);
+            await expect(newProductSubpage.countedInSelector).toHaveValue(option);
+        }
+    })
 })

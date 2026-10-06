@@ -8,10 +8,10 @@ export const NEW_PRODUCT_TEXTS = {
     cancelBtn: `Cancel`,
     saveProductBtn: `Save product`,
 
-    nameFieldLabel: `Name`,
+    nameFieldLabelRegex: /^Name/,
     nameFieldDescription: `Exactly as printed on the box, whatever language that is.`,
 
-    otherNameFieldLabel: `Other name`,
+    otherNameFieldLabelRegex: /^Other name/,
     otherNameFieldDescription: `Optional — what it is called in the other language. Search matches both.`,
 
     strengthFieldLabel: `Strength`,
@@ -55,14 +55,33 @@ export const NEW_PRODUCT_TEXTS = {
     newTripUrl: `/products/new`,
 }
 
-export const HTML_ITEMS = {
-    prescriptionCheckboxName: `isPrescription`,
-    expirationCheckboxName: `hasExpiry`,
+export const PRODUCT_FORM_SELECTOR_VALUES = {
+    tablet: `tablet`,
+    capsule: `capsule`,
+    syrup: `syrup`,
+    drops: `drops`,
+    sachet: `sachet`,
+    spray: `spray`,
+    cream: `cream`,
+    ointment: `ointment`,
+    suppository: `suppository`,
+    patch: `patch`,
+    injection: `injection`,
+    device: `device`,
+    other: `other`,
 }
 
-export const PRODUCT_FORM_SELECTOR_VALUES = {}
-
-export const PRODUCT_UNITS_SELECTOR_VALUES = {}
+export const PRODUCT_UNITS_SELECTOR_VALUES = {
+    tablet: `tablet`,
+    capsule: `capsule`,
+    ml: `ml`,
+    g: `g`,
+    sachet: `sachet`,
+    drop: `drop`,
+    ampoule: `ampoule`,
+    piece: `piece`,
+    dose: `dose`,
+}
 
 export class NewProductSubpage {
     readonly page: Page;
@@ -105,8 +124,8 @@ export class NewProductSubpage {
         this.cancelBtn = page.getByRole(`link`, {name: NEW_PRODUCT_TEXTS.cancelBtn});
         this.saveProductBtn = page.getByRole(`button`, {name: NEW_PRODUCT_TEXTS.saveProductBtn});
 
-        this.nameField = page.getByLabel(NEW_PRODUCT_TEXTS.nameFieldLabel);
-        this.otherNameField = page.getByLabel(NEW_PRODUCT_TEXTS.otherNameFieldLabel);
+        this.nameField = page.getByLabel(NEW_PRODUCT_TEXTS.nameFieldLabelRegex);
+        this.otherNameField = page.getByLabel(NEW_PRODUCT_TEXTS.otherNameFieldLabelRegex);
         this.strengthField = page.getByLabel(NEW_PRODUCT_TEXTS.strengthFieldLabel);
 
         this.formSelector = page.getByLabel(NEW_PRODUCT_TEXTS.formSelectorLabel);
@@ -115,8 +134,8 @@ export class NewProductSubpage {
         this.manufacturerField = page.getByLabel(NEW_PRODUCT_TEXTS.manufacturerFieldLabel);
         this.notesField = page.getByLabel(NEW_PRODUCT_TEXTS.notesFieldLabel);
 
-        this.prescriptionCheckbox = page.getByRole(`checkbox`, {name: HTML_ITEMS.prescriptionCheckboxName});
-        this.expirationCheckbox = page.getByRole(`checkbox`, {name: HTML_ITEMS.expirationCheckboxName});
+        this.prescriptionCheckbox = page.getByRole(`checkbox`, {name: NEW_PRODUCT_TEXTS.prescriptionCheckboxDescription});
+        this.expirationCheckbox = page.getByRole(`checkbox`, {name: NEW_PRODUCT_TEXTS.expirationCheckboxDescription});
 
         this.pastDateField = page.getByLabel(NEW_PRODUCT_TEXTS.pastDateFieldLabel);
 
