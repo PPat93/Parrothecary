@@ -6,7 +6,7 @@ export const ADD_BOX_TEXTS = {
     emptyPage: `No packs defined yet.`,
     startExplainer: `Add a product with a pack size first — a box has to be a box of something.`,
     pageUrl: `/stock/new`
-}
+} as const;
 
 export class AddBoxSubpage {
     readonly page: Page;

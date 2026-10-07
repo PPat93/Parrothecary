@@ -7,7 +7,7 @@ export const NEW_PERSON_TEXTS = {
     nameFieldLabel: `Name`,
     notesFieldLabel: `Notes`,
     notesDescription: `Optional — allergies, a GP's advice, anything worth remembering.`,
-    newPersonUrl: `/household/new`
+    pageUrl: `/household/new`
 } as const;
 
 
@@ -31,6 +31,6 @@ export class NewPersonSubpage {
     }
 
     async goToPage() {
-        await this.page.goto(NEW_PERSON_TEXTS.newPersonUrl);
+        await this.page.goto(NEW_PERSON_TEXTS.pageUrl);
     }
 }

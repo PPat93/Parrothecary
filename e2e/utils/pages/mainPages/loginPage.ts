@@ -1,8 +1,9 @@
 import {Page, Locator} from '@playwright/test'
 import {expect} from "../../fixtures/fixtures";
 
-export const loginPageTexts = {
-    SUBMIT_BTN_TXT: `Unlock`
+export const LOGIN_PAGE_TEXTS = {
+    submitBtn: `Unlock`,
+    pageUrl: `/login`,
 } as const;
 
 export class LoginPage {
@@ -26,7 +27,7 @@ export class LoginPage {
     }
 
     async goToPage() {
-        await this.page.goto(`/login`);
+        await this.page.goto(LOGIN_PAGE_TEXTS.pageUrl);
     }
 
     async userLogin(pass?: string) {

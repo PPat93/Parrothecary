@@ -1,5 +1,4 @@
 import {Locator, Page} from "@playwright/test";
-import {NEW_TRIP_TEXTS} from "./newTripSubpage";
 
 export const NEW_PRODUCT_TEXTS = {
 
@@ -52,8 +51,8 @@ export const NEW_PRODUCT_TEXTS = {
 
     packLabelFieldLabel: `Pack label`,
 
-    newTripUrl: `/products/new`,
-}
+    pageUrl: `/products/new`,
+} as const;
 
 export const PRODUCT_FORM_SELECTOR_VALUES = {
     tablet: `tablet`,
@@ -69,7 +68,7 @@ export const PRODUCT_FORM_SELECTOR_VALUES = {
     injection: `injection`,
     device: `device`,
     other: `other`,
-}
+} as const;
 
 export const PRODUCT_UNITS_SELECTOR_VALUES = {
     tablet: `tablet`,
@@ -81,7 +80,7 @@ export const PRODUCT_UNITS_SELECTOR_VALUES = {
     ampoule: `ampoule`,
     piece: `piece`,
     dose: `dose`,
-}
+} as const;
 
 export class NewProductSubpage {
     readonly page: Page;
@@ -152,7 +151,7 @@ export class NewProductSubpage {
     }
 
     async goToPage() {
-        await this.page.goto(NEW_PRODUCT_TEXTS.newTripUrl);
+        await this.page.goto(NEW_PRODUCT_TEXTS.pageUrl);
     }
 
     async clickCancelBtn() {

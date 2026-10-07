@@ -6,7 +6,9 @@ export const PRODUCTS_PAGE_TEXTS = {
     emptyPageActive: `The product database is empty.`,
     emptyPageArchived: `Nothing archived.`,
     switchActive: `Active`,
-    switchArchived: `Archived`
+    switchArchived: `Archived`,
+
+    pageUrl: `/products`,
 } as const;
 
 
@@ -32,6 +34,6 @@ export class ProductsPage {
     }
 
     async goToPage() {
-        await this.page.goto(`/products`);
+        await this.page.goto(PRODUCTS_PAGE_TEXTS.pageUrl);
     }
 }

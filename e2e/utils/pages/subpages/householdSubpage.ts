@@ -7,7 +7,7 @@ export const HOUSEHOLD_TEXTS = {
     emptyPageArchived: `Nothing archived.`,
     switchActive: `Active`,
     switchArchived: `Archived`,
-    householdUrl: `/household`
+    pageUrl: `/household`
 } as const;
 
 

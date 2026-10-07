@@ -6,16 +6,16 @@ export const TEXTS = {
     appName: `Parrothecary`,
     subtitle: `Domowa apteczka`,
     dateFieldPlaceholder: `dd.mm.rrrr`
-}
+} as const;
 
 export const ACTIVATION_VALS = {
     regBtnActive: /\(--text\)/,
     regBtnInactive: /\(--muted\)/
-}
+} as const;
 
 export const SHARED_ATTRS = {
     fieldDesc: `field-description`
-}
+} as const;
 
 enum MenuOptions {
     Stock = "stock",

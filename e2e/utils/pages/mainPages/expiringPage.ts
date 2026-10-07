@@ -14,7 +14,9 @@ export const EXPIRING_PAGE_TEXTS = {
     binnedSectionTitle: `Binned so far`,
     binnedSectionWasted: `Nothing has been binned unopened. That is the figure that would mean money wasted, and it is zero.`,
     binnedSectionNotWasted: `Not really waste: they were opened because they were needed, and you cannot buy half a bottle.`,
-    binnedSectionNotWastedAlt: `never opened — bought and binned without being used. This is the number worth pushing down.`
+    binnedSectionNotWastedAlt: `never opened — bought and binned without being used. This is the number worth pushing down.`,
+
+    pageUrl: `/expiring`,
 } as const;
 
 
@@ -52,6 +54,6 @@ export class ExpiringPage {
     }
 
     async goToPage() {
-        await this.page.goto(`/expiring`);
+        await this.page.goto(EXPIRING_PAGE_TEXTS.pageUrl);
     }
 }

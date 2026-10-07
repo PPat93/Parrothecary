@@ -8,8 +8,9 @@ export const STOCK_PAGE_TEXTS = {
     auditBtn: `Audit`,
     emptyPage: `Nothing in stock yet.`,
     searchPlaceholder: `Name, brand, substance or symptom…`,
-    newProdUrl: `/products/new`,
-    startExplainer: `Start by adding a product, then add the boxes you actually have.`
+    startExplainer: `Start by adding a product, then add the boxes you actually have.`,
+
+    pageUrl: `/`,
 } as const;
 
 
@@ -35,7 +36,7 @@ export class StockPage {
     }
 
     async goToPage() {
-        await this.page.goto(`/`);
+        await this.page.goto(STOCK_PAGE_TEXTS.pageUrl);
     }
 
     async clickAddBox() {

@@ -1,6 +1,6 @@
 import {test, expect} from "../utils/fixtures/fixtures";
 import {ACTIVATION_VALS, Shared, TEXTS} from "../utils/shared/shared";
-import {loginPageTexts} from "../utils/pages/mainPages/loginPage";
+import {LOGIN_PAGE_TEXTS} from "../utils/pages/mainPages/loginPage";
 import {STOCK_PAGE_TEXTS} from "../utils/pages/mainPages/stockPage";
 import {DOSES_PAGE_TEXTS} from "../utils/pages/mainPages/dosesPage";
 import {EXPIRING_PAGE_TEXTS} from "../utils/pages/mainPages/expiringPage";
@@ -32,7 +32,7 @@ test.describe(`Login page display`, {tag: `@smoke`}, async () => {
         await expect(loginPage.pageSubTitle).toHaveText(TEXTS.subtitle);
         await expect(loginPage.logo).toBeVisible();
         await expect(loginPage.passwordField).toBeVisible();
-        await expect(loginPage.submitBtn).toHaveText(loginPageTexts.SUBMIT_BTN_TXT);
+        await expect(loginPage.submitBtn).toHaveText(LOGIN_PAGE_TEXTS.submitBtn);
     })
 })
 

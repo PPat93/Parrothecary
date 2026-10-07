@@ -9,7 +9,9 @@ export const TRIPS_PAGE_TEXTS = {
     startExplainer: `Add the next one and the shopping list gets a deadline to work back from.`,
     newTripBtn: `New trip`,
     planedSectionTitle: `Planned`,
-    doneSectionTitle: `Done`
+    doneSectionTitle: `Done`,
+
+    pageUrl: `/trips`,
 } as const;
 
 
@@ -38,6 +40,6 @@ export class TripsPage {
     }
 
     async goToPage() {
-        await this.page.goto(`/trips`);
+        await this.page.goto(TRIPS_PAGE_TEXTS.pageUrl);
     }
 }

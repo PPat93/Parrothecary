@@ -24,13 +24,13 @@ export const NEW_TRIP_TEXTS = {
     orderDeadlineDescription: `Leave blank to use the midpoint since the last trip — the same date the cabinet audit falls on.`,
 
     notesFieldLabel: `Notes`,
-    newTripUrl: `/trips/new`,
-}
+    pageUrl: `/trips/new`,
+} as const;
 
 export const TRIP_TYPE_SELECTOR_VALUES = {
     ordinaryTravelOption: `travel`,
     restockOption: `restock`,
-}
+} as const;
 
 export class NewTripSubpage {
     readonly page: Page;
@@ -60,7 +60,7 @@ export class NewTripSubpage {
     }
 
     async goToPage() {
-        await this.page.goto(NEW_TRIP_TEXTS.newTripUrl);
+        await this.page.goto(NEW_TRIP_TEXTS.pageUrl);
     }
 
     async clickCancelBtn() {

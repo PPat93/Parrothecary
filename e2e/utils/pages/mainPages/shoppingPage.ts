@@ -12,7 +12,9 @@ export const SHOPPING_PAGE_TEXTS = {
     arrivedTitle: `Arrived`,
     arrivedDesc: `Waiting at family — collect on the trip.`,
     inCupboardTitle: `In the cupboard`,
-    inCupboardDesc: `Added to stock. Clear the line when you no longer need it.`
+    inCupboardDesc: `Added to stock. Clear the line when you no longer need it.`,
+
+    pageUrl: `/shopping`,
 } as const;
 
 
@@ -47,6 +49,6 @@ export class ShoppingPage {
     }
 
     async goToPage() {
-        await this.page.goto(`/shopping`);
+        await this.page.goto(SHOPPING_PAGE_TEXTS.pageUrl);
     }
 }

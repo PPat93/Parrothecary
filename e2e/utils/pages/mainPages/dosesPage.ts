@@ -6,7 +6,9 @@ export const DOSES_PAGE_TEXTS = {
     title: `Doses`,
     managePeopleBtn: `Manage people`,
     emptyPage: `Nothing scheduled.`,
-    startExplainer: `Add someone under Household and give them a dose to track.`
+    startExplainer: `Add someone under Household and give them a dose to track.`,
+
+    pageUrl: `/doses`,
 } as const;
 
 
@@ -26,11 +28,11 @@ export class DosesPage {
     }
 
     async goToPage() {
-        await this.page.goto(`/doses`);
+        await this.page.goto(DOSES_PAGE_TEXTS.pageUrl);
     }
 
     async clickManagePeopleBtn() {
         await this.managePeopleBtn.click();
-        await expect(this.page).toHaveURL(HOUSEHOLD_TEXTS.householdUrl);
+        await expect(this.page).toHaveURL(HOUSEHOLD_TEXTS.pageUrl);
     }
 }
