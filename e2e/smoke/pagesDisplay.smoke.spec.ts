@@ -355,3 +355,9 @@ test.describe(`Subpages display`, {tag: `@smoke`}, async () => {
         }
     })
 })
+
+test.describe(`Utility pages display - db doesn't matter`,  {tag: `@smoke`}, async () => {
+    test(`Statistics page display`, async (statisticsPage) => {
+
+    })
+})

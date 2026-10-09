@@ -34,14 +34,10 @@ export class StatisticsPage {
     readonly moneyTab: Locator;
     readonly exportSection: Locator;
     readonly boxesCsvLink: Locator;
-    readonly boxesCsvDescription: Locator;
     readonly stockMovementsCsvLink: Locator;
-    readonly stockMovementsCsvDescription: Locator;
     readonly productsCsvLink: Locator;
-    readonly productsCsvDescription: Locator;
     readonly backupSection: Locator;
     readonly downloadBackupZipLink: Locator;
-    readonly downloadBackupZipDescription: Locator;
 
     readonly usageTab: Locator;
     readonly lastThirtyDaysStats: Locator;
@@ -51,5 +47,25 @@ export class StatisticsPage {
 
     constructor(page: Page) {
         this.page = page;
+        this.title = page.getByTestId(`stats-title`);
+
+        this.tabSwitcher = page.getByTestId(`stats-tabs`);
+        this.moneyTab = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.moneyTab});
+        this.exportSection = page.getByTestId(`stats-export`);
+        this.boxesCsvLink = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.boxesCsvLink});
+        this.stockMovementsCsvLink = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.stockMovementsCsvLink});
+        this.productsCsvLink = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.productsCsvLink});
+        this.backupSection = page.getByTestId(`stats-backup`);
+        this.downloadBackupZipLink = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.downloadBackupZipLink});
+
+        this.usageTab = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.usageTab});
+        this.lastThirtyDaysStats = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.lastThirtyDaysStats});
+        this.lastNinetyDaysStats = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.lastNinetyDaysStats});
+        this.lastYearStats = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.lastYearStats});
+        this.allTimeUsageStats = page.getByRole(`link`, {name: STATISTICS_PAGE_TEXTS.allTimeUsageStats});
+    }
+
+    async goToPage() {
+        await this.page.goto(STATISTICS_PAGE_TEXTS.pageUrl);
     }
 }

@@ -77,7 +77,7 @@ export class Shared {
         await this.statisticsBtn.click();
     }
 
-    async assertFieldDescription(fieldName: string | RegExp, descriptionText: string) {
-        await expect(this.page.locator(`label`).filter({hasText: fieldName}).getByTestId(SHARED_ATTRS.fieldDesc)).toHaveText(descriptionText);
+    async assertFieldDescription(fieldName: string | RegExp, descriptionText: string, parentSelector: string = `label`) {
+        await expect(this.page.locator(parentSelector).filter({hasText: fieldName}).getByTestId(SHARED_ATTRS.fieldDesc)).toHaveText(descriptionText);
     }
 }

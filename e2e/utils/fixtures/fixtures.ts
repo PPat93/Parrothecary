@@ -12,6 +12,8 @@ import {HouseholdSubpage} from "../pages/subpages/householdSubpage";
 import {NewPersonSubpage} from "../pages/subpages/newPersonSubpage";
 import {NewTripSubpage} from "../pages/subpages/newTripSubpage";
 import {NewProductSubpage} from "../pages/subpages/newProductSubpage";
+import {StatisticsPage} from "../pages/mainPages/statisticsPage";
+import {use} from "react";
 
 type MainFixtures = {
     //  Main Pages
@@ -31,6 +33,7 @@ type MainFixtures = {
     newProductSubpage: NewProductSubpage
 
     // Misc
+    statisticsPage: StatisticsPage
     shared: Shared;
 }
 
@@ -87,6 +90,10 @@ export const test = base.extend<MainFixtures>({
     },
 
     // Misc
+    statisticsPage: async ({page}, use) => {
+        await use(new StatisticsPage(page));
+    },
+
     shared: async ({page}, use) => {
         await use(new Shared(page));
     }
